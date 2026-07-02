@@ -122,12 +122,22 @@ function getStatus(tanggalBerakhir?: string): StoryAktivitasGroup['status'] {
   return 'Aktif';
 }
 
-export function buildStoryAktivitasKey(item: Pick<PengajuanItem, 'mitraId' | 'namaMitra'>): string {
+export function buildStoryAktivitasKey(item: Pick<PengajuanItem, 'id' | 'mitraId' | 'namaMitra'>): string {
   if (typeof item.mitraId === 'number') {
     return `mitra-${item.mitraId}`;
   }
 
-  return `mitra-${normalizeKey(item.namaMitra)}`;
+  const normalized = normalizeKey(item.namaMitra);
+
+  // Nama mitra kosong/tidak dikenali (mis. "-" atau string kosong) semuanya ternormalisasi
+  // jadi "mitra" — kalau dipakai sebagai key, semua pengajuan tanpa mitra_id/namaMitra yang
+  // valid akan tergabung jadi satu grup yang sama sekali tidak berhubungan. Jadikan grup
+  // tersendiri per pengajuan supaya tidak salah gabung.
+  if (!item.namaMitra?.trim() || normalized === 'mitra') {
+    return `pengajuan-${item.id}`;
+  }
+
+  return `mitra-${normalized}`;
 }
 
 function toDocJenis(value?: string): 'MoA' | 'MoU' | 'IA' {

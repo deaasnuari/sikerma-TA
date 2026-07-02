@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Download,
   FileText,
   MapPin,
   Pencil,
@@ -18,6 +19,10 @@ import {
   Users,
 } from 'lucide-react';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
+import {
+  getLaporanPelaksanaanByPengajuanIds,
+  type LaporanPelaksanaanRecord,
+} from '@/services/laporanPelaksanaanService';
 import {
   getPengajuanData,
   refreshPengajuanDataFromApi,
@@ -211,6 +216,8 @@ export default function DetailStoryAktivitasPage() {
   const [showForm, setShowForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingRef, setEditingRef] = useState<{ sourcePengajuanId: number; activityId: number } | null>(null);
+  const [laporanDiterima, setLaporanDiterima] = useState<LaporanPelaksanaanRecord[]>([]);
+  const [laporanLoading, setLaporanLoading] = useState(false);
 
   const storyGroup = useMemo(
     () => findStoryAktivitasGroupByRouteParam(sourceData, routeId, hiddenStoryIds),
@@ -261,6 +268,32 @@ export default function DetailStoryAktivitasPage() {
     };
   }, []);
 
+  // Ambil laporan pelaksanaan yang dikirim internal/eksternal/admin untuk pengajuan-pengajuan di story ini.
+  const storyPengajuanIds = storyGroup?.pengajuan.map((p) => p.id).join(',') ?? '';
+  useEffect(() => {
+    if (!storyPengajuanIds) {
+      setLaporanDiterima([]);
+      return;
+    }
+
+    let isMounted = true;
+    setLaporanLoading(true);
+    getLaporanPelaksanaanByPengajuanIds(storyPengajuanIds.split(',').map(Number))
+      .then((rows) => {
+        if (isMounted) setLaporanDiterima(rows);
+      })
+      .catch(() => {
+        if (isMounted) setLaporanDiterima([]);
+      })
+      .finally(() => {
+        if (isMounted) setLaporanLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [storyPengajuanIds, showLaporanModal]);
+
   useEffect(() => {
     if (!showForm || !storyGroup) {
       return;
@@ -307,6 +340,7 @@ export default function DetailStoryAktivitasPage() {
       noDokumen: storyGroup.nomorDokumen,
       jenis: storyGroup.jenis,
       ruangLingkup: storyGroup.ruangLingkup,
+      pengajuanId: storyGroup.pengajuan[0]?.id,
     };
   }, [storyGroup]);
 
@@ -525,6 +559,66 @@ export default function DetailStoryAktivitasPage() {
             </article>
           ))}
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-[15px] font-bold text-slate-900">Laporan Pelaksanaan Diterima</h2>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              Laporan yang dikirim oleh internal/eksternal (atau admin) untuk kerja sama ini.
+            </p>
+          </div>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+            {laporanDiterima.length} laporan
+          </span>
+        </div>
+
+        {laporanLoading ? (
+          <p className="text-[12px] text-slate-500">Memuat laporan...</p>
+        ) : laporanDiterima.length === 0 ? (
+          <p className="text-[12px] text-slate-500">Belum ada laporan pelaksanaan yang diterima untuk kerja sama ini.</p>
+        ) : (
+          <div className="space-y-2.5">
+            {laporanDiterima.map((laporan) => (
+              <article key={laporan.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-[12px] font-bold text-slate-900">
+                      {laporan.judulKerjasama || 'Laporan Pelaksanaan'}
+                    </h3>
+                    <p className="mt-0.5 text-[10px] text-slate-500">
+                      Dikirim oleh {laporan.dikirimOlehNama || 'Pengguna'}
+                      {laporan.dikirimOlehRole ? ` (${laporan.dikirimOlehRole})` : ''} · {formatDate(laporan.dikirimPada)}
+                    </p>
+                  </div>
+                  {laporan.fileUrl && (
+                    <a
+                      href={laporan.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[#1E376C] px-2.5 py-1.5 text-[10px] font-semibold text-[#1E376C] hover:bg-[#EEF2FF]"
+                    >
+                      <Download size={12} />
+                      {laporan.fileNama || 'Unduh File'}
+                    </a>
+                  )}
+                </div>
+
+                {laporan.kegiatan && (
+                  <p className="mt-2 text-[11px] text-slate-600 whitespace-pre-line">{laporan.kegiatan}</p>
+                )}
+
+                {laporan.hasil && (
+                  <div className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Hasil Pelaksanaan</p>
+                    <p className="mt-0.5 text-[11px] text-slate-700 whitespace-pre-line">{laporan.hasil}</p>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">

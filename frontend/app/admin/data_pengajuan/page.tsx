@@ -231,6 +231,7 @@ export default function PengajuanKerjasama() {
 
   // Keep hook order stable on every render to avoid runtime hook mismatch.
   const [filterJurusan, setFilterJurusan] = useState('Semua Kategori Kerjasama');
+  const [filterUnitProdi, setFilterUnitProdi] = useState('Semua Jurusan/unit');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterTahun, setFilterTahun] = useState('Semua Tahun');
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
@@ -720,6 +721,14 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const [yearRangeStart, setYearRangeStart] = useState(defaultYearRangeStart);
   const yearGrid = Array.from({ length: 12 }, (_, index) => yearRangeStart + index);
 
+  // Opsi Jurusan/Unit/Prodi untuk filter, digabung dari master data + nilai yang benar-benar dipakai di data pengajuan.
+  const unitProdiOptions = useMemo(() => {
+    const fromMaster = [...masterJurusanRows, ...masterUnitRows, ...masterProdiRows].map((item) => item.nama);
+    const fromData = pengajuanData.map((item) => item.namaUnitProdi);
+    const merged = Array.from(new Set([...fromMaster, ...fromData].filter(Boolean)));
+    return ['Semua Jurusan/unit', ...merged];
+  }, [masterJurusanRows, masterUnitRows, masterProdiRows, pengajuanData]);
+
   // Deduplikasi data berdasarkan id sebelum render
   const filteredRaw = getFilteredPengajuanData(pengajuanData, {
     filterStatus,
@@ -730,10 +739,14 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const seen = new Set();
   const filtered = [];
   for (const item of filteredRaw) {
-    if (!seen.has(item.id)) {
-      filtered.push(item);
-      seen.add(item.id);
+    if (seen.has(item.id)) {
+      continue;
     }
+    if (filterUnitProdi !== 'Semua Jurusan/unit' && item.namaUnitProdi !== filterUnitProdi) {
+      continue;
+    }
+    filtered.push(item);
+    seen.add(item.id);
   }
 
 
@@ -1604,6 +1617,17 @@ function addEditJurusanUnitOption() {
             <option>Semua Kategori Kerjasama</option>
             <option>Internal</option>
             <option>Eksternal</option>
+          </select>
+          <select
+            value={filterUnitProdi}
+            onChange={(e) => setFilterUnitProdi(e.target.value)}
+            className="input-field px-3 py-2 text-[12px] text-gray-700 cursor-pointer"
+          >
+            {unitProdiOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
           </select>
           <div className="relative">
             <button

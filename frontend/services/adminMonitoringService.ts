@@ -81,6 +81,7 @@ export function generateNoDokumen({
 
 import { apiRequest } from '@/lib/api';
 import { getCachedMasterRuangLingkup, getMasterRuangLingkup } from '@/services/masterRuangLingkupService';
+import { rekapJenisMitraOptions, rekapTingkatPerusahaanOptions } from '@/services/adminRekapDataService';
 
 const MONITORING_CACHE_TTL_MS = 60 * 1000;
 let monitoringCache: { data: Kerjasama[]; expiresAt: number } | null = null;
@@ -135,6 +136,10 @@ export interface Kerjasama {
   status: StatusKerjasama;
   tanggalMulai: string;
   tanggalBerakhir: string;
+  tahun?: string;
+  unit?: string;
+  jenisMitra?: string;
+  tingkatPerusahaan?: string;
   sisaMasaBerlaku: string | null;
   ruangLingkup: string[];
   whatsappNumber: string;
@@ -474,11 +479,17 @@ export async function fetchMonitoringDataFromApi(options?: { forceRefresh?: bool
     const mapped = items.map((row: any) => {
       const { status, sisaMasaBerlaku } = resolveStatusAndSisa(row.tanggal_berakhir);
       
-      // Priority: mitra relation → pengajuan.nama_mitra → keterangan → legacy file name
+      // Priority: mitra relation → pengajuan.nama_mitra → snap_nama_mitra → keterangan → legacy file name
       let namaMitra = row.mitra?.nama_mitra;
 
       if (!namaMitra && row.pengajuan?.nama_mitra) {
         namaMitra = row.pengajuan.nama_mitra;
+      }
+
+      // Snapshot tersimpan saat pengajuan disetujui (atau dibackfill untuk dokumen migrasi lama) —
+      // tetap ada meski pengajuan dihapus, dan sudah bersih (bukan hasil parsing nama file mentah).
+      if (!namaMitra && row.snap_nama_mitra) {
+        namaMitra = row.snap_nama_mitra;
       }
 
       if (!namaMitra && row.keterangan && row.keterangan.includes('Mitra:')) {
@@ -514,6 +525,10 @@ export async function fetchMonitoringDataFromApi(options?: { forceRefresh?: bool
         status: status,
         tanggalMulai: formatDisplayDate(row.tanggal_mulai),
         tanggalBerakhir: formatDisplayDate(row.tanggal_berakhir),
+        tahun: (row.tanggal_mulai || '').slice(0, 4) || undefined,
+        unit: row.unit_prodi?.nama || undefined,
+        jenisMitra: row.mitra?.kategori_mitra || undefined,
+        tingkatPerusahaan: row.mitra?.tingkat_perusahaan || undefined,
         sisaMasaBerlaku: sisaMasaBerlaku,
         ruangLingkup,
         whatsappNumber: row.pengajuan?.whatsapp_pengusul || '-',
@@ -557,6 +572,62 @@ export function getMonitoringStats(items: Kerjasama[]) {
 // Filter data berdasarkan tab aktif di halaman monitoring.
 export function getFilteredMonitoringData(items: Kerjasama[], activeTab: TabKey): Kerjasama[] {
   return activeTab === 'Semua' ? items : items.filter((item) => item.status === activeTab);
+}
+
+export interface MonitoringFilterOptions {
+  filterJenis: string;
+  filterUnit: string;
+  filterJenisMitra: string;
+  filterTingkatPerusahaan: string;
+  filterTahun: string | null;
+}
+
+// Ambil daftar jenis dokumen unik untuk dropdown filter (sama pola dengan Rekap Data).
+export function getMonitoringJenisOptions(items: Kerjasama[]): string[] {
+  return ['Semua Jenis', ...Array.from(new Set(['MoU', 'MoA', 'IA', ...items.map((item) => item.jenis)]))];
+}
+
+// Ambil daftar jurusan/unit (termasuk prodi bila ada di data) unik untuk dropdown filter.
+export function getMonitoringUnitOptions(items: Kerjasama[]): string[] {
+  return [
+    'Semua Jurusan/unit',
+    ...Array.from(new Set(items.map((item) => item.unit).filter((v): v is string => Boolean(v)))),
+  ];
+}
+
+// Ambil daftar jenis mitra unik untuk dropdown filter.
+export function getMonitoringJenisMitraOptions(items: Kerjasama[]): string[] {
+  return [
+    'Semua Jenis Mitra',
+    ...Array.from(new Set([...rekapJenisMitraOptions, ...items.map((item) => item.jenisMitra).filter((v): v is string => Boolean(v))])),
+  ];
+}
+
+// Ambil daftar tingkat perusahaan unik untuk dropdown filter.
+export function getMonitoringTingkatOptions(items: Kerjasama[]): string[] {
+  return [
+    'Semua Tingkat Perusahaan',
+    ...Array.from(new Set([...rekapTingkatPerusahaanOptions, ...items.map((item) => item.tingkatPerusahaan).filter((v): v is string => Boolean(v))])),
+  ];
+}
+
+// Ambil daftar tahun unik yang tersedia untuk filter tahun.
+export function getMonitoringYearOptions(items: Kerjasama[]): number[] {
+  return Array.from(new Set(items.map((item) => Number(item.tahun)).filter((year) => !Number.isNaN(year)))).sort((a, b) => a - b);
+}
+
+// Filter tambahan (jenis, unit/prodi, jenis mitra, tingkat perusahaan, tahun) di atas filter tab status.
+export function filterMonitoringData(items: Kerjasama[], filters: MonitoringFilterOptions): Kerjasama[] {
+  return items.filter((item) => {
+    const matchesJenis = filters.filterJenis === 'Semua Jenis' || item.jenis === filters.filterJenis;
+    const matchesUnit = filters.filterUnit === 'Semua Jurusan/unit' || item.unit === filters.filterUnit;
+    const matchesJenisMitra = filters.filterJenisMitra === 'Semua Jenis Mitra' || item.jenisMitra === filters.filterJenisMitra;
+    const matchesTingkat =
+      filters.filterTingkatPerusahaan === 'Semua Tingkat Perusahaan' || item.tingkatPerusahaan === filters.filterTingkatPerusahaan;
+    const matchesTahun = filters.filterTahun === null || item.tahun === filters.filterTahun;
+
+    return matchesJenis && matchesUnit && matchesJenisMitra && matchesTingkat && matchesTahun;
+  });
 }
 
 // Siapkan daftar tab beserta jumlah datanya untuk komponen UI.

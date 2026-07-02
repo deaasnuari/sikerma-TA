@@ -15,6 +15,7 @@ export interface DokumenTerkait {
 export interface RekapDokumen {
   id?: number;
   sourcePengajuanId?: number;
+  mitraId?: number;
   noDokumen: string;
   namaMitra: string;
   jenis: RekapJenis;
@@ -28,6 +29,10 @@ export interface RekapDokumen {
   ruangLingkup?: string[];
   dokumenTerkait?: DokumenTerkait[];
   manfaatKerjasama?: string;
+  kodePerusahaan?: string;
+  jenisMitra?: string;
+  tingkatPerusahaan?: string;
+  followUp?: string;
 }
 
 // Data mentah dari modal tambah dokumen sebelum dikonversi ke format rekap.
@@ -37,6 +42,9 @@ export interface DokumenData {
   namaPIC: string;
   kategoriMitra: string;
   namaMitra: string;
+  // Terisi otomatis saat Nama Mitra dipilih dari Data Kemitraan (master_mitra). Jangan diisi manual.
+  mitraId?: number;
+  kodePerusahaan?: string;
   status: string;
   jabatanMitra: string;
   emailMitra: string;
@@ -55,6 +63,8 @@ export interface RekapFilterOptions {
   filterUnit: string;
   filterStatus: string;
   filterTahun: string | null;
+  filterJenisMitra: string;
+  filterTingkatPerusahaan: string;
   search: string;
 }
 
@@ -102,6 +112,16 @@ export const rekapUnitOptions = [
 
 export const rekapJurusanUnitOptions = [...rekapJurusanOptions, ...rekapUnitOptions];
 export const rekapJenisOptions = ['MoA', 'MoU', 'IA'] as const;
+
+// Mengikuti daftar kategori/tingkat mitra yang sama dengan halaman Data Kemitraan.
+export const rekapJenisMitraOptions = [
+  'Perguruan Tinggi',
+  'Sekolah/Institusi Pendidikan Lain',
+  'Pemerintahan',
+  'Swasta/Dunia Usaha dan Dunia Industri (DUDI)',
+  'Organisasi Non-Profit / LSM',
+];
+export const rekapTingkatPerusahaanOptions = ['Lokal', 'Nasional', 'Internasional', 'Multinasional'];
 
 // Data default awal yang ditampilkan jika belum ada data tersimpan.
 const defaultRekapData: RekapDokumen[] = [
@@ -215,6 +235,7 @@ function mapDokumenDataToRekap(data: DokumenData): RekapDokumen {
 
   return {
     noDokumen: data.nomorDokumen,
+    mitraId: data.mitraId,
     namaMitra: data.namaMitra,
     jenis: data.jenisDokumen as RekapJenis,
     unit: data.unitKerja || (data.asalKategori === 'Jurusan' ? 'Teknik Informatika' : 'UPA TIK (Teknologi Informasi dan Komunikasi)'),
@@ -226,6 +247,7 @@ function mapDokumenDataToRekap(data: DokumenData): RekapDokumen {
     whatsappNumber: data.whatsappMitra,
     dokumenTerkait: data.dokumenTerkait,
     manfaatKerjasama: data.manfaatKerjasama || undefined,
+    kodePerusahaan: data.kodePerusahaan,
   };
 }
 
@@ -383,6 +405,22 @@ export function getRekapUnitOptions(items: RekapDokumen[]): string[] {
   return ['Semua Jurusan/unit', ...Array.from(new Set([...rekapJurusanUnitOptions, ...items.map((item) => item.unit)]))];
 }
 
+// Ambil daftar jenis mitra (kategori mitra) unik untuk dropdown filter.
+export function getRekapJenisMitraOptions(items: RekapDokumen[]): string[] {
+  return [
+    'Semua Jenis Mitra',
+    ...Array.from(new Set([...rekapJenisMitraOptions, ...items.map((item) => item.jenisMitra).filter((v): v is string => Boolean(v))])),
+  ];
+}
+
+// Ambil daftar tingkat perusahaan unik untuk dropdown filter.
+export function getRekapTingkatPerusahaanOptions(items: RekapDokumen[]): string[] {
+  return [
+    'Semua Tingkat Perusahaan',
+    ...Array.from(new Set([...rekapTingkatPerusahaanOptions, ...items.map((item) => item.tingkatPerusahaan).filter((v): v is string => Boolean(v))])),
+  ];
+}
+
 // Ambil daftar tahun unik yang tersedia untuk filter tahun.
 export function getAvailableYears(items: RekapDokumen[]): number[] {
   return Array.from(new Set(items.map((item) => Number(item.tahun)))).sort((a, b) => a - b);
@@ -395,6 +433,9 @@ export function filterRekapData(items: RekapDokumen[], filters: RekapFilterOptio
     const matchesUnit = filters.filterUnit === 'Semua Jurusan/unit' || item.unit === filters.filterUnit;
     const matchesStatus = filters.filterStatus === 'Semua Status' || item.status === filters.filterStatus;
     const matchesTahun = filters.filterTahun === null || item.tahun === filters.filterTahun;
+    const matchesJenisMitra = filters.filterJenisMitra === 'Semua Jenis Mitra' || item.jenisMitra === filters.filterJenisMitra;
+    const matchesTingkatPerusahaan =
+      filters.filterTingkatPerusahaan === 'Semua Tingkat Perusahaan' || item.tingkatPerusahaan === filters.filterTingkatPerusahaan;
     const keyword = filters.search.toLowerCase().trim();
     const matchesSearch =
       keyword === '' ||
@@ -402,7 +443,15 @@ export function filterRekapData(items: RekapDokumen[], filters: RekapFilterOptio
       item.noDokumen.toLowerCase().includes(keyword) ||
       (item.manfaatKerjasama || '').toLowerCase().includes(keyword);
 
-    return matchesJenis && matchesUnit && matchesStatus && matchesTahun && matchesSearch;
+    return (
+      matchesJenis &&
+      matchesUnit &&
+      matchesStatus &&
+      matchesTahun &&
+      matchesJenisMitra &&
+      matchesTingkatPerusahaan &&
+      matchesSearch
+    );
   });
 }
 
@@ -466,6 +515,8 @@ if (item.sourcePengajuanId) {
     namaPIC: pengajuanData?.namaPengusul || '',
     kategoriMitra: pengajuanData?.mitraKategori || '',
     namaMitra: item.namaMitra,
+    mitraId: item.mitraId,
+    kodePerusahaan: item.kodePerusahaan,
     status: item.status,
     jabatanMitra: pengajuanData?.jabatanPengusul || '',
     emailMitra: pengajuanData?.emailPengusul || '',

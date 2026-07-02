@@ -67,7 +67,7 @@ class DokumenKerjasamaController extends Controller
         $query = DokumenKerjasama::query()->with([
             'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul',
             'unitProdi:id,nama,jenis_node,kategori_unit',
-            'mitra:id,nama_mitra,negara,email_mitra,email_kontak_utama',
+            'mitra:id,nama_mitra,kode_mitra,kategori_mitra,tingkat_perusahaan,negara,email_mitra,email_kontak_utama',
             'dokumenFiles' => function ($q) {
                 $q->whereIn('peran_berkas', ['dokumen_final', 'dokumen_perpanjangan']);
             },
@@ -105,7 +105,7 @@ class DokumenKerjasamaController extends Controller
         $dokumen_kerjasama->load([
             'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul',
             'unitProdi:id,nama,jenis_node,kategori_unit',
-            'mitra:id,nama_mitra,negara,email_mitra,email_kontak_utama',
+            'mitra:id,nama_mitra,kode_mitra,kategori_mitra,tingkat_perusahaan,negara,email_mitra,email_kontak_utama',
         ]);
 
         return response([
@@ -289,6 +289,7 @@ class DokumenKerjasamaController extends Controller
             'dibuat_oleh_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'file' => ['required', 'string', 'max:255'],
             'keterangan' => ['nullable', 'string'],
+            'follow_up' => ['nullable', 'string'],
         ]);
 
         $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
@@ -302,6 +303,54 @@ class DokumenKerjasamaController extends Controller
                 'error' => $exception->getMessage(),
             ], 422);
         }
+
+        return response([
+            'success' => true,
+            'data' => $dokumen,
+            'message' => 'Dokumen kerjasama created successfully',
+        ], 201);
+    }
+
+    /**
+     * Tambah dokumen kerjasama secara manual oleh admin, tanpa melalui alur pengajuan.
+     * Berbeda dari store(): no_permohonan tidak wajib, unit_prodi_id wajib (kolom NOT NULL di DB),
+     * dan file PDF diunggah terpisah lewat uploadFile() setelah record dibuat.
+     */
+    public function storeManual(Request $request): Response
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        $validated = $request->validate([
+            'nomor_dokumen' => ['required', 'string', 'max:100', 'unique:dokumen_kerjasama,nomor_dokumen'],
+            'nama_dokumen' => ['required', 'string', 'max:255'],
+            'jenis_dokumen' => ['required', 'in:MOU,MOA,IA,LAINNYA'],
+            'unit_prodi_id' => ['required', 'integer', 'exists:master_unit_prodi,id'],
+            'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
+            'tanggal_mulai' => ['nullable', 'date'],
+            'tanggal_berakhir' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
+            'status_siklus' => ['nullable', 'in:active,expiring,archived'],
+            'keterangan' => ['nullable', 'string'],
+            'follow_up' => ['nullable', 'string'],
+            'file' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
+        $validated['file'] = $validated['file'] ?? 'pending-upload';
+        $validated['dibuat_oleh_user_id'] = $request->user()?->id;
+
+        try {
+            $dokumen = DokumenKerjasama::create($validated);
+        } catch (QueryException $exception) {
+            return response([
+                'success' => false,
+                'message' => 'Gagal menyimpan dokumen kerjasama.',
+                'error' => $exception->getMessage(),
+            ], 422);
+        }
+
+        $dokumen->load(['unitProdi:id,nama,jenis_node,kategori_unit', 'mitra:id,nama_mitra,kode_mitra']);
 
         return response([
             'success' => true,
@@ -336,6 +385,7 @@ class DokumenKerjasamaController extends Controller
             'dibuat_oleh_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'file' => ['sometimes', 'required', 'string', 'max:255'],
             'keterangan' => ['nullable', 'string'],
+            'follow_up' => ['nullable', 'string'],
         ]);
 
         if (array_key_exists('jenis_dokumen', $validated)) {

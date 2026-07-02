@@ -5,13 +5,14 @@ import { useRouter } from 'next/navigation';
 import { Activity, CalendarDays, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2, Upload, Eye, Building2, FileText, Hash, Phone, User, CheckCircle2, Clock, XCircle, Download, Paperclip, RefreshCw, CheckSquare, Square } from 'lucide-react';
 import TambahDokumenModal from './TambahDokumenModal';
 import {
-  addRekapDokumen,
   createDokumenFormData,
   deleteRekapDokumen,
   filterRekapData,
   getAvailableYears,
+  getRekapJenisMitraOptions,
   getRekapJenisOptions,
   getRekapStats,
+  getRekapTingkatPerusahaanOptions,
   getRekapUnitOptions,
   rekapJenisBadgeMap,
   rekapStatusBadgeMap,
@@ -19,10 +20,44 @@ import {
   type DokumenData,
   type RekapDokumen,
 } from '@/services/adminRekapDataService';
-import { dataUrlToBlob, deleteDokumenKerjasamaById, fetchRekapDokumenFromApi, mapJenisToApi, mapStatusToApi, updateDokumenKerjasamaById, updatePengajuanNamaMitra, uploadDokumenFile } from '@/services/dokumenKerjasamaApiService';
+import { createDokumenKerjasama, dataUrlToBlob, deleteDokumenKerjasamaById, fetchRekapDokumenFromApi, mapJenisToApi, mapStatusToApi, updateDokumenKerjasamaById, updatePengajuanNamaMitra, uploadDokumenFile } from '@/services/dokumenKerjasamaApiService';
 import { exportToExcel } from '@/lib/exportExcel';
 import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
+import { upsertMasterMitraByName } from '@/services/masterMitraService';
+import { generateNoDokumen } from '@/services/adminMonitoringService';
 import { getRenewalRequests, type RenewalRequestItem } from '@/services/adminRenewalRequestService';
+import { getPageNumbers } from '@/lib/pagination';
+
+// Cari id master_unit_prodi berdasarkan nama jurusan/unit yang dipilih di form.
+async function resolveUnitProdiId(unitName: string): Promise<number | null> {
+  const [jurusanRows, unitRows] = await Promise.all([
+    getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
+    getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
+  ]);
+  const match = [...jurusanRows, ...unitRows].find((u) => u.nama === unitName);
+  return match?.id ?? null;
+}
+
+// Kode Perusahaan harus selalu mengikuti Data Kemitraan (master_mitra) lewat mitra_id.
+// Jika mitra sudah dipilih dari autocomplete, pakai id-nya langsung. Jika nama diketik manual
+// dan belum terdaftar, daftarkan/pakai record master_mitra yang cocok agar tetap konsisten.
+async function resolveMitraId(data: DokumenData): Promise<number | undefined> {
+  if (typeof data.mitraId === 'number') {
+    return data.mitraId;
+  }
+
+  const namaMitra = data.namaMitra.trim();
+  if (!namaMitra) {
+    return undefined;
+  }
+
+  try {
+    const mitra = await upsertMasterMitraByName(namaMitra, { kategoriMitra: data.kategoriMitra || null });
+    return mitra.id;
+  } catch {
+    return undefined;
+  }
+}
 
 export default function RekapDataPage() {
   const router = useRouter();
@@ -32,7 +67,11 @@ export default function RekapDataPage() {
   const [filterUnit, setFilterUnit] = useState('Semua Jurusan/unit');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterTahun, setFilterTahun] = useState<string | null>(null);
+  const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
+  const [filterTingkatPerusahaan, setFilterTingkatPerusahaan] = useState('Semua Tingkat Perusahaan');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
   const [isTambahModalOpen, setIsTambahModalOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<RekapDokumen | null>(null);
@@ -46,11 +85,16 @@ export default function RekapDataPage() {
   const [isEditingManfaat, setIsEditingManfaat] = useState(false);
   const [manfaatDraft, setManfaatDraft] = useState('');
   const [savingManfaat, setSavingManfaat] = useState(false);
+  const [isEditingFollowUp, setIsEditingFollowUp] = useState(false);
+  const [followUpDraft, setFollowUpDraft] = useState('');
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
   const detailItemRef = useRef<RekapDokumen | null>(null);
   useEffect(() => {
     detailItemRef.current = detailItem;
     setIsEditingManfaat(false);
     setManfaatDraft('');
+    setIsEditingFollowUp(false);
+    setFollowUpDraft('');
   }, [detailItem]);
 
 
@@ -124,9 +168,10 @@ export default function RekapDataPage() {
 
     async function loadMasterUnitOptions() {
       try {
-        const [jurusanRows, unitRows] = await Promise.all([
+        const [jurusanRows, unitRows, prodiRows] = await Promise.all([
           getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
           getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'prodi', aktif: true }),
         ]);
 
         if (!isMounted) {
@@ -134,7 +179,9 @@ export default function RekapDataPage() {
         }
 
         const mergedFromMaster = Array.from(
-          new Set([...jurusanRows.map((item) => item.nama), ...unitRows.map((item) => item.nama)].filter(Boolean))
+          new Set(
+            [...jurusanRows, ...unitRows, ...prodiRows].map((item) => item.nama).filter(Boolean)
+          )
         );
 
         setMasterUnitOptions(mergedFromMaster);
@@ -162,6 +209,8 @@ export default function RekapDataPage() {
     return merged;
   }, [rekapData, masterUnitOptions]);
   const statusOptions = rekapStatusOptions;
+  const jenisMitraOptions = useMemo(() => getRekapJenisMitraOptions(rekapData), [rekapData]);
+  const tingkatPerusahaanOptions = useMemo(() => getRekapTingkatPerusahaanOptions(rekapData), [rekapData]);
   const availableYears = useMemo(() => getAvailableYears(rekapData), [rekapData]);
   const currentYear = new Date().getFullYear();
   const defaultYearRangeStart = Math.min(currentYear - 4, availableYears[0] ?? currentYear);
@@ -173,19 +222,34 @@ export default function RekapDataPage() {
     filterUnit,
     filterStatus,
     filterTahun,
+    filterJenisMitra,
+    filterTingkatPerusahaan,
     search,
   });
   const filteredRows = sortOrder === 'oldest' ? [...filteredBase].reverse() : filteredBase;
 
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / itemsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safePage - 1) * itemsPerPage;
+  const paginatedRows = filteredRows.slice(pageStartIndex, pageStartIndex + itemsPerPage);
+  const pageNumbers = getPageNumbers(safePage, totalPages);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterJenis, filterUnit, filterStatus, filterTahun, filterJenisMitra, filterTingkatPerusahaan, sortOrder]);
+
   const { totalKerjasama, totalAktif, totalAkanBerakhir, totalKadaluarsa } = getRekapStats(rekapData);
 
   const handleExportExcel = () => {
-    const headers = ['No', 'No Dokumen', 'Nama Mitra', 'Jenis', 'Jurusan / Unit', 'Tanggal Mulai', 'Berlaku Hingga', 'Status', 'Manfaat Kerja Sama'];
+    const headers = ['No', 'No Dokumen', 'Nama Mitra', 'Kode Perusahaan', 'Jenis', 'Jenis Mitra', 'Tingkat Perusahaan', 'Jurusan / Unit', 'Tanggal Mulai', 'Berlaku Hingga', 'Status', 'Manfaat Kerja Sama'];
     const rows = filteredRows.map((row, index) => [
       index + 1,
       row.noDokumen,
       row.namaMitra,
+      row.kodePerusahaan || '',
       row.jenis,
+      row.jenisMitra || '',
+      row.tingkatPerusahaan || '',
       row.unit,
       row.tanggalMulai,
       row.berlakuHingga,
@@ -295,6 +359,20 @@ export default function RekapDataPage() {
     }
   };
 
+  const handleSaveFollowUp = async () => {
+    if (!detailItem?.id) return;
+    setSavingFollowUp(true);
+    try {
+      await updateDokumenKerjasamaById(detailItem.id, { follow_up: followUpDraft.trim() || null });
+      const updated = { ...detailItem, followUp: followUpDraft.trim() || undefined };
+      setDetailItem(updated);
+      setRekapData((prev) => prev.map((r) => r.id === detailItem.id ? updated : r));
+      setIsEditingFollowUp(false);
+    } finally {
+      setSavingFollowUp(false);
+    }
+  };
+
   const downloadDokumen = async (url: string, fileName: string) => {
     if (!url) {
       return;
@@ -389,6 +467,30 @@ export default function RekapDataPage() {
               className="input-field px-3 py-2 text-[12px] text-gray-700"
             >
               {statusOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterJenisMitra}
+              onChange={(event) => setFilterJenisMitra(event.target.value)}
+              className="input-field px-3 py-2 text-[12px] text-gray-700"
+            >
+              {jenisMitraOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterTingkatPerusahaan}
+              onChange={(event) => setFilterTingkatPerusahaan(event.target.value)}
+              className="input-field px-3 py-2 text-[12px] text-gray-700"
+            >
+              {tingkatPerusahaanOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -519,7 +621,7 @@ export default function RekapDataPage() {
 
       <section className="table-shell">
         <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full border-collapse">
+          <table className="min-w-[1340px] w-full border-collapse">
             <thead>
               <tr className="table-head border-b border-gray-200 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-700">
                 <th className="px-4 py-3">
@@ -531,7 +633,10 @@ export default function RekapDataPage() {
                 </th>
                 <th className="px-4 py-3">No.Dokumen</th>
                 <th className="px-4 py-3">Nama Mitra</th>
+                <th className="px-4 py-3">Kode Perusahaan</th>
                 <th className="px-4 py-3">Jenis</th>
+                <th className="px-4 py-3">Jenis Mitra</th>
+                <th className="px-4 py-3">Tingkat Perusahaan</th>
                 <th className="px-4 py-3">Jurusan / Unit</th>
                 <th className="px-4 py-3">Tanggal mulai</th>
                 <th className="px-4 py-3">Berlaku Hingga</th>
@@ -543,12 +648,12 @@ export default function RekapDataPage() {
             <tbody>
               {filteredRows.length === 0 ? (
                 <tr key="empty">
-                  <td colSpan={9} className="px-4 py-10 text-center text-[12px] text-gray-500">
+                  <td colSpan={12} className="px-4 py-10 text-center text-[12px] text-gray-500">
                     Data tidak ditemukan berdasarkan filter saat ini.
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row, index) => {
+                paginatedRows.map((row, index) => {
                   const isSelected = typeof row.id === 'number' && selectedIds.has(row.id);
                   return (
                   <tr
@@ -564,9 +669,12 @@ export default function RekapDataPage() {
                     </td>
                     <td className="px-4 py-3 text-[10px] text-gray-600">{row.noDokumen}</td>
                     <td className="px-4 py-3 font-medium text-gray-800">{row.namaMitra}</td>
+                    <td className="px-4 py-3 text-[10px] text-gray-600">{row.kodePerusahaan || '-'}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${rekapJenisBadgeMap[row.jenis]}`}>{row.jenis}</span>
                     </td>
+                    <td className="px-4 py-3">{row.jenisMitra || '-'}</td>
+                    <td className="px-4 py-3">{row.tingkatPerusahaan || '-'}</td>
                     <td className="px-4 py-3">{row.unit}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.tanggalMulai}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.berlakuHingga}</td>
@@ -611,6 +719,58 @@ export default function RekapDataPage() {
             </tbody>
           </table>
         </div>
+
+        {filteredRows.length > 0 && (
+          <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[12px] text-gray-500">
+              Menampilkan <span className="font-semibold text-gray-700">{pageStartIndex + 1}–{Math.min(pageStartIndex + itemsPerPage, filteredRows.length)}</span> dari{' '}
+              <span className="font-semibold text-gray-700">{filteredRows.length}</span> dokumen
+            </p>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={safePage === 1}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft size={14} />
+                Prev
+              </button>
+
+              {pageNumbers.map((page, idx) =>
+                page === '...' ? (
+                  <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`inline-flex h-8 min-w-[32px] items-center justify-center rounded-lg px-2 text-[12px] font-semibold transition-colors ${
+                      page === safePage
+                        ? 'bg-[#1E376C] text-white'
+                        : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                )
+              )}
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={safePage === totalPages}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {detailItem && (() => {
@@ -783,6 +943,44 @@ export default function RekapDataPage() {
                 )}
               </div>
 
+              {/* Follow Up */}
+              <div className="rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide">Follow Up</p>
+                  {!isEditingFollowUp && detailItem.id && (
+                    <button
+                      type="button"
+                      onClick={() => { setFollowUpDraft(detailItem.followUp || ''); setIsEditingFollowUp(true); }}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-[#1E376C] hover:bg-[#1E376C]/10 transition-colors"
+                    >
+                      <Pencil size={11} />
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {isEditingFollowUp ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={followUpDraft}
+                      onChange={(e) => setFollowUpDraft(e.target.value)}
+                      maxLength={500}
+                      rows={3}
+                      className="input-field w-full rounded-lg px-3 py-2 text-[12px]"
+                      placeholder="Catatan follow up kerja sama"
+                    />
+                    <p className={`text-right text-[10px] ${followUpDraft.length >= 500 ? 'text-red-500' : 'text-gray-400'}`}>{followUpDraft.length}/500</p>
+                    <div className="flex gap-2 justify-end">
+                      <button type="button" onClick={() => setIsEditingFollowUp(false)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50">Batal</button>
+                      <button type="button" onClick={handleSaveFollowUp} disabled={savingFollowUp} className="rounded-lg bg-[#1E376C] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#2B4A93] disabled:opacity-60">
+                        {savingFollowUp ? 'Menyimpan...' : 'Simpan'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-gray-700">{detailItem.followUp || <span className="italic text-gray-400">Belum diisi</span>}</p>
+                )}
+              </div>
+
               {/* Dokumen */}
               <div className="rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
                 <div className="flex items-center gap-2 mb-3">
@@ -891,22 +1089,63 @@ export default function RekapDataPage() {
         onClose={() => setIsTambahModalOpen(false)}
         title="+ Tambah Dokumen Baru"
         submitLabel="Tambah Dokumen"
-        onSubmit={(data: DokumenData) => {
-          const updated = addRekapDokumen(data);
-          setIsTambahModalOpen(false);
-          // Optimistic update: tampilkan data baru langsung di tabel tanpa tunggu API
-          if (updated.length > 0) {
-            setRekapData((prev) => {
-              const newItem = updated[0];
-              // Hindari duplikasi jika sudah ada
-              if (prev.some((r) => r.noDokumen === newItem.noDokumen)) return prev;
-              return [newItem, ...prev];
+        onSubmit={async (data: DokumenData) => {
+          try {
+            const unitProdiId = await resolveUnitProdiId(data.unitKerja);
+            if (!unitProdiId) {
+              setFeedbackModal({
+                title: 'Gagal Menambahkan Dokumen',
+                message: 'Jurusan/unit yang dipilih tidak ditemukan di Master Unit/Prodi. Silakan pilih ulang.',
+              });
+              return;
+            }
+
+            // Kode Perusahaan mengikuti Data Kemitraan lewat mitra_id — tidak dikirim manual.
+            const mitraId = await resolveMitraId(data);
+
+            // Nomor dokumen dari modal dihitung dari localStorage (tidak lagi terisi sejak
+            // create langsung ke backend), jadi generate ulang dari data rekap asli agar unik.
+            const nomorDokumen = generateNoDokumen({
+              urutan: rekapData.length + 1,
+              jenis: data.jenisDokumen as 'MoU' | 'MoA' | 'IA',
+              tanggal: data.tanggalMulai,
+              unitName: data.unitKerja,
+            });
+
+            const created = await createDokumenKerjasama({
+              nomor_dokumen: nomorDokumen,
+              nama_dokumen: `Dokumen ${nomorDokumen}`,
+              jenis_dokumen: mapJenisToApi(data.jenisDokumen),
+              unit_prodi_id: unitProdiId,
+              mitra_id: mitraId ?? null,
+              tanggal_mulai: data.tanggalMulai || null,
+              tanggal_berakhir: data.tanggalBerakhir || null,
+              status_siklus: mapStatusToApi(data.status),
+              keterangan: data.manfaatKerjasama || null,
+            });
+
+            const newDoc = data.dokumenTerkait?.[0];
+            if (newDoc?.url?.startsWith('data:')) {
+              const blob = dataUrlToBlob(newDoc.url);
+              await uploadDokumenFile(created.id, blob, newDoc.nama);
+            }
+
+            setIsTambahModalOpen(false);
+
+            const rows = await fetchRekapDokumenFromApi({ forceRefresh: true });
+            setRekapData(rows);
+
+            setFeedbackModal({
+              title: 'Dokumen Berhasil Ditambahkan',
+              message: `Dokumen "${data.namaMitra}" berhasil ditambahkan ke rekap data.`,
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Gagal menambahkan dokumen ke server.';
+            setFeedbackModal({
+              title: 'Gagal Menambahkan Dokumen',
+              message,
             });
           }
-          setFeedbackModal({
-            title: 'Dokumen Berhasil Ditambahkan',
-            message: `Dokumen "${data.namaMitra}" berhasil ditambahkan ke rekap data.`,
-          });
         }}
       />
 
@@ -927,6 +1166,8 @@ export default function RekapDataPage() {
               ? {
                   ...r,
                   namaMitra: data.namaMitra,
+                  mitraId: data.mitraId,
+                  kodePerusahaan: data.kodePerusahaan,
                   jenis: data.jenisDokumen as 'MoU' | 'MoA' | 'IA',
                   unit: data.unitKerja,
                   tanggalMulai: data.tanggalMulai || r.tanggalMulai,
@@ -948,6 +1189,8 @@ export default function RekapDataPage() {
                 tanggal_mulai: data.tanggalMulai || null,
                 tanggal_berakhir: data.tanggalBerakhir || null,
                 status_siklus: mapStatusToApi(data.status),
+                // Kode Perusahaan mengikuti master_mitra lewat relasi mitra_id — tidak dikirim manual.
+                mitra_id: typeof data.mitraId === 'number' ? data.mitraId : null,
               };
               promises.push(updateDokumenKerjasamaById(editingItem.id, apiPayload));
             }

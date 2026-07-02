@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, ChevronRight, Download, FileText, Save, Send, Upload, X } from 'lucide-react';
 import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploadUtils';
+import { submitLaporanPelaksanaan } from '@/services/laporanPelaksanaanService';
 
 export interface LaporanPelaksanaanData {
   namaMitra: string;
@@ -10,6 +11,10 @@ export interface LaporanPelaksanaanData {
   jenis: 'MoU' | 'MoA' | 'IA';
   ruangLingkup: string[];
   unit?: string;
+  // Salah satu dari dua ini wajib ada agar laporan bisa dikirim ke admin dan
+  // muncul di Story Aktivitas (dikelompokkan lewat pengajuanId) atau di data dokumen.
+  pengajuanId?: number;
+  dokumenKerjasamaId?: number;
 }
 
 interface Props {
@@ -40,8 +45,8 @@ interface FormState {
 
 const workflowSteps = [
   { key: 'draft',            label: 'Isi & Upload',             desc: 'Jurusan/unit mengisi dan mengupload laporan' },
-  { key: 'dikirim_ke_pic',   label: 'PIC Tanda Tangan',         desc: 'PIC menandatangani laporan yang dikirim' },
-  { key: 'selesai',          label: 'Admin/Humas Menerima',      desc: 'Laporan diterima bagian kerjasama/humas' },
+  { key: 'dikirim_ke_pic',   label: 'Terkirim ke Admin',        desc: 'Laporan sudah dikirim dan langsung terlihat oleh admin/humas' },
+  { key: 'selesai',          label: 'PIC Sudah Tanda Tangan',    desc: 'Catatan internal: laporan sudah ditandatangani PIC (opsional)' },
 ] as const;
 
 function stepIndex(status: WorkflowStatus): number {
@@ -64,8 +69,11 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
   const [nipMengetahui, setNipMengetahui]               = useState('');
   const [workflowStatus, setWorkflowStatus]             = useState<WorkflowStatus>('draft');
   const [uploadedFile, setUploadedFile]                 = useState<FormState['uploadedFile']>(null);
+  const [uploadedFileRaw, setUploadedFileRaw]           = useState<File | Blob | null>(null);
   const [previewUrl, setPreviewUrl]                     = useState<string | null>(null);
   const [toastMsg, setToastMsg]                         = useState('');
+  const [isSubmitting, setIsSubmitting]                 = useState(false);
+  const [submitError, setSubmitError]                   = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const initializedKeyRef = useRef<string | null>(null);
 
@@ -173,6 +181,7 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
     const processed = await compressImageFileIfNeeded(file, { maxDimension: 1920, quality: 0.8, minBytesToCompress: 400 * 1024 });
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(URL.createObjectURL(processed));
+    setUploadedFileRaw(processed);
     const size = processed.size < 1024 * 1024
       ? `${(processed.size / 1024).toFixed(1)} KB`
       : `${(processed.size / (1024 * 1024)).toFixed(2)} MB`;
@@ -183,16 +192,53 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
   function handleRemoveUpload() {
     if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }
     setUploadedFile(null);
+    setUploadedFileRaw(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
-  function handleKirimPIC() {
-    if (!uploadedFile) { alert('Upload file laporan terlebih dahulu sebelum mengirim ke PIC.'); return; }
+  async function handleKirimPIC() {
+    if (!data) return;
+    if (!uploadedFile) { alert('Upload file laporan terlebih dahulu sebelum mengirim.'); return; }
     if (!namaPenanggungJawab.trim()) { alert('Isi nama penanggung jawab kegiatan terlebih dahulu.'); return; }
-    const next: WorkflowStatus = 'dikirim_ke_pic';
-    setWorkflowStatus(next);
-    if (data) localStorage.setItem(storageKey(data), JSON.stringify({ ...currentState(), workflowStatus: next }));
-    showToast('Laporan berhasil dikirim ke PIC untuk ditandatangani.');
+    if (!data.pengajuanId && !data.dokumenKerjasamaId) {
+      alert('Laporan ini tidak terhubung ke pengajuan atau dokumen manapun sehingga tidak bisa dikirim ke admin.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitError('');
+    try {
+      await submitLaporanPelaksanaan({
+        pengajuanId: data.pengajuanId,
+        dokumenKerjasamaId: data.dokumenKerjasamaId,
+        nomorDokumen: data.noDokumen,
+        namaMitra: mitraKerjasama,
+        jenisDokumen: data.jenis,
+        judulKerjasama,
+        referensiKerjasama,
+        unitPengaju,
+        kegiatan: kegiatanText,
+        capaian: capaianText,
+        hasil: hasilText,
+        tautanDokumentasi,
+        namaPenanggungJawab,
+        nipPenanggungJawab,
+        jabatanMengetahui,
+        namaMengetahui,
+        nipMengetahui,
+        file: uploadedFileRaw,
+        fileName: uploadedFile?.nama,
+      });
+
+      const next: WorkflowStatus = 'dikirim_ke_pic';
+      setWorkflowStatus(next);
+      localStorage.setItem(storageKey(data), JSON.stringify({ ...currentState(), workflowStatus: next }));
+      showToast('Laporan berhasil dikirim ke admin.');
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Gagal mengirim laporan ke admin.');
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function escapeHtml(v: string) {
@@ -331,13 +377,13 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
               })}
             </div>
             {workflowStatus === 'dikirim_ke_pic' && (
-              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                <strong>Menunggu tanda tangan PIC.</strong> Laporan sudah dikirim. Hubungi PIC untuk segera menandatangani.
+              <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
+                <strong>Terkirim.</strong> Laporan sudah dikirim ke admin dan bisa langsung dilihat di Story Aktivitas.
               </div>
             )}
             {workflowStatus === 'selesai' && (
               <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
-                <strong>Selesai.</strong> Laporan sudah ditandatangani PIC dan diterima bagian kerjasama/humas.
+                <strong>Selesai.</strong> Laporan sudah dikirim ke admin dan ditandai sudah ditandatangani PIC.
               </div>
             )}
           </div>
@@ -356,7 +402,7 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
                 action: <button type="button" onClick={handleDownload} className="mt-3 inline-flex items-center gap-1 rounded-md bg-[#1E376C] px-3 py-2 text-xs font-semibold text-white hover:bg-[#28478A]"><Download size={13}/> Unduh & Buka</button> },
               { no: '2', title: 'Lengkapi & Upload', desc: 'Isi seluruh bagian laporan lalu upload file yang sudah selesai.',
                 action: null },
-              { no: '3', title: 'Kirim ke PIC', desc: 'Setelah upload, kirim ke PIC untuk mendapat tanda tangan.',
+              { no: '3', title: 'Kirim ke Admin', desc: 'Setelah upload, kirim laporan supaya langsung terlihat oleh admin.',
                 action: null },
             ].map((s) => (
               <div key={s.no} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -491,12 +537,13 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
             )}
           </div>
 
-          {/* Tombol Kirim ke PIC */}
+          {/* Tombol Kirim ke Admin */}
           {isDraftEditable && (
-            <div className="flex justify-end">
-              <button type="button" onClick={handleKirimPIC}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#1E376C] px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-[#28478A]">
-                <Send size={15}/> Kirim ke PIC untuk Ditandatangani
+            <div className="flex flex-col items-end gap-2">
+              {submitError && <p className="text-xs font-semibold text-red-600">{submitError}</p>}
+              <button type="button" onClick={handleKirimPIC} disabled={isSubmitting}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#1E376C] px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-[#28478A] disabled:cursor-not-allowed disabled:opacity-60">
+                <Send size={15}/> {isSubmitting ? 'Mengirim...' : 'Kirim Laporan ke Admin'}
               </button>
             </div>
           )}
@@ -506,7 +553,7 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
                 onClick={() => {
                   setWorkflowStatus('selesai');
                   if (data) localStorage.setItem(storageKey(data), JSON.stringify({ ...currentState(), workflowStatus: 'selesai' }));
-                  showToast('Laporan berhasil diterima admin/humas.');
+                  showToast('Ditandai sudah ditandatangani PIC.');
                 }}
                 className="inline-flex items-center gap-2 rounded-xl border border-green-500 bg-green-500 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-green-600">
                 <CheckCircle2 size={15}/> Tandai: Sudah Ditandatangani PIC

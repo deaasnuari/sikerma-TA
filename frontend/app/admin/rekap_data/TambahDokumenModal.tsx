@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Download, FileText, Upload, X } from 'lucide-react';
 import { rekapJurusanOptions, rekapUnitOptions, type DokumenData, type DokumenTerkait } from '@/services/adminRekapDataService';
 import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
+import { getMasterMitra, type MasterMitra } from '@/services/masterMitraService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 
 interface TambahDokumenModalProps {
@@ -91,6 +92,8 @@ export default function TambahDokumenModal({
   const [uploadErrors, setUploadErrors] = useState<{ fileDokumen?: string }>({});
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [documentMode, setDocumentMode] = useState<'keep' | 'replace'>('replace');
+  const [mitraSuggestions, setMitraSuggestions] = useState<MasterMitra[]>([]);
+  const [showMitraSuggestions, setShowMitraSuggestions] = useState(false);
 
   const isEditMode = initialData !== null;
   const existingDokumen: DokumenTerkait[] = formData.dokumenTerkait ?? [];
@@ -154,6 +157,37 @@ export default function TambahDokumenModal({
       isMounted = false;
     };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const query = formData.namaMitra.trim();
+    if (query.length < 2) {
+      setMitraSuggestions([]);
+      return;
+    }
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const results = await getMasterMitra({ search: query });
+        if (active) {
+          setMitraSuggestions(results.slice(0, 8));
+        }
+      } catch {
+        if (active) {
+          setMitraSuggestions([]);
+        }
+      }
+    }, 300);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [formData.namaMitra, isOpen]);
 
   if (!isOpen) {
     return null;
@@ -520,11 +554,61 @@ export default function TambahDokumenModal({
             </Field>
 
             <Field label="Nama Mitra *" error={errors.namaMitra}>
-              <TextInput
-                placeholder="Nama Perusahaan/Institusi"
-                value={formData.namaMitra}
-                onChange={(e) => handleInputChange('namaMitra', e.target.value)}
-                hasError={!!errors.namaMitra}
+              <div className="relative">
+                <TextInput
+                  placeholder="Cari atau ketik Nama Perusahaan/Institusi"
+                  value={formData.namaMitra}
+                  onChange={(e) => {
+                    handleInputChange('namaMitra', e.target.value);
+                    setFormData((prev) => ({ ...prev, mitraId: undefined, kodePerusahaan: undefined }));
+                    setShowMitraSuggestions(true);
+                  }}
+                  onFocus={() => setShowMitraSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowMitraSuggestions(false), 150)}
+                  hasError={!!errors.namaMitra}
+                />
+                {showMitraSuggestions && mitraSuggestions.length > 0 && (
+                  <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+                    {mitraSuggestions.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            namaMitra: m.nama_mitra,
+                            mitraId: m.id,
+                            kodePerusahaan: m.kode_mitra || undefined,
+                          }));
+                          setShowMitraSuggestions(false);
+                          setMitraSuggestions([]);
+                        }}
+                        className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-slate-50"
+                      >
+                        <span className="truncate">{m.nama_mitra}</span>
+                        <span className="ml-2 shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                          {m.kode_mitra || 'Belum ada kode'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {!formData.mitraId && formData.namaMitra.trim() && (
+                <p className="mt-1 text-[11px] text-amber-600">
+                  Mitra belum terdaftar di Data Kemitraan. Kode Perusahaan akan terisi otomatis setelah mitra ini terdaftar.
+                </p>
+              )}
+            </Field>
+
+            <Field label="Kode Perusahaan">
+              <input
+                type="text"
+                readOnly
+                disabled
+                value={formData.kodePerusahaan || (formData.mitraId ? 'Belum ada kode' : 'Otomatis dari Data Kemitraan')}
+                className="input-field h-11 w-full cursor-not-allowed bg-slate-100 px-4 text-sm text-gray-500"
               />
             </Field>
 
@@ -675,13 +759,15 @@ function Field({ label, error, children }: { label: string; error?: string; chil
   );
 }
 
-function TextInput({ placeholder, type = 'text', value, onChange, hasError }: { placeholder: string; type?: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; hasError?: boolean }) {
+function TextInput({ placeholder, type = 'text', value, onChange, onFocus, onBlur, hasError }: { placeholder: string; type?: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; onFocus?: () => void; onBlur?: () => void; hasError?: boolean }) {
   return (
     <input
       type={type}
       placeholder={placeholder}
       value={value}
       onChange={onChange}
+      onFocus={onFocus}
+      onBlur={onBlur}
       className={`input-field h-11 w-full px-4 text-sm text-gray-700 placeholder:text-gray-400 ${hasError ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}
     />
   );

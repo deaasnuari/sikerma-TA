@@ -23,6 +23,8 @@ type ApprovalStatus = 'Menunggu' | 'Disetujui' | 'Ditolak';
 type Jenis = 'MoU' | 'MoA' | 'IA';
 
 interface KerjasamaItem {
+  id?: number;
+  sourcePengajuanId?: number;
   noDokumen: string;
   namaMitra: string;
   jenis: Jenis;
@@ -41,6 +43,8 @@ function mapRekapToItem(d: RekapDokumen): KerjasamaItem {
   };
 
   return {
+    id: d.id,
+    sourcePengajuanId: d.sourcePengajuanId,
     noDokumen: d.noDokumen,
     namaMitra: d.namaMitra,
     jenis: d.jenis as Jenis,
@@ -388,6 +392,8 @@ export default function InternalRekapDataPage() {
                             jenis:       row.jenis,
                             ruangLingkup: row.ruangLingkup,
                             unit:        row.unit,
+                            pengajuanId: row.sourcePengajuanId,
+                            dokumenKerjasamaId: row.id,
                           })}
                           className="text-emerald-600 transition-colors hover:text-emerald-800"
                         >

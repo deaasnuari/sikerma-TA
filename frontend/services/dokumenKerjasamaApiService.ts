@@ -49,10 +49,17 @@ type ApiDokumenRow = {
   tanggal_berakhir?: string | null;
   status_siklus?: 'active' | 'expiring' | 'archived' | null;
   ruang_lingkup_ids?: any[] | null;
-  mitra?: { id: number; nama_mitra: string } | null;
+  mitra?: {
+    id: number;
+    nama_mitra: string;
+    kode_mitra?: string | null;
+    kategori_mitra?: string | null;
+    tingkat_perusahaan?: string | null;
+  } | null;
   unit_prodi?: { id: number; nama: string; kategori_unit?: string | null; jenis_node?: string | null } | null;
   file?: string | null;
   alasan_arsip?: string | null;
+  follow_up?: string | null;
   // Snapshot data pengajuan (tersimpan saat disetujui, aman dari penghapusan pengajuan)
   snap_nama_mitra?: string | null;
   snap_whatsapp_pengusul?: string | null;
@@ -213,6 +220,11 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       alasanArsip: row.alasan_arsip || null,
       buktiPdf: dokumenTerkait.length > 0 ? dokumenTerkait[0].url : null,
       manfaatKerjasama: (row.keterangan && !row.keterangan.includes('Mitra:')) ? row.keterangan : undefined,
+      mitraId: row.mitra?.id ?? undefined,
+      kodePerusahaan: row.mitra?.kode_mitra || undefined,
+      jenisMitra: row.mitra?.kategori_mitra || undefined,
+      tingkatPerusahaan: row.mitra?.tingkat_perusahaan || undefined,
+      followUp: row.follow_up || undefined,
     };
   });
 
@@ -254,6 +266,8 @@ export async function updateDokumenKerjasamaById(
     tanggal_berakhir?: string | null;
     status_siklus?: 'active' | 'expiring' | 'archived';
     keterangan?: string | null;
+    follow_up?: string | null;
+    mitra_id?: number | null;
   }
 ): Promise<void> {
   await apiRequest<unknown>(`/dokumen-kerjasama/${id}`, {
@@ -261,6 +275,25 @@ export async function updateDokumenKerjasamaById(
     body: JSON.stringify(payload),
   });
   rekapDokumenCache = null;
+}
+
+export async function createDokumenKerjasama(payload: {
+  nomor_dokumen: string;
+  nama_dokumen: string;
+  jenis_dokumen: string;
+  unit_prodi_id: number;
+  mitra_id?: number | null;
+  tanggal_mulai?: string | null;
+  tanggal_berakhir?: string | null;
+  status_siklus?: 'active' | 'expiring' | 'archived';
+  keterangan?: string | null;
+}): Promise<{ id: number }> {
+  const response = await apiRequest<{ success: boolean; data: { id: number }; message: string }>('/dokumen-kerjasama/manual', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  rekapDokumenCache = null;
+  return response.data;
 }
 
 export async function updatePengajuanNamaMitra(

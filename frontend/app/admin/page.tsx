@@ -23,15 +23,13 @@ import {
 import {
   getAdminNotifications,
   getDashboardStats,
-  getDocumentTypeDistribution,
-  getPopularSchemes,
   getQuickActions,
-  getRegionalDistribution,
   markNotificationAsRead,
 } from '@/services/adminService';
 import { getMasterMitra } from '@/services/masterMitraService';
 import { fetchMonitoringDataFromApi, getMonitoringStats } from '@/services/adminMonitoringService';
 import { refreshPengajuanDataFromApi } from '@/services/adminPengajuanService';
+import { apiRequest } from '@/lib/api';
 import type { AdminNotification } from '@/types/admin';
 import {
   deleteCarouselImage,
@@ -100,9 +98,18 @@ export default function AdminDashboard() {
   const router = useRouter();
   const [dashboardStats, setDashboardStats] = useState(getDashboardStats());
   const quickActions = getQuickActions();
-  const [regionalDistribution, setRegionalDistribution] = useState(getRegionalDistribution());
-  const [documentTypeDistribution, setDocumentTypeDistribution] = useState(getDocumentTypeDistribution());
-  const [popularSchemes, setPopularSchemes] = useState(getPopularSchemes());
+  // Statistik Kerjasama — sumber data sama persis dengan landing page (endpoint publik).
+  const [publicStats, setPublicStats] = useState({
+    total: 0,
+    dalam_negeri: 0,
+    luar_negeri: 0,
+    dudi_nasional: 0,
+    dudi_internasional: 0,
+    instansi_nasional: 0,
+    instansi_internasional: 0,
+  });
+  const [jenisDistribution, setJenisDistribution] = useState({ MoU: 0, MoA: 0, IA: 0 });
+  const [topRuangLingkup, setTopRuangLingkup] = useState<[string, number][]>([]);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CarouselImageItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -139,11 +146,6 @@ export default function AdminDashboard() {
         const foreignCount = Math.max(mitraRows.length - domesticCount, 0);
         const totalMitra = mitraRows.length;
 
-        setRegionalDistribution([
-          { name: 'Dalam Negeri', value: domesticCount, fill: '#3B82F6' },
-          { name: 'Luar Negeri', value: foreignCount, fill: '#A78BFA' },
-        ]);
-
         setDashboardStats((prev) =>
           prev.map((stat) => {
             if (stat.label === 'Dalam Negeri') {
@@ -178,7 +180,7 @@ export default function AdminDashboard() {
 
     const loadKerjasamaStats = async () => {
       try {
-        const [pengajuanItems, monitoringItems] = await Promise.all([
+        const [, monitoringItems] = await Promise.all([
           refreshPengajuanDataFromApi(),
           fetchMonitoringDataFromApi(),
         ]);
@@ -199,55 +201,56 @@ export default function AdminDashboard() {
           })
         );
 
-        // Distribusi Jenis Dokumen dari pengajuan yang sudah disetujui
-        const approvedStatuses = new Set(['Disetujui', 'Final Approved', 'Disetujui Internal', 'Disetujui Mitra']);
-        const approved = pengajuanItems.filter((item) => approvedStatuses.has(item.statusPengajuan));
-        const jenisCounts: Record<string, number> = {};
-        for (const item of approved) {
-          const key = item.jenisDokumen || 'Lainnya';
-          jenisCounts[key] = (jenisCounts[key] || 0) + 1;
-        }
-        const docColors: Record<string, string> = { MoU: '#10B981', MoA: '#F59E0B', IA: '#EF4444' };
-        const newDocDist = Object.entries(jenisCounts).map(([name, value]) => ({
-          name,
-          value,
-          fill: docColors[name] ?? '#6B7280',
-        }));
-        if (newDocDist.length > 0) setDocumentTypeDistribution(newDocDist);
-
-        // Top 5 Ruang Lingkup dari pengajuan 1 tahun terakhir
-        const oneYearAgo = new Date();
-        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-        const schemeCounts: Record<string, number> = {};
-        for (const item of pengajuanItems) {
-          if (item.diajukanPada) {
-            const raw = item.diajukanPada;
-            let parsed: Date;
-            if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
-              const [d, m, y] = raw.split('/').map(Number);
-              parsed = new Date(y, m - 1, d);
-            } else {
-              parsed = new Date(raw);
-            }
-            if (!isNaN(parsed.getTime()) && parsed < oneYearAgo) continue;
-          }
-          for (const scope of item.ruangLingkup ?? []) {
-            const trimmed = scope.trim();
-            if (trimmed) schemeCounts[trimmed] = (schemeCounts[trimmed] || 0) + 1;
-          }
-        }
-        const newPopular = Object.entries(schemeCounts)
-          .sort(([, a], [, b]) => b - a)
-          .slice(0, 5)
-          .map(([name, value]) => ({ name, value }));
-        if (newPopular.length > 0) setPopularSchemes(newPopular);
-
       } catch {
         // Tetap tampilkan nilai default jika API belum tersedia.
       }
     };
 
     loadKerjasamaStats();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Statistik Kerjasama — pakai endpoint publik yang sama dengan landing page,
+  // supaya angka & tampilannya sama persis.
+  useEffect(() => {
+    let mounted = true;
+
+    type KerjasamaRow = { id: number; nama: string; bidang: string; jenis: string; unit: string; wilayah: string };
+
+    apiRequest<{ success: boolean; data: typeof publicStats }>('/public/stats')
+      .then((res) => {
+        if (mounted && res.data) setPublicStats(res.data);
+      })
+      .catch(() => {});
+
+    apiRequest<{ success: boolean; data: { data: KerjasamaRow[]; total: number } }>('/public/kerjasama')
+      .then((res) => {
+        if (!mounted) return;
+        const rows = res.data?.data;
+        if (!Array.isArray(rows)) return;
+
+        const jenisCounts = { MoU: 0, MoA: 0, IA: 0 };
+        rows.forEach((r) => {
+          if (r.jenis === 'MoU') jenisCounts.MoU++;
+          else if (r.jenis === 'MoA') jenisCounts.MoA++;
+          else if (r.jenis === 'IA') jenisCounts.IA++;
+        });
+        setJenisDistribution(jenisCounts);
+
+        const scopeCounts: Record<string, number> = {};
+        rows.forEach((r) => {
+          if (!r.bidang || r.bidang === '-') return;
+          r.bidang.split(',').forEach((b) => {
+            const name = b.trim();
+            if (name && name !== '-') scopeCounts[name] = (scopeCounts[name] || 0) + 1;
+          });
+        });
+        setTopRuangLingkup(Object.entries(scopeCounts).sort((a, b) => b[1] - a[1]).slice(0, 5));
+      })
+      .catch(() => {});
 
     return () => {
       mounted = false;
@@ -492,9 +495,9 @@ export default function AdminDashboard() {
       </div>
 
       <AdminDashboardCharts
-        regionalDistribution={regionalDistribution}
-        documentTypeDistribution={documentTypeDistribution}
-        popularSchemes={popularSchemes}
+        stats={publicStats}
+        jenisDistribution={jenisDistribution}
+        topRuangLingkup={topRuangLingkup}
       />
 
       <div className="card p-3 md:p-4">

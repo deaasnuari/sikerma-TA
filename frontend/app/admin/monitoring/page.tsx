@@ -1,8 +1,8 @@
 'use client';
 
 import * as XLSX from 'xlsx';
-import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, Archive, Bell, CalendarClock, CheckCircle2, ChevronLeft, Eye, HandshakeIcon, Mail, MessageCircle, Phone, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, Archive, Bell, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Eye, Filter, HandshakeIcon, Mail, MessageCircle, Phone, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
 // import RenewalHistoryModal from './RenewalHistoryModal';
 import RenewalFullForm from './RenewalFullForm';
@@ -16,12 +16,18 @@ import {
   createRenewalRecord,
   createWhatsAppLink,
   deleteMonitoringItem,
+  filterMonitoringData,
   findKerjasamaById,
   getDefaultNotificationHistories,
   getFilteredMonitoringData,
   getMonitoringData,
+  getMonitoringJenisMitraOptions,
+  getMonitoringJenisOptions,
   getMonitoringStats,
   getMonitoringTabs,
+  getMonitoringTingkatOptions,
+  getMonitoringUnitOptions,
+  getMonitoringYearOptions,
   monitoringJenisBadgeMap,
   monitoringStatusConfig,
   type Kerjasama,
@@ -34,6 +40,8 @@ import { getPengajuanData } from '@/services/adminPengajuanService';
 import { addAdminNotification } from '@/services/adminService';
 import { addRenewalRequest } from '@/services/adminRenewalRequestService';
 import { logPerpanjanganDiajukan, logNotifikasiDikirim } from '@/services/kerjasamaEventLogService';
+import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
+import { getPageNumbers } from '@/lib/pagination';
 
 
 export default function MonitoringdanstatusPage() {
@@ -50,6 +58,16 @@ export default function MonitoringdanstatusPage() {
   const [monitoringData, setMonitoringData] = useState<Kerjasama[]>([]);
   // State untuk toggle form sederhana/baru
   const [showSimpleForm, setShowSimpleForm] = useState(false);
+
+  // Filter tambahan mengikuti pola yang sama dengan halaman Rekap Data.
+  const [filterJenis, setFilterJenis] = useState('Semua Jenis');
+  const [filterUnit, setFilterUnit] = useState('Semua Jurusan/unit');
+  const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
+  const [filterTingkatPerusahaan, setFilterTingkatPerusahaan] = useState('Semua Tingkat Perusahaan');
+  const [filterTahun, setFilterTahun] = useState<string | null>(null);
+  const [masterUnitOptions, setMasterUnitOptions] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // Pilihan saat klik tombol Perpanjang Kerjasama
   const [renewalChoiceModal, setRenewalChoiceModal] = useState<{ open: boolean; kerjasamaId: number | null }>({
@@ -128,11 +146,64 @@ export default function MonitoringdanstatusPage() {
       window.removeEventListener('monitoring-data-updated', syncMonitoringData);
     };
   }, []);
+
+  // Opsi Jurusan/Unit/Prodi untuk dropdown filter, sama seperti di halaman Rekap Data.
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadMasterUnitOptions() {
+      try {
+        const [jurusanRows, unitRows, prodiRows] = await Promise.all([
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'prodi', aktif: true }),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        const merged = Array.from(
+          new Set([...jurusanRows, ...unitRows, ...prodiRows].map((item) => item.nama).filter(Boolean))
+        );
+
+        setMasterUnitOptions(merged);
+      } catch {
+        // fallback tetap dari data rekap lokal bila API belum siap.
+      }
+    }
+
+    loadMasterUnitOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const { totalAktif, totalAkanBerakhir, totalKadaluarsa } = getMonitoringStats(monitoringData);
   const filteredByTab = getFilteredMonitoringData(monitoringData, activeTab);
+
+  const jenisOptions = useMemo(() => getMonitoringJenisOptions(monitoringData), [monitoringData]);
+  const unitOptions = useMemo(() => {
+    const localOptions = getMonitoringUnitOptions(monitoringData);
+    const merged = Array.from(new Set([...localOptions, ...masterUnitOptions]));
+    return merged.includes('Semua Jurusan/unit') ? merged : ['Semua Jurusan/unit', ...merged];
+  }, [monitoringData, masterUnitOptions]);
+  const jenisMitraOptions = useMemo(() => getMonitoringJenisMitraOptions(monitoringData), [monitoringData]);
+  const tingkatPerusahaanOptions = useMemo(() => getMonitoringTingkatOptions(monitoringData), [monitoringData]);
+  const availableYears = useMemo(() => getMonitoringYearOptions(monitoringData), [monitoringData]);
+
+  const filteredByDropdowns = filterMonitoringData(filteredByTab, {
+    filterJenis,
+    filterUnit,
+    filterJenisMitra,
+    filterTingkatPerusahaan,
+    filterTahun,
+  });
+
   const normalizedKeyword = searchKeyword.trim().toLowerCase();
   const filtered = normalizedKeyword
-    ? filteredByTab.filter((item) => {
+    ? filteredByDropdowns.filter((item) => {
         const searchText = [
           item.namaMitra,
           item.noDokumen,
@@ -147,7 +218,18 @@ export default function MonitoringdanstatusPage() {
 
         return searchText.includes(normalizedKeyword);
       })
-    : filteredByTab;
+    : filteredByDropdowns;
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safePage - 1) * itemsPerPage;
+  const paginatedItems = filtered.slice(pageStartIndex, pageStartIndex + itemsPerPage);
+  const pageNumbers = getPageNumbers(safePage, totalPages);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, searchKeyword, filterJenis, filterUnit, filterJenisMitra, filterTingkatPerusahaan, filterTahun]);
+
   const tabs = getMonitoringTabs(monitoringData);
   const selectedRenewalItem = findKerjasamaById(monitoringData, renewalChoiceModal.open ? renewalChoiceModal.kerjasamaId : renewalModal.kerjasamaId);
 
@@ -301,6 +383,77 @@ export default function MonitoringdanstatusPage() {
         ))}
       </div>
 
+      {/* Filter */}
+      <div className="rounded-xl border border-gray-200 bg-white p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-2 text-[12px] font-semibold text-gray-800">
+            <Filter size={15} />
+            Filter:
+          </span>
+
+          <select
+            value={filterJenis}
+            onChange={(event) => setFilterJenis(event.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C]"
+          >
+            {jenisOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filterUnit}
+            onChange={(event) => setFilterUnit(event.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C]"
+          >
+            {unitOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filterJenisMitra}
+            onChange={(event) => setFilterJenisMitra(event.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C]"
+          >
+            {jenisMitraOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filterTingkatPerusahaan}
+            onChange={(event) => setFilterTingkatPerusahaan(event.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C]"
+          >
+            {tingkatPerusahaanOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filterTahun ?? ''}
+            onChange={(event) => setFilterTahun(event.target.value || null)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C]"
+          >
+            <option value="">Semua Tahun</option>
+            {availableYears.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Search */}
       <form
         onSubmit={(event) => {
@@ -351,7 +504,7 @@ export default function MonitoringdanstatusPage() {
 
       {/* Cards List */}
       <div className="space-y-4">
-        {filtered.map((item) => {
+        {paginatedItems.map((item) => {
           const cfg = monitoringStatusConfig[item.status];
           const isUrgent = item.status === 'Akan Berakhir' || item.status === 'Kadaluarsa';
 
@@ -483,10 +636,70 @@ export default function MonitoringdanstatusPage() {
         })}
       </div>
 
+      {filtered.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[12px] text-gray-500">
+            Menampilkan <span className="font-semibold text-gray-700">{pageStartIndex + 1}–{Math.min(pageStartIndex + itemsPerPage, filtered.length)}</span> dari{' '}
+            <span className="font-semibold text-gray-700">{filtered.length}</span> kerjasama
+          </p>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={safePage === 1}
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft size={14} />
+              Prev
+            </button>
+
+            {pageNumbers.map((page, idx) =>
+              page === '...' ? (
+                <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setCurrentPage(page)}
+                  className={`inline-flex h-8 min-w-[32px] items-center justify-center rounded-lg px-2 text-[12px] font-semibold transition-colors ${
+                    page === safePage
+                      ? 'bg-[#1E376C] text-white'
+                      : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {page}
+                </button>
+              )
+            )}
+
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={safePage === totalPages}
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       <LaporanPelaksanaanModal
         isOpen={selectedLaporan !== null}
         onClose={() => setSelectedLaporan(null)}
-        data={selectedLaporan}
+        data={selectedLaporan ? {
+          namaMitra: selectedLaporan.namaMitra,
+          noDokumen: selectedLaporan.noDokumen,
+          jenis: selectedLaporan.jenis,
+          ruangLingkup: selectedLaporan.ruangLingkup,
+          unit: selectedLaporan.unit,
+          pengajuanId: selectedLaporan.sourcePengajuanId,
+          dokumenKerjasamaId: selectedLaporan.id,
+        } : null}
       />
 
 

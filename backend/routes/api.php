@@ -13,6 +13,7 @@ use App\Http\Controllers\MasterUnitProdiController;
 use App\Http\Controllers\CatatanAdminController;
 use App\Http\Controllers\PengajuanController;
 use App\Http\Controllers\PengajuanAktivitasController;
+use App\Http\Controllers\LaporanPelaksanaanController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [AuthController::class, 'register']);
@@ -50,6 +51,7 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::delete('/catatan-admin/{catatan_admin}', [CatatanAdminController::class, 'destroy']);
 	Route::post('/dokumen-kerjasama/{dokumen_kerjasama}/upload-file', [DokumenKerjasamaController::class, 'uploadFile'])
 		->whereNumber('dokumen_kerjasama');
+	Route::post('/dokumen-kerjasama/manual', [DokumenKerjasamaController::class, 'storeManual']);
 	Route::get('/dokumen-kerjasama/perpanjangan/requests', [DokumenKerjasamaController::class, 'renewalRequests']);
 	Route::post('/dokumen-kerjasama/{dokumen_kerjasama}/perpanjangan', [DokumenKerjasamaController::class, 'submitRenewalRequest'])
 		->whereNumber('dokumen_kerjasama');
@@ -57,6 +59,10 @@ Route::middleware('auth:sanctum')->group(function () {
 		->whereNumber('dokumen_log');
 	Route::apiResource('/dokumen-kerjasama', DokumenKerjasamaController::class)
 		->parameters(['dokumen-kerjasama' => 'dokumen_kerjasama']);
+
+	Route::get('/laporan-pelaksanaan', [LaporanPelaksanaanController::class, 'index']);
+	Route::post('/laporan-pelaksanaan', [LaporanPelaksanaanController::class, 'store']);
+	Route::delete('/laporan-pelaksanaan/{laporan_pelaksanaan}', [LaporanPelaksanaanController::class, 'destroy']);
 });
 
 Route::get('/carousel-images', [CarouselImageController::class, 'index']);

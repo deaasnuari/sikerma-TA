@@ -1,44 +1,38 @@
 'use client';
 
-import {
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
+import DonutChart from '@/components/DonutChart';
 
-type ChartDatum = {
-  name: string;
-  value: number;
-  fill?: string;
+type PublicStats = {
+  total: number;
+  dalam_negeri: number;
+  luar_negeri: number;
+  dudi_nasional: number;
+  dudi_internasional: number;
+  instansi_nasional: number;
+  instansi_internasional: number;
 };
+
+type JenisDistribution = { MoU: number; MoA: number; IA: number };
 
 type Props = {
-  regionalDistribution: ChartDatum[];
-  documentTypeDistribution: ChartDatum[];
-  popularSchemes: ChartDatum[];
+  stats: PublicStats;
+  jenisDistribution: JenisDistribution;
+  topRuangLingkup: [string, number][];
 };
 
-export default function AdminDashboardCharts({
-  regionalDistribution,
-  documentTypeDistribution,
-  popularSchemes,
-}: Props) {
+export default function AdminDashboardCharts({ stats, jenisDistribution, topRuangLingkup }: Props) {
   const handleExportRegionalDistribution = () => {
     const header = ['Wilayah', 'Jumlah Kerjasama'];
-    const rows = regionalDistribution.map((item) => [item.name, String(item.value)]);
+    const rows = [
+      ['Dalam Negeri', String(stats.dalam_negeri)],
+      ['Luar Negeri', String(stats.luar_negeri)],
+    ];
 
     const content = [header, ...rows]
       .map((line) => line.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join('\t'))
       .join('\n');
 
-    const blob = new Blob(['\ufeff', content], {
+    const blob = new Blob(['﻿', content], {
       type: 'application/vnd.ms-excel;charset=utf-8;',
     });
 
@@ -54,83 +48,135 @@ export default function AdminDashboardCharts({
     URL.revokeObjectURL(url);
   };
 
+  const jenisTotal = jenisDistribution.MoU + jenisDistribution.MoA + jenisDistribution.IA;
+
   return (
-    <>
-      <div className="card p-3 md:p-5">
-        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+    <div className="card p-3 md:p-5">
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
           <h2 className="text-sm md:text-base font-bold text-gray-900">Statistik Kerjasama</h2>
-          <button
-            type="button"
-            onClick={handleExportRegionalDistribution}
-            className="inline-flex items-center justify-center rounded-lg bg-[#173B82] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#091222]"
-          >
-            Export Dalam/Luar Negeri
-          </button>
+          <p className="mt-0.5 text-[11px] text-gray-500">Sama dengan yang ditampilkan di landing page.</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleExportRegionalDistribution}
+          className="inline-flex items-center justify-center rounded-lg bg-[#173B82] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#091222]"
+        >
+          Export Dalam/Luar Negeri
+        </button>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Card 1: Jenis Mitra & Wilayah */}
+        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-4 md:p-5">
+          <h3 className="text-[12px] font-bold text-slate-800">Jenis Mitra &amp; Wilayah</h3>
+          <div className="mt-4 flex items-center justify-center">
+            <DonutChart
+              size={180}
+              centerLabel={String(stats.total)}
+              segments={[
+                { value: stats.instansi_nasional, color: '#173B82' },
+                { value: stats.instansi_internasional, color: '#3B82F6' },
+                { value: stats.dudi_nasional, color: '#93C5FD' },
+                { value: stats.dudi_internasional, color: '#BFDBFE' },
+              ]}
+            />
+          </div>
+          <div className="mt-4 space-y-2">
+            {[
+              { label: 'Instansi Dalam Negeri', value: stats.instansi_nasional, color: '#173B82' },
+              { label: 'Instansi Luar Negeri', value: stats.instansi_internasional, color: '#3B82F6' },
+              { label: 'DUDI Dalam Negeri', value: stats.dudi_nasional, color: '#93C5FD' },
+              { label: 'DUDI Luar Negeri', value: stats.dudi_internasional, color: '#BFDBFE' },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 text-slate-600">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                  {item.label}
+                </span>
+                <span className="font-semibold text-slate-800">{item.value.toLocaleString('id-ID')}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="flex flex-col items-center justify-center">
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie
-                  data={regionalDistribution}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={true}
-                  label={({ name, value }) => `${name}: ${value}`}
-                  outerRadius={70}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {regionalDistribution.map((item) => (
-                    <Cell key={item.name} fill={item.fill} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <p className="text-xs text-gray-500 mt-2">Distribusi Kerjasama Berdasarkan Wilayah</p>
+        {/* Card 2: Komposisi Dokumen */}
+        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-slate-50 p-4 md:p-5">
+          <h3 className="text-[12px] font-bold text-slate-800">Komposisi Dokumen</h3>
+          <div className="mt-4 flex items-center justify-center">
+            <DonutChart
+              size={180}
+              centerLabel={String(jenisTotal)}
+              segments={[
+                { value: jenisDistribution.MoU, color: '#1D4ED8' },
+                { value: jenisDistribution.MoA, color: '#7C3AED' },
+                { value: jenisDistribution.IA, color: '#A78BFA' },
+              ]}
+            />
           </div>
+          <div className="mt-4 space-y-2">
+            {[
+              { label: 'MoU', value: jenisDistribution.MoU, color: '#1D4ED8' },
+              { label: 'MoA', value: jenisDistribution.MoA, color: '#7C3AED' },
+              { label: 'IA', value: jenisDistribution.IA, color: '#A78BFA' },
+            ].map((item) => {
+              const pct = jenisTotal > 0 ? Math.round((item.value / jenisTotal) * 100) : 0;
+              return (
+                <div key={item.label}>
+                  <div className="mb-1 flex items-center justify-between text-[11px]">
+                    <span className="flex items-center gap-1.5 text-slate-600">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                      {item.label}
+                    </span>
+                    <span className="font-semibold text-slate-800">
+                      {item.value} <span className="font-normal text-slate-400">({pct}%)</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: item.color }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
-          <div className="flex flex-col items-center justify-center">
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie
-                  data={documentTypeDistribution}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={true}
-                  label={({ name, value }) => `${name}: ${value}`}
-                  outerRadius={70}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {documentTypeDistribution.map((item) => (
-                    <Cell key={item.name} fill={item.fill} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <p className="text-xs text-gray-500 mt-2">Distribusi Jenis Dokumen</p>
+        {/* Card 3: Top 5 Ruang Lingkup */}
+        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-cyan-50 to-slate-50 p-4 md:p-5">
+          <h3 className="text-[12px] font-bold text-slate-800">Top 5 Ruang Lingkup</h3>
+          <p className="mt-0.5 text-[10px] text-slate-400">Bidang paling sering diajukan</p>
+          <div className="mt-5 space-y-3">
+            {topRuangLingkup.length === 0 ? (
+              <p className="text-center text-[11px] text-slate-400">Memuat data...</p>
+            ) : (
+              topRuangLingkup.map(([nama, jumlah], idx) => {
+                const max = topRuangLingkup[0][1];
+                const pct = max > 0 ? Math.round((jumlah / max) * 100) : 0;
+                const colors = ['#173B82', '#1D4ED8', '#2563EB', '#3B82F6', '#60A5FA'];
+                return (
+                  <div key={nama}>
+                    <div className="mb-1 flex items-start justify-between gap-2 text-[10.5px]">
+                      <span className="flex items-center gap-1.5 leading-tight text-slate-700">
+                        <span
+                          className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                          style={{ backgroundColor: colors[idx] }}
+                        >
+                          {idx + 1}
+                        </span>
+                        {nama}
+                      </span>
+                      <span className="flex-shrink-0 font-semibold text-slate-800">{jumlah}</span>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: colors[idx] }} />
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </div>
-
-      <div className="card p-3 md:p-5">
-        <h2 className="text-sm md:text-base font-bold text-gray-900 mb-1">Top 5 Ruang Lingkup Paling Sering Diajukan</h2>
-        <p className="text-xs text-gray-500 mb-4">Berdasarkan data pengajuan dalam 1 tahun terakhir.</p>
-
-        <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={popularSchemes} margin={{ top: 10, right: 20, left: 0, bottom: 55 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-            <XAxis dataKey="name" angle={-40} textAnchor="end" height={70} tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
-            <Tooltip contentStyle={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB', fontSize: 12 }} />
-            <Bar dataKey="value" fill="#173B82" radius={[6, 6, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </>
+    </div>
   );
 }

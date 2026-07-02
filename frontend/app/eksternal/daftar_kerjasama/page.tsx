@@ -472,6 +472,7 @@ export default function DaftarKerjasamaEksternalPage() {
                             jenis:        item.jenis,
                             ruangLingkup: item.ruangLingkup,
                             unit:         item.unit,
+                            pengajuanId:  item.id,
                           })}
                           className="inline-flex items-center gap-1.5 text-emerald-600 hover:text-emerald-800"
                         >

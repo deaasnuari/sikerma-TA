@@ -34,6 +34,7 @@ class DokumenKerjasama extends Model
         'dibuat_oleh_user_id',
         'file',
         'keterangan',
+        'follow_up',
     ];
 
     protected $casts = [
