@@ -29,6 +29,12 @@ return new class extends Migration
 
     public function up(): void
     {
+        // Migrasi ini hanya relevan untuk backfill data produksi lama dari sikerma_old (MySQL),
+        // yang tidak tersedia di test suite (SQLite in-memory).
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         // 1. Ambil mapping no_dokumen → unit dari sikerma_old (MySQL)
         $oldRows = DB::connection('sikerma_old')
             ->table('dokumen')

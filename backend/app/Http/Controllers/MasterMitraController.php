@@ -6,9 +6,53 @@ use App\Models\MasterMitra;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class MasterMitraController extends Controller
 {
+    /**
+     * Pengajuan/dokumen lama yang mitranya diketik manual (mitra_id null) tapi namanya
+     * cocok persis dengan mitra ini, langsung ditautkan supaya Kode Perusahaan otomatis
+     * muncul di Rekap Data tanpa perlu edit ulang tiap dokumen satu-satu.
+     */
+    private function linkOrphanedRecordsToMitra(MasterMitra $mitra): void
+    {
+        $namaNormalized = strtolower(trim((string) $mitra->nama_mitra));
+        if ($namaNormalized === '') {
+            return;
+        }
+
+        $hasPengajuanMitraId = Schema::hasTable('pengajuan_v2') && Schema::hasColumn('pengajuan_v2', 'mitra_id');
+        $hasDokumenMitraId = Schema::hasTable('dokumen_kerjasama') && Schema::hasColumn('dokumen_kerjasama', 'mitra_id');
+
+        if ($hasPengajuanMitraId) {
+            DB::table('pengajuan_v2')
+                ->whereNull('mitra_id')
+                ->whereRaw('LOWER(TRIM(nama_mitra)) = ?', [$namaNormalized])
+                ->update(['mitra_id' => $mitra->id]);
+        }
+
+        if ($hasDokumenMitraId) {
+            // Dokumen yang namanya diketik manual langsung (bukan hasil approve pengajuan).
+            DB::table('dokumen_kerjasama')
+                ->whereNull('mitra_id')
+                ->whereRaw('LOWER(TRIM(snap_nama_mitra)) = ?', [$namaNormalized])
+                ->update(['mitra_id' => $mitra->id]);
+
+            // Dokumen hasil approve pengajuan lama: nama mitra bisa saja hanya tersimpan di
+            // kolom `keterangan` (data migrasi lama), jadi tautkan lewat FK sumber_pengajuan_id
+            // yang barusan berhasil di-link di atas, bukan lewat pencocokan teks lagi.
+            if ($hasPengajuanMitraId && Schema::hasColumn('dokumen_kerjasama', 'sumber_pengajuan_id')) {
+                DB::table('dokumen_kerjasama as d')
+                    ->join('pengajuan_v2 as p', 'p.id', '=', 'd.sumber_pengajuan_id')
+                    ->whereNull('d.mitra_id')
+                    ->where('p.mitra_id', $mitra->id)
+                    ->update(['d.mitra_id' => $mitra->id]);
+            }
+        }
+    }
+
     private function ensureAdmin(Request $request): ?Response
     {
         $user = $request->user();
@@ -93,6 +137,8 @@ class MasterMitraController extends Controller
             ], 422);
         }
 
+        $this->linkOrphanedRecordsToMitra($mitra);
+
         return response([
             'success' => true,
             'data' => $mitra,
@@ -141,6 +187,8 @@ class MasterMitraController extends Controller
                 'error' => $exception->getMessage(),
             ], 422);
         }
+
+        $this->linkOrphanedRecordsToMitra($mitra);
 
         return response([
             'success' => true,

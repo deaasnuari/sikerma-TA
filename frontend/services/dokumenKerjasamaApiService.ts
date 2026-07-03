@@ -65,7 +65,17 @@ type ApiDokumenRow = {
   snap_whatsapp_pengusul?: string | null;
   snap_nama_pengusul?: string | null;
   snap_email_pengusul?: string | null;
-  pengajuan?: { id: number; nomor_pengajuan: string; nama_pengusul: string; whatsapp_pengusul?: string; nama_mitra?: string | null } | null;
+  snap_jenis_mitra?: string | null;
+  snap_tingkat_perusahaan?: string | null;
+  pengajuan?: {
+    id: number;
+    nomor_pengajuan: string;
+    nama_pengusul: string;
+    whatsapp_pengusul?: string;
+    nama_mitra?: string | null;
+    user_pengusul_id?: number | null;
+    user_pengusul?: { id: number; role: string } | null;
+  } | null;
   dokumen_files?: Array<{
     id: number;
     nama_file: string;
@@ -222,9 +232,10 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       manfaatKerjasama: (row.keterangan && !row.keterangan.includes('Mitra:')) ? row.keterangan : undefined,
       mitraId: row.mitra?.id ?? undefined,
       kodePerusahaan: row.mitra?.kode_mitra || undefined,
-      jenisMitra: row.mitra?.kategori_mitra || undefined,
-      tingkatPerusahaan: row.mitra?.tingkat_perusahaan || undefined,
+      jenisMitra: row.mitra?.kategori_mitra || row.snap_jenis_mitra || undefined,
+      tingkatPerusahaan: row.mitra?.tingkat_perusahaan || row.snap_tingkat_perusahaan || undefined,
       followUp: row.follow_up || undefined,
+      dibuatOlehRole: row.pengajuan?.user_pengusul?.role || null,
     };
   });
 

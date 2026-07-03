@@ -33,6 +33,8 @@ export interface RekapDokumen {
   jenisMitra?: string;
   tingkatPerusahaan?: string;
   followUp?: string;
+  // Role user yang membuat pengajuan sumber dokumen ini ('admin'/'internal'/'external'), null jika belum tercatat.
+  dibuatOlehRole?: string | null;
 }
 
 // Data mentah dari modal tambah dokumen sebelum dikonversi ke format rekap.

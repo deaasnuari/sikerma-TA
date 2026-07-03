@@ -374,8 +374,22 @@ class PengajuanController extends Controller
 
         // Resolusi nama mitra: dari field teks pengajuan, atau fallback ke master_mitra.
         $snapNamaMitra = trim((string) ($pengajuan->nama_mitra ?? ''));
-        if ($snapNamaMitra === '' && $pengajuan->mitra_id) {
-            $snapNamaMitra = (string) (DB::table('master_mitra')->where('id', $pengajuan->mitra_id)->value('nama_mitra') ?? '');
+        $masterMitraRow = $pengajuan->mitra_id
+            ? DB::table('master_mitra')->where('id', $pengajuan->mitra_id)->first()
+            : null;
+        if ($snapNamaMitra === '' && $masterMitraRow) {
+            $snapNamaMitra = (string) ($masterMitraRow->nama_mitra ?? '');
+        }
+
+        // Jenis Mitra & Tingkat Perusahaan: utamakan data pengajuan (bisa beda per pengajuan),
+        // fallback ke data master_mitra jika pengajuan tidak mengisinya.
+        $snapJenisMitra = trim((string) ($pengajuan->jenis_mitra ?? ''));
+        if ($snapJenisMitra === '' && $masterMitraRow) {
+            $snapJenisMitra = (string) ($masterMitraRow->kategori_mitra ?? '');
+        }
+        $snapTingkatPerusahaan = trim((string) ($pengajuan->tingkat_perusahaan ?? ''));
+        if ($snapTingkatPerusahaan === '' && $masterMitraRow) {
+            $snapTingkatPerusahaan = (string) ($masterMitraRow->tingkat_perusahaan ?? '');
         }
 
         $dokumenPayload = [
@@ -396,6 +410,8 @@ class PengajuanController extends Controller
             'snap_whatsapp_pengusul' => trim((string) ($pengajuan->whatsapp_pengusul ?? '')) ?: null,
             'snap_nama_pengusul' => trim((string) ($pengajuan->nama_pengusul ?? '')) ?: null,
             'snap_email_pengusul' => trim((string) ($pengajuan->email_pengusul ?? '')) ?: null,
+            'snap_jenis_mitra' => $snapJenisMitra !== '' ? $snapJenisMitra : null,
+            'snap_tingkat_perusahaan' => $snapTingkatPerusahaan !== '' ? $snapTingkatPerusahaan : null,
             'dibuat_oleh_user_id' => $request->user()?->id,
             'file' => $primaryPath,
             'keterangan' => trim((string) ($pengajuan->deskripsi_pengajuan ?? '')),
@@ -1023,6 +1039,12 @@ class PengajuanController extends Controller
         $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
         $validated['ruang_lingkup_ids'] = $ruangLingkupIds;
 
+        // Catat siapa yang membuat pengajuan ini dari sesi login, bukan dari input klien
+        // (supaya nanti bisa dibedakan pengajuan yang dibuat admin vs internal vs eksternal).
+        if (empty($validated['user_pengusul_id']) && $request->user()) {
+            $validated['user_pengusul_id'] = $request->user()->id;
+        }
+
         // Auto-generate nomor PMH jika tidak dikirim dari frontend
         if (empty($validated['nomor_pengajuan'])) {
             $validated['nomor_pengajuan'] = $this->generateNomorPMH();
@@ -1171,6 +1193,8 @@ class PengajuanController extends Controller
             'acc_actor' => ['nullable', 'in:internal,mitra'],
             'diajukan_pada' => ['nullable', 'date'],
             'email_terverifikasi_pada' => ['nullable', 'date'],
+            'distribusi_user_ids' => ['nullable', 'array'],
+            'distribusi_user_ids.*' => ['integer', 'exists:users,id'],
         ]);
 
         if (array_key_exists('jenis_dokumen', $validated)) {

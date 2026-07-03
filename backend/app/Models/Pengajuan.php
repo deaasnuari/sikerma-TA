@@ -69,6 +69,7 @@ class Pengajuan extends Model
         'tahapan_stage',
         'tahapan_group',
         'tahapan_riwayat',
+        'distribusi_user_ids',
     ];
 
     protected $casts = [
@@ -90,6 +91,7 @@ class Pengajuan extends Model
         'acc_mitra_at' => 'datetime',
         'final_approved_at' => 'datetime',
         'tahapan_riwayat' => 'array',
+        'distribusi_user_ids' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -97,6 +99,11 @@ class Pengajuan extends Model
     public function unitProdi(): BelongsTo
     {
         return $this->belongsTo(MasterUnitProdi::class, 'unit_prodi_id');
+    }
+
+    public function userPengusul(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_pengusul_id');
     }
 
     public function mitra(): BelongsTo

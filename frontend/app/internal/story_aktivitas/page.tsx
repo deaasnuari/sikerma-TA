@@ -53,6 +53,7 @@ export interface KerjasamaStory {
   jurusanTerlibat: string[];
   aktivitas: Aktivitas[];
   totalPengajuan: number;
+  pengajuanId?: number;
 }
 
 // ── Helpers ────────────────────────────────────────────
@@ -114,6 +115,7 @@ function mapStoryGroupToStory(group: StoryAktivitasGroup): KerjasamaStory {
       status: a.status as StatusAktivitas,
     })),
     totalPengajuan: group.totalPengajuan,
+    pengajuanId: group.pengajuan[0]?.id,
   };
 }
 

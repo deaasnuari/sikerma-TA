@@ -10,7 +10,9 @@ import LaporanPelaksanaanModal, { type LaporanPelaksanaanData } from '@/componen
 
 import {
   deleteRekapDokumen,
+  rekapJenisMitraOptions,
   rekapJurusanOptions,
+  rekapTingkatPerusahaanOptions,
   type RekapDokumen,
 } from '@/services/adminRekapDataService';
 import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
@@ -33,6 +35,10 @@ interface KerjasamaItem {
   berlakuHingga: string;
   status: ApprovalStatus;
   ruangLingkup: string[];
+  dibuatOlehRole?: string | null;
+  jenisMitra?: string;
+  tingkatPerusahaan?: string;
+  manfaatKerjasama?: string;
 }
 
 function mapRekapToItem(d: RekapDokumen): KerjasamaItem {
@@ -53,6 +59,10 @@ function mapRekapToItem(d: RekapDokumen): KerjasamaItem {
     berlakuHingga: d.berlakuHingga,
     status: statusMap[d.status] ?? 'Menunggu',
     ruangLingkup: d.ruangLingkup ?? [],
+    dibuatOlehRole: d.dibuatOlehRole ?? null,
+    jenisMitra: d.jenisMitra,
+    tingkatPerusahaan: d.tingkatPerusahaan,
+    manfaatKerjasama: d.manfaatKerjasama,
   };
 }
 
@@ -98,6 +108,11 @@ const statusOptions: Array<'Semua Status' | ApprovalStatus> = [
 
 const ITEMS_PER_PAGE = 10;
 
+// Sementara: seluruh dokumen kerjasama yang sudah ada sebelum fitur pemisahan data
+// internal ini dibuat (id <= cutoff) dianggap "data admin" dan disembunyikan dari
+// rekap internal. Dokumen baru (id > cutoff) akan tetap tampil seperti biasa.
+const ADMIN_LEGACY_DOKUMEN_CUTOFF_ID = 1181;
+
 export default function InternalRekapDataPage() {
   const { user } = useAuth();
 
@@ -106,6 +121,8 @@ export default function InternalRekapDataPage() {
   const [filterJurusan, setFilterJurusan] = useState('Semua Jurusan');
   const [filterJenis, setFilterJenis] = useState('Semua Jenis');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
+  const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
+  const [filterTingkatPerusahaan, setFilterTingkatPerusahaan] = useState('Semua Tingkat Perusahaan');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -120,20 +137,41 @@ export default function InternalRekapDataPage() {
     return ['Semua Jurusan', ...merged];
   }, [masterJurusanOptions]);
 
+  const jenisMitraOptions = useMemo(() => [
+    'Semua Jenis Mitra',
+    ...Array.from(new Set([...rekapJenisMitraOptions, ...data.map((item) => item.jenisMitra).filter((v): v is string => Boolean(v))])),
+  ], [data]);
+
+  const tingkatPerusahaanOptions = useMemo(() => [
+    'Semua Tingkat Perusahaan',
+    ...Array.from(new Set([...rekapTingkatPerusahaanOptions, ...data.map((item) => item.tingkatPerusahaan).filter((v): v is string => Boolean(v))])),
+  ], [data]);
+
+  // Akun internal (Jurusan/Prodi) hanya boleh melihat data kerjasama milik unitnya sendiri,
+  // dicocokkan dari institution_name yang diisi admin saat membuat akun.
+  const scopedUnit = useMemo(() => {
+    if (user?.role === 'internal' && user.institution_name?.trim()) {
+      return user.institution_name.trim();
+    }
+    return null;
+  }, [user]);
+
   useEffect(() => {
     let isMounted = true;
 
     async function loadMasterJurusans() {
       try {
-        const jurusanRows = await getMasterUnitProdi({
-          jenis_node: 'unit',
-          kategori_unit: 'jurusan',
-          aktif: true,
-        });
+        const [jurusanRows, unitRows, prodiRows] = await Promise.all([
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'prodi', aktif: true }),
+        ]);
 
         if (!isMounted) return;
 
-        const names = Array.from(new Set(jurusanRows.map((item) => item.nama).filter(Boolean)));
+        const names = Array.from(
+          new Set([...jurusanRows, ...unitRows, ...prodiRows].map((item) => item.nama).filter(Boolean))
+        );
         setMasterJurusanOptions(names);
       } catch {
         // fallback tetap gunakan opsi lokal dari service.
@@ -199,11 +237,21 @@ export default function InternalRekapDataPage() {
       const matchesJurusan = filterJurusan === 'Semua Jurusan' || item.unit === filterJurusan;
       const matchesJenis = filterJenis === 'Semua Jenis' || item.jenis === filterJenis;
       const matchesStatus = filterStatus === 'Semua Status' || item.status === filterStatus;
+      const matchesJenisMitra = filterJenisMitra === 'Semua Jenis Mitra' || item.jenisMitra === filterJenisMitra;
+      const matchesTingkatPerusahaan =
+        filterTingkatPerusahaan === 'Semua Tingkat Perusahaan' || item.tingkatPerusahaan === filterTingkatPerusahaan;
+      const matchesScopedUnit = !scopedUnit || item.unit.trim().toLowerCase() === scopedUnit.toLowerCase();
+      const isLegacyAdminData = typeof item.id === 'number' && item.id <= ADMIN_LEGACY_DOKUMEN_CUTOFF_ID;
+      const isCreatedByAdmin = item.dibuatOlehRole === 'admin';
 
-      return matchesSearch && matchesJurusan && matchesJenis && matchesStatus;
+      return (
+        matchesSearch && matchesJurusan && matchesJenis && matchesStatus &&
+        matchesJenisMitra && matchesTingkatPerusahaan &&
+        matchesScopedUnit && !isLegacyAdminData && !isCreatedByAdmin
+      );
     });
     return sortOrder === 'oldest' ? [...filtered].reverse() : filtered;
-  }, [data, search, filterJurusan, filterJenis, filterStatus, sortOrder]);
+  }, [data, search, filterJurusan, filterJenis, filterStatus, filterJenisMitra, filterTingkatPerusahaan, sortOrder, scopedUnit]);
 
   const totalPages = Math.max(1, Math.ceil(filteredData.length / ITEMS_PER_PAGE));
   const paginatedData = filteredData.slice(
@@ -263,20 +311,26 @@ export default function InternalRekapDataPage() {
           </label>
 
           <div className="flex flex-wrap items-center gap-2 md:ml-auto">
-            <select
-              value={filterJurusan}
-              onChange={(e) => {
-                setFilterJurusan(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="input-field px-3 py-2 text-[12px] text-gray-700"
-            >
-              {jurusanOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
+            {scopedUnit ? (
+              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] font-medium text-slate-600">
+                Unit: {scopedUnit}
+              </span>
+            ) : (
+              <select
+                value={filterJurusan}
+                onChange={(e) => {
+                  setFilterJurusan(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="input-field px-3 py-2 text-[12px] text-gray-700"
+              >
+                {jurusanOptions.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <select
               value={filterJenis}
@@ -309,6 +363,36 @@ export default function InternalRekapDataPage() {
             </select>
 
             <select
+              value={filterJenisMitra}
+              onChange={(e) => {
+                setFilterJenisMitra(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="input-field px-3 py-2 text-[12px] text-gray-700"
+            >
+              {jenisMitraOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterTingkatPerusahaan}
+              onChange={(e) => {
+                setFilterTingkatPerusahaan(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="input-field px-3 py-2 text-[12px] text-gray-700"
+            >
+              {tingkatPerusahaanOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+
+            <select
               value={sortOrder}
               onChange={(e) => {
                 setSortOrder(e.target.value as 'newest' | 'oldest');
@@ -326,23 +410,26 @@ export default function InternalRekapDataPage() {
       {/* Table */}
       <section className="table-shell">
         <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full border-collapse">
+          <table className="min-w-[1300px] w-full border-collapse">
             <thead>
               <tr className="table-head border-b border-gray-200 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-700">
                 <th className="px-4 py-3">No. Dokumen</th>
                 <th className="px-4 py-3">Nama Mitra</th>
                 <th className="px-4 py-3">Jenis</th>
+                <th className="px-4 py-3">Jenis Mitra</th>
+                <th className="px-4 py-3">Tingkat Perusahaan</th>
                 <th className="px-4 py-3">Unit</th>
                 <th className="px-4 py-3">Tanggal mulai</th>
                 <th className="px-4 py-3">Berlaku Hingga</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Manfaat Kerja Sama</th>
                 <th className="px-4 py-3 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {paginatedData.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-[12px] text-gray-500">
+                  <td colSpan={11} className="px-4 py-10 text-center text-[12px] text-gray-500">
                     Data tidak ditemukan berdasarkan filter saat ini.
                   </td>
                 </tr>
@@ -361,6 +448,8 @@ export default function InternalRekapDataPage() {
                         {row.jenis}
                       </span>
                     </td>
+                    <td className="px-4 py-3">{row.jenisMitra || '-'}</td>
+                    <td className="px-4 py-3">{row.tingkatPerusahaan || '-'}</td>
                     <td className="px-4 py-3">
                       <span className="inline-block rounded-full bg-[#1E376C] px-3 py-1 text-[10px] font-medium text-white">
                         {row.unit}
@@ -372,6 +461,9 @@ export default function InternalRekapDataPage() {
                       <span className={`rounded-full px-3 py-1 text-[10px] font-semibold ${statusBadgeMap[row.status]}`}>
                         {row.status}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 max-w-[180px]">
+                      <p className="text-[10px] text-gray-600 line-clamp-2">{row.manfaatKerjasama || '-'}</p>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-3">

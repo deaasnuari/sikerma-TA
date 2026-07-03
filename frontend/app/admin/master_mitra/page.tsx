@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Building2, ChevronDown, Globe, Pencil, Plus, Search, Trash2, Users, type LucideIcon } from 'lucide-react';
+import { AlertCircle, Building2, ChevronDown, ChevronLeft, ChevronRight, Globe, Pencil, Plus, Search, Trash2, Users, type LucideIcon } from 'lucide-react';
+import { getPageNumbers } from '@/lib/pagination';
 import {
   createMasterMitra,
   deleteMasterMitra,
@@ -10,6 +11,7 @@ import {
   updateMasterMitra,
   type MasterMitra,
 } from '@/services/masterMitraService';
+import { refreshPengajuanDataFromApi, type PengajuanItem } from '@/services/adminPengajuanService';
 
 type FormState = {
   kode_mitra: string;
@@ -80,12 +82,15 @@ export default function MasterMitraPage() {
   const [filterKategori, setFilterKategori] = useState('Semua Kategori');
   const [filterTingkat, setFilterTingkat] = useState<(typeof tingkatFilterOptions)[number]>('Semua Tingkat');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [showModal, setShowModal] = useState(false);
   const [editingRow, setEditingRow] = useState<MasterMitra | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MasterMitra | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [pengajuanItems, setPengajuanItems] = useState<PengajuanItem[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -110,6 +115,28 @@ export default function MasterMitraPage() {
     };
 
     loadRows();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Ambil data pengajuan untuk mendeteksi nama mitra yang diketik manual (belum terdaftar
+  // atau sudah terdaftar tapi belum ada kode) supaya admin bisa cepat melengkapinya di sini.
+  useEffect(() => {
+    let mounted = true;
+
+    refreshPengajuanDataFromApi(true)
+      .then((items) => {
+        if (mounted) {
+          setPengajuanItems(items);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setPengajuanItems([]);
+        }
+      });
 
     return () => {
       mounted = false;
@@ -142,9 +169,48 @@ export default function MasterMitraPage() {
     }
   }, [searchParams]);
 
+  // Nama mitra dari pengajuan yang perlu ditindaklanjuti: belum terdaftar sama sekali,
+  // atau sudah terdaftar tapi belum diberi kode.
+  const mitraAlerts = useMemo(() => {
+    const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
+    const masterByName = new Map<string, MasterMitra>();
+    rows.forEach((row) => masterByName.set(normalize(row.nama_mitra), row));
+
+    const seen = new Set<string>();
+    const alerts: { nama: string; masterMitra: MasterMitra | null }[] = [];
+
+    pengajuanItems.forEach((item) => {
+      const nama = (item.namaMitra || '').trim();
+      if (!nama || nama === '-') {
+        return;
+      }
+
+      const norm = normalize(nama);
+      if (seen.has(norm)) {
+        return;
+      }
+      seen.add(norm);
+
+      const master = masterByName.get(norm) ?? null;
+      if (master && master.kode_mitra) {
+        return;
+      }
+
+      alerts.push({ nama, masterMitra: master });
+    });
+
+    return alerts;
+  }, [rows, pengajuanItems]);
+
   const openCreate = () => {
     setEditingRow(null);
     setForm(emptyForm);
+    setShowModal(true);
+  };
+
+  const openCreateWithName = (nama: string) => {
+    setEditingRow(null);
+    setForm({ ...emptyForm, nama_mitra: nama });
     setShowModal(true);
   };
 
@@ -322,6 +388,16 @@ export default function MasterMitraPage() {
     });
   }, [groupedRows, search, filterKategori, filterTingkat, filterStatus]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterKategori, filterTingkat, filterStatus]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / itemsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safePage - 1) * itemsPerPage;
+  const paginatedRows = filteredRows.slice(pageStartIndex, pageStartIndex + itemsPerPage);
+  const pageNumbers = getPageNumbers(safePage, totalPages);
+
   const summary = {
     total: groupedRows.length,
     aktif: groupedRows.filter((item) => item.aktif).length,
@@ -344,6 +420,45 @@ export default function MasterMitraPage() {
       </div>
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[10px] text-red-700">{error}</div>}
+
+      {mitraAlerts.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3.5">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle size={16} className="mt-0.5 shrink-0 text-amber-600" />
+            <div>
+              <p className="text-[12px] font-semibold text-amber-800">
+                {mitraAlerts.length} nama mitra dari pengajuan perlu ditindaklanjuti
+              </p>
+              <p className="mt-0.5 text-[10.5px] text-amber-700">
+                Nama-nama ini diketik manual saat pengajuan (belum terdaftar di Data Kemitraan, atau sudah terdaftar tapi belum ada kode).
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+            {mitraAlerts.map((alert) => (
+              <div
+                key={alert.nama}
+                className="flex items-center justify-between gap-3 rounded-md border-l-2 border-amber-400 bg-white py-2.5 pl-3 pr-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-[12px] font-semibold leading-tight text-gray-800">{alert.nama}</p>
+                  <p className="mt-0.5 truncate text-[10.5px] leading-tight text-gray-500">
+                    {alert.masterMitra ? 'Sudah terdaftar, tapi belum ada kode' : 'Belum terdaftar di Data Kemitraan'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => (alert.masterMitra ? openEdit(alert.masterMitra) : openCreateWithName(alert.nama))}
+                  className="shrink-0 rounded-md bg-[#1E376C] px-3 py-1.5 text-[10.5px] font-semibold text-white hover:bg-[#2B4A93]"
+                >
+                  {alert.masterMitra ? 'Lengkapi Kode' : 'Tambah Mitra'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard icon={Building2} label="Total Mitra" value={summary.total} />
@@ -420,7 +535,7 @@ export default function MasterMitraPage() {
                 </tr>
               )}
 
-              {!loading && filteredRows.map((item) => (
+              {!loading && paginatedRows.map((item) => (
                 <tr key={`${item.primary.id}-${item.nama_mitra}`} className="border-b border-gray-100 transition hover:bg-gray-50/60">
                   <td className="px-4 py-3 text-gray-500 font-mono text-[11px]">{item.primary.kode_mitra || '-'}</td>
                   <td className="px-4 py-3">
@@ -464,6 +579,58 @@ export default function MasterMitraPage() {
             </tbody>
           </table>
         </div>
+
+        {filteredRows.length > 0 && (
+          <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[12px] text-gray-500">
+              Menampilkan <span className="font-semibold text-gray-700">{pageStartIndex + 1}–{Math.min(pageStartIndex + itemsPerPage, filteredRows.length)}</span> dari{' '}
+              <span className="font-semibold text-gray-700">{filteredRows.length}</span> mitra
+            </p>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={safePage === 1}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft size={14} />
+                Prev
+              </button>
+
+              {pageNumbers.map((page, idx) =>
+                page === '...' ? (
+                  <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`inline-flex h-8 min-w-[32px] items-center justify-center rounded-lg px-2 text-[12px] font-semibold transition-colors ${
+                      page === safePage
+                        ? 'bg-[#1E376C] text-white'
+                        : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                )
+              )}
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={safePage === totalPages}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {deleteTarget && (

@@ -51,6 +51,7 @@ import {
   type PengajuanFileAttachment,
 } from '@/services/adminPengajuanService';
 import { updateMasterMitra, upsertMasterMitraByName } from '@/services/masterMitraService';
+import { getAdminUsers, type UserListItem } from '@/services/adminUserService';
 
 type EditFormState = {
   id: number;
@@ -244,6 +245,10 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewFinalFile, setReviewFinalFile] = useState<File | null>(null);
   const [reviewFinalFilePreview, setReviewFinalFilePreview] = useState<{ name: string; url: string } | null>(null);
+  const [reviewFinalLink, setReviewFinalLink] = useState('');
+  const [reviewDistribusiUserIds, setReviewDistribusiUserIds] = useState<number[]>([]);
+  const [reviewDistribusiSearch, setReviewDistribusiSearch] = useState('');
+  const [internalUsersList, setInternalUsersList] = useState<UserListItem[]>([]);
   const [ajukanModalOpen, setAjukanModalOpen] = useState(false);
   const [masterModalOpen, setMasterModalOpen] = useState(false);
   const [negaraModalOpen, setNegaraModalOpen] = useState(false);
@@ -382,6 +387,23 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   // Tandai notifikasi data pengajuan sebagai sudah dibaca saat halaman ini dibuka
   useEffect(() => {
     markNotificationsByHrefPrefixAsRead('/admin/data_pengajuan');
+  }, []);
+
+  // Daftar user internal untuk pilihan "Distribusi" di modal review.
+  useEffect(() => {
+    let mounted = true;
+    getAdminUsers()
+      .then((users) => {
+        if (mounted) {
+          setInternalUsersList(users.filter((u) => u.role === 'Jurusan' || u.role === 'Prodi'));
+        }
+      })
+      .catch(() => {
+        if (mounted) setInternalUsersList([]);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // Auto-buka review modal saat diarahkan dari halaman Tahapan (?review=ID)
@@ -805,6 +827,9 @@ function openReview(item: PengajuanItem) {
     setReviewComment('');
     setReviewFinalFile(null);
     setReviewFinalFilePreview(null);
+    setReviewFinalLink('');
+    setReviewDistribusiUserIds(item.distribusiUserIds ?? []);
+    setReviewDistribusiSearch('');
   }
 
   function handleReviewFinalFileUpload(files: FileList | null) {
@@ -898,6 +923,9 @@ async function saveReview() {
         return;
       }
     } else {
+      const trimmedLink = reviewFinalLink.trim();
+      const usingLink = !reviewFinalFile && trimmedLink.length > 0;
+
       try {
         if (reviewFinalFile && reviewFinalFilePreview) {
           await uploadAccFileApi(reviewItem.id, {
@@ -906,16 +934,27 @@ async function saveReview() {
             type: reviewFinalFile.type,
             size: reviewFinalFile.size,
           });
+        } else if (usingLink) {
+          await uploadAccFileApi(reviewItem.id, {
+            name: 'Tautan Dokumen Final',
+            url: trimmedLink,
+          });
         }
-        const reviewUpdated = await savePengajuanReviewApi(reviewItem.id, reviewDecision, reviewComment);
-        if (reviewFinalFile && reviewFinalFilePreview) {
-          const accAttachment = {
-            name: reviewFinalFile.name,
-            url: reviewFinalFilePreview.url,
-            type: reviewFinalFile.type,
-            size: reviewFinalFile.size,
-            isAcc: true,
-          };
+        const reviewUpdated = await savePengajuanReviewApi(reviewItem.id, reviewDecision, reviewComment, reviewDistribusiUserIds);
+        if ((reviewFinalFile && reviewFinalFilePreview) || usingLink) {
+          const accAttachment = reviewFinalFile && reviewFinalFilePreview
+            ? {
+                name: reviewFinalFile.name,
+                url: reviewFinalFilePreview.url,
+                type: reviewFinalFile.type,
+                size: reviewFinalFile.size,
+                isAcc: true,
+              }
+            : {
+                name: 'Tautan Dokumen Final',
+                url: trimmedLink,
+                isAcc: true,
+              };
           const existingAttachments = reviewUpdated.fileAttachments || reviewItem.fileAttachments || [];
           // Hindari duplikat: hanya tambahkan jika server belum menyertakannya
           const alreadyInServer = existingAttachments.some(
@@ -945,7 +984,7 @@ async function saveReview() {
         }));
 
         const catatanAcc = reviewComment.trim();
-        if (reviewFinalFile) {
+        if (reviewFinalFile || usingLink) {
           addAdminNotification({
             title: 'Dokumen Final Diupload',
             message: `Dokumen final untuk "${judulShort}" telah diupload dan di-ACC oleh admin.${catatanAcc ? ` Catatan: ${catatanAcc}` : ''}`,
@@ -990,6 +1029,9 @@ async function saveReview() {
     setReviewComment('');
     setReviewFinalFile(null);
     setReviewFinalFilePreview(null);
+    setReviewFinalLink('');
+    setReviewDistribusiUserIds([]);
+    setReviewDistribusiSearch('');
   }
 
   function openEdit(item: PengajuanItem) {
@@ -2205,7 +2247,10 @@ function addEditJurusanUnitOption() {
               {reviewDecision === 'Disetujui' && (
                 <div className="rounded-lg border border-[#D9DCE4] bg-white p-4">
                   <p className="text-[12px] font-semibold text-gray-900 mb-3">Upload Final Berkas</p>
-                  <p className="text-[10px] text-gray-600 mb-3">Unggah dokumen final yang telah disetujui untuk disimpan sebagai arsip.</p>
+                  <p className="text-[10px] text-gray-600 mb-1">Unggah dokumen final yang telah disetujui untuk disimpan sebagai arsip.</p>
+                  <p className="text-[10px] text-gray-500 mb-3">
+                    Ukuran maksimal 10 MB. Kalau dokumennya lebih besar dari itu, pakai tautan (mis. Google Drive) di kolom bawah saja — tidak perlu upload, biar penyimpanan server tidak cepat penuh.
+                  </p>
 
 <label className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-white px-4 py-4 text-[12px] font-medium text-slate-600 hover:border-[#173B82] hover:text-[#173B82]">
                     <Upload size={16} />
@@ -2220,6 +2265,21 @@ function addEditJurusanUnitOption() {
                       }}
                     />
                   </label>
+
+                  <div className="mt-3">
+                    <label className="text-[10px] font-semibold text-gray-700">Atau tautan dokumen (Google Drive, dsb.)</label>
+                    <input
+                      type="url"
+                      value={reviewFinalLink}
+                      onChange={(e) => setReviewFinalLink(e.target.value)}
+                      placeholder="https://drive.google.com/..."
+                      disabled={Boolean(reviewFinalFile)}
+                      className="mt-1 w-full rounded-lg border border-[#D2D7E5] bg-white px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-[#1E376C] disabled:bg-gray-50 disabled:text-gray-400"
+                    />
+                    {reviewFinalFile && (
+                      <p className="mt-1 text-[9.5px] text-gray-400">Hapus file yang dipilih untuk memakai tautan.</p>
+                    )}
+                  </div>
 
                   {reviewFinalFilePreview && (
                     <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
@@ -2265,6 +2325,72 @@ function addEditJurusanUnitOption() {
                       </div>
                     </div>
                   )}
+
+                  <div className="mt-3">
+                    <label className="text-[10px] font-semibold text-gray-700">Distribusi (CC ke user internal lain)</label>
+                    <p className="mt-0.5 text-[9.5px] text-gray-500">
+                      Tambahkan user internal lain di sini supaya mereka tahu dan ikut melihat dokumen final ini — seperti CC di email.
+                    </p>
+                    <div className="relative mt-1.5">
+                      <input
+                        type="text"
+                        value={reviewDistribusiSearch}
+                        onChange={(e) => setReviewDistribusiSearch(e.target.value)}
+                        placeholder="Cari nama user internal..."
+                        className="w-full rounded-lg border border-[#D2D7E5] bg-white px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-[#1E376C]"
+                      />
+                      {reviewDistribusiSearch.trim() && (
+                        <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                          {(() => {
+                            const results = internalUsersList.filter(
+                              (u) =>
+                                !reviewDistribusiUserIds.includes(u.id) &&
+                                u.nama.toLowerCase().includes(reviewDistribusiSearch.trim().toLowerCase())
+                            );
+                            if (results.length === 0) {
+                              return <p className="px-3 py-2 text-[11px] text-gray-400">Tidak ada user ditemukan.</p>;
+                            }
+                            return results.slice(0, 8).map((u) => (
+                              <button
+                                key={u.id}
+                                type="button"
+                                onClick={() => {
+                                  setReviewDistribusiUserIds((prev) => [...prev, u.id]);
+                                  setReviewDistribusiSearch('');
+                                }}
+                                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[11px] text-gray-700 hover:bg-slate-50"
+                              >
+                                <span className="truncate">{u.nama}</span>
+                                <span className="shrink-0 text-[9.5px] text-gray-400">{u.unitInstansi}</span>
+                              </button>
+                            ));
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                    {reviewDistribusiUserIds.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {reviewDistribusiUserIds.map((id) => {
+                          const u = internalUsersList.find((iu) => iu.id === id);
+                          return (
+                            <span
+                              key={id}
+                              className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[10px] font-medium text-[#1E376C]"
+                            >
+                              {u?.nama ?? `User #${id}`}
+                              <button
+                                type="button"
+                                onClick={() => setReviewDistribusiUserIds((prev) => prev.filter((x) => x !== id))}
+                                className="text-[#1E376C]/60 hover:text-[#1E376C]"
+                              >
+                                <X size={11} />
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
                   <div className="mt-3">
                     <label className="text-[10px] font-semibold text-gray-700">Catatan ACC </label>
@@ -2318,8 +2444,8 @@ function addEditJurusanUnitOption() {
                       }
                       setUploadConfirmOpen(true);
                     } else {
-                      if (reviewDecision === 'Disetujui' && !reviewFinalFile) {
-                        setInfoModalMessage('Upload file dokumen final wajib dilakukan sebelum ACC.');
+                      if (reviewDecision === 'Disetujui' && !reviewFinalFile && !reviewFinalLink.trim()) {
+                        setInfoModalMessage('Upload file dokumen final atau isi tautan dokumen terlebih dahulu sebelum ACC.');
                         return;
                       }
                       setUploadConfirmOpen(true);
@@ -3132,6 +3258,12 @@ function addEditJurusanUnitOption() {
                     <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 flex items-center gap-2 text-[10px]">
                       <span className="font-semibold text-emerald-700">File:</span>
                       <span className="truncate text-emerald-600">{reviewFinalFilePreview.name}</span>
+                    </div>
+                  )}
+                  {!reviewFinalFile && reviewFinalLink.trim() && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 flex items-center gap-2 text-[10px]">
+                      <span className="font-semibold text-emerald-700">Tautan:</span>
+                      <span className="truncate text-emerald-600">{reviewFinalLink.trim()}</span>
                     </div>
                   )}
                 </>

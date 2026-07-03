@@ -31,6 +31,8 @@ class DokumenKerjasama extends Model
         'snap_whatsapp_pengusul',
         'snap_nama_pengusul',
         'snap_email_pengusul',
+        'snap_jenis_mitra',
+        'snap_tingkat_perusahaan',
         'dibuat_oleh_user_id',
         'file',
         'keterangan',

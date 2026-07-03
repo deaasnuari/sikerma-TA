@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { CalendarDays, ChevronDown, Download, MessageCircle, Paperclip, Pencil, Upload, X } from 'lucide-react';
+import { CalendarDays, CheckCircle, ChevronDown, Download, MessageCircle, Paperclip, Pencil, Plus, Upload, X } from 'lucide-react';
 import { getMasterMitra, type MasterMitra as MasterMitraRow } from '@/services/masterMitraService';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -310,6 +310,8 @@ export default function InternalAjukanKerjasamaForm({
   const [jurusanUnitInput, setJurusanUnitInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [submittedInfo, setSubmittedInfo] = useState<{ judul: string; mitra: string; jenis: string } | null>(null);
   const [masterMitraRows, setMasterMitraRows] = useState<MasterMitraRow[]>([]);
   const [mitraOpen, setMitraOpen] = useState(false);
   const [mitraSearch, setMitraSearch] = useState('');
@@ -859,18 +861,13 @@ export default function InternalAjukanKerjasamaForm({
         window.localStorage.removeItem(INTERNAL_PENGAJUAN_DRAFT_KEY);
       }
 
-      // Auto refresh internal data tanpa menunggu reload manual.
-      if (onSubmitted) {
-        onSubmitted();
-      } else {
-        // Pastikan halaman internal langsung menampilkan data baru dari localStorage.
-        router.push('/internal/data_pengajuan');
-      }
-
-      // Popup modal (ganti alert) biar UX lebih konsisten.
-      // Karena komponen ini sudah dipakai luas, tampilkan modal sederhana via state.
-      setSubmitError('');
-      alert('Pengajuan kerjasama berhasil dikirim ke admin untuk direview.');
+      setSubmitError(null);
+      setSubmittedInfo({
+        judul: formData.judulKerjasama || '—',
+        mitra: formData.namaMitra || '—',
+        jenis: selectedJenisKerjasama.join(', ') || '—',
+      });
+      setShowSuccessModal(true);
 
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Gagal mengirim pengajuan ke server.';
@@ -878,6 +875,15 @@ export default function InternalAjukanKerjasamaForm({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSuccessModalClose = () => {
+    setShowSuccessModal(false);
+    if (onSubmitted) {
+      onSubmitted();
+      return;
+    }
+    router.push('/internal/data_pengajuan');
   };
 
   return (
@@ -993,7 +999,7 @@ export default function InternalAjukanKerjasamaForm({
                       />
                     </div>
                     <ul className="max-h-52 overflow-y-auto py-1">
-                      {filteredMitraOptions.length === 0 && (
+                      {filteredMitraOptions.length === 0 && !mitraSearch.trim() && (
                         <li className="px-4 py-3 text-[12px] text-slate-400">Tidak ada mitra ditemukan</li>
                       )}
                       {filteredMitraOptions.map((m) => (
@@ -1016,6 +1022,24 @@ export default function InternalAjukanKerjasamaForm({
                           </button>
                         </li>
                       ))}
+                      {mitraSearch.trim() && (
+                        <li className="border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleChange('namaMitra', mitraSearch.trim());
+                              setMitraOpen(false);
+                              setMitraSearch('');
+                            }}
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[12px] text-[#173B82] hover:bg-slate-50"
+                          >
+                            <Plus size={14} className="shrink-0" />
+                            <span>
+                              Pakai &quot;<span className="font-semibold">{mitraSearch.trim()}</span>&quot; (mitra belum terdaftar)
+                            </span>
+                          </button>
+                        </li>
+                      )}
                     </ul>
                   </div>
                 )}
@@ -1723,6 +1747,54 @@ export default function InternalAjukanKerjasamaForm({
           </button>
         </div>
       </form>
+
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="flex flex-col items-center gap-3 rounded-t-2xl bg-gradient-to-br from-[#091222] to-[#173B82] px-6 py-8">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20">
+                <CheckCircle size={36} className="text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-white">Pengajuan Berhasil Dikirim!</h2>
+              <p className="text-center text-sm text-blue-100">
+                Pengajuan kerjasama berhasil dikirim ke admin untuk direview.
+              </p>
+            </div>
+
+            <div className="space-y-3 px-6 py-5">
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 w-24 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Judul</span>
+                  <span className="break-words text-sm font-semibold text-slate-800">{submittedInfo?.judul}</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 w-24 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Mitra</span>
+                  <span className="break-words text-sm text-slate-700">{submittedInfo?.mitra}</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 w-24 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Jenis</span>
+                  <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">
+                    {submittedInfo?.jenis}
+                  </span>
+                </div>
+              </div>
+              <p className="text-center text-xs text-slate-500">
+                Anda akan dihubungi oleh tim admin apabila ada tindak lanjut.
+              </p>
+            </div>
+
+            <div className="border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={handleSuccessModalClose}
+                className="w-full rounded-xl bg-[#173B82] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0f2c61]"
+              >
+                Kembali ke Daftar Pengajuan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

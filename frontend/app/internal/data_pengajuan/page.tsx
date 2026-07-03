@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
 import {
   CheckCircle2,
   CheckSquare,
@@ -35,6 +36,11 @@ import {
 import AjukanKerjasamaForm from './AjukanKerjasamaForm';
 import DetailPengajuanModal from './DetailPengajuanModal';
 import { getCachedMasterNegara, getMasterNegara, type MasterNegara } from '@/services/masterNegaraService';
+import {
+  getCachedMasterUnitProdiTree,
+  getMasterUnitProdi,
+  type MasterUnitProdi,
+} from '@/services/masterUnitProdiService';
 
 type EditFormState = {
   id: number;
@@ -107,6 +113,7 @@ function isUnitValue(value: string) {
 
 export default function InternalDataPengajuanPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const isAjukanView = searchParams.get('mode') === 'ajukan';
   const [search, setSearch] = useState('');
@@ -115,6 +122,9 @@ export default function InternalDataPengajuanPage() {
   const [filterJurusan, setFilterJurusan] = useState('Semua Jurusan/unit');
   const [pengajuanData, setPengajuanData] = useState<PengajuanItem[]>([]);
   const [masterNegaraRows, setMasterNegaraRows] = useState<MasterNegara[]>(() => getCachedMasterNegara());
+  const [masterJurusanRows, setMasterJurusanRows] = useState<MasterUnitProdi[]>(() => getCachedMasterUnitProdiTree().filter((item) => item.jenis_node === 'unit' && item.kategori_unit === 'jurusan'));
+  const [masterUnitRows, setMasterUnitRows] = useState<MasterUnitProdi[]>(() => getCachedMasterUnitProdiTree().filter((item) => item.jenis_node === 'unit' && item.kategori_unit === 'unit_kerja'));
+  const [masterProdiRows, setMasterProdiRows] = useState<MasterUnitProdi[]>(() => getCachedMasterUnitProdiTree().filter((item) => item.jenis_node === 'prodi'));
   const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const [reviewItem, setReviewItem] = useState<PengajuanItem | null>(null);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
@@ -140,6 +150,33 @@ export default function InternalDataPengajuanPage() {
     };
 
     void loadMasterNegara();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadMasterUnitProdi = async () => {
+      try {
+        const [jurusanRows, unitRows, prodiRows] = await Promise.all([
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'prodi', aktif: true }),
+        ]);
+        if (isMounted) {
+          setMasterJurusanRows(jurusanRows);
+          setMasterUnitRows(unitRows);
+          setMasterProdiRows(prodiRows);
+        }
+      } catch {
+        // Biarkan data cache/kosong sebelumnya tetap dipakai bila gagal fetch.
+      }
+    };
+
+    void loadMasterUnitProdi();
 
     return () => {
       isMounted = false;
@@ -180,18 +217,22 @@ export default function InternalDataPengajuanPage() {
   }, []);
 
   const jurusanOptions = useMemo(() => {
+    // Prodi berada di bawah jurusan, jadi digabung ke bucket "Jurusan" bersama data master jurusan/unit.
+    const masterJurusanNames = masterJurusanRows.map((item) => item.nama).filter(Boolean);
+    const masterUnitNames = masterUnitRows.map((item) => item.nama).filter(Boolean);
+    const masterProdiNames = masterProdiRows.map((item) => item.nama).filter(Boolean);
     const currentValues = pengajuanData.map((item) => item.namaUnitProdi);
 
     if (filterKategori === 'Jurusan') {
-      return [...new Set([...pengajuanJurusanOptions, ...currentValues.filter((value) => !isUnitValue(value))])];
+      return [...new Set([...pengajuanJurusanOptions, ...masterJurusanNames, ...masterProdiNames, ...currentValues.filter((value) => !isUnitValue(value))])];
     }
 
     if (filterKategori === 'Unit') {
-      return [...new Set([...pengajuanUnitOptions, ...currentValues.filter((value) => isUnitValue(value))])];
+      return [...new Set([...pengajuanUnitOptions, ...masterUnitNames, ...currentValues.filter((value) => isUnitValue(value))])];
     }
 
-    return [...new Set([...pengajuanJurusanOptions, ...pengajuanUnitOptions, ...currentValues])];
-  }, [filterKategori, pengajuanData]);
+    return [...new Set([...pengajuanJurusanOptions, ...pengajuanUnitOptions, ...masterJurusanNames, ...masterUnitNames, ...masterProdiNames, ...currentValues])];
+  }, [filterKategori, pengajuanData, masterJurusanRows, masterUnitRows, masterProdiRows]);
 
   const filteredItems = useMemo(() => {
     const baseItems = getFilteredPengajuanData(pengajuanData, {
@@ -529,10 +570,18 @@ export default function InternalDataPengajuanPage() {
                     </div>
                   </div>
 
-                  <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-semibold ${sc.className}`}>
-                    {sc.icon}
-                    {item.statusPengajuan}
-                  </span>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-semibold ${sc.className}`}>
+                      {sc.icon}
+                      {item.statusPengajuan}
+                    </span>
+                    {user && item.distribusiUserIds?.includes(Number(user.id)) && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[9.5px] font-semibold text-[#1E376C]">
+                        <MessageSquareText size={11} />
+                        Didistribusikan untuk Anda
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">

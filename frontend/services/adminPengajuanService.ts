@@ -70,6 +70,8 @@ export interface PengajuanItem {
   tahapanGroup?: string | null;
   tahapanRiwayat?: { stage: string; group: string; changedAt: string; changedBy?: string }[];
   isFromAdmin?: boolean;
+  // Id user internal yang di-"distribusi"/CC-kan admin saat ACC, supaya mereka tahu ikut melihat dokumen final ini.
+  distribusiUserIds?: number[];
 }
 
 // Key localStorage untuk menyimpan seluruh data pengajuan di sisi frontend.
@@ -245,6 +247,7 @@ type ApiPengajuanRow = {
   tahapan_stage?: string | null;
   tahapan_group?: string | null;
   tahapan_riwayat?: { stage: string; group: string; changed_at: string; changed_by?: string }[] | null;
+  distribusi_user_ids?: number[] | null;
   file_name?: string | null;
   file_attachments?: {
     name?: string;
@@ -504,6 +507,7 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
           changedBy: r.changed_by,
         }))
       : [],
+    distribusiUserIds: Array.isArray(row.distribusi_user_ids) ? row.distribusi_user_ids : [],
   };
 }
 
@@ -541,7 +545,12 @@ export async function refreshPengajuanDataFromApi(_force = false): Promise<Penga
   }
 }
 
-export async function savePengajuanReviewApi(id: number, status: PengajuanStatus, comment?: string): Promise<PengajuanItem> {
+export async function savePengajuanReviewApi(
+  id: number,
+  status: PengajuanStatus,
+  comment?: string,
+  distribusiUserIds?: number[]
+): Promise<PengajuanItem> {
   const response = await apiRequest<ApiSingleResponse<ApiPengajuanRow>>(`/pengajuan/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({
@@ -550,6 +559,7 @@ export async function savePengajuanReviewApi(id: number, status: PengajuanStatus
       catatan: comment?.trim() || null,
       keputusan: status,
       review_comment: comment?.trim() || null,
+      ...(distribusiUserIds !== undefined ? { distribusi_user_ids: distribusiUserIds } : {}),
     }),
   });
 

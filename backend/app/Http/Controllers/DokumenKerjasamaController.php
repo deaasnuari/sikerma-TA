@@ -65,7 +65,8 @@ class DokumenKerjasamaController extends Controller
     public function index(Request $request): Response
     {
         $query = DokumenKerjasama::query()->with([
-            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul',
+            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul,user_pengusul_id',
+            'pengajuan.userPengusul:id,role',
             'unitProdi:id,nama,jenis_node,kategori_unit',
             'mitra:id,nama_mitra,kode_mitra,kategori_mitra,tingkat_perusahaan,negara,email_mitra,email_kontak_utama',
             'dokumenFiles' => function ($q) {
@@ -559,7 +560,7 @@ class DokumenKerjasamaController extends Controller
             'dibuat_oleh_user_id' => $request->user()?->id,
         ]);
 
-        $log->load(['dokumen:id,nomor_dokumen,no_dokumen,mitra_id', 'dokumen.mitra:id,nama_mitra']);
+        $log->load(['dokumen:id,nomor_dokumen,mitra_id', 'dokumen.mitra:id,nama_mitra']);
 
         return response([
             'success' => true,
@@ -627,7 +628,7 @@ class DokumenKerjasamaController extends Controller
             }
         }
 
-        $dokumen_log->load(['dokumen:id,nomor_dokumen,no_dokumen,mitra_id', 'dokumen.mitra:id,nama_mitra']);
+        $dokumen_log->load(['dokumen:id,nomor_dokumen,mitra_id', 'dokumen.mitra:id,nama_mitra']);
 
         return response([
             'success' => true,

@@ -26,22 +26,34 @@ interface Props {
 type WorkflowStatus = 'draft' | 'dikirim_ke_pic' | 'selesai';
 
 interface FormState {
+  nomorIAPolibatam: string;
+  nomorIAMitra: string;
   judulKerjasama: string;
   referensiKerjasama: string;
   mitraKerjasama: string;
   unitPengaju: string;
   kegiatanText: string;
+  maksudTujuanText: string;
   capaianText: string;
   hasilText: string;
+  timelineText: string;
+  skemaPembiayaanText: string;
+  jumlahPeserta: string;
+  ringkasanCatatanText: string;
   tautanDokumentasi: string;
   namaPenanggungJawab: string;
+  jabatanPenanggungJawab: string;
   nipPenanggungJawab: string;
+  namaTtdMitra: string;
+  jabatanTtdMitra: string;
   jabatanMengetahui: string;
   namaMengetahui: string;
   nipMengetahui: string;
   workflowStatus: WorkflowStatus;
   uploadedFile: { nama: string; ukuran: string; uploadedAt: string; tipe: string } | null;
 }
+
+const romanMonths = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 
 const workflowSteps = [
   { key: 'draft',            label: 'Isi & Upload',             desc: 'Jurusan/unit mengisi dan mengupload laporan' },
@@ -54,16 +66,26 @@ function stepIndex(status: WorkflowStatus): number {
 }
 
 export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props) {
+  const [nomorIAPolibatam, setNomorIAPolibatam]         = useState('');
+  const [nomorIAMitra, setNomorIAMitra]                 = useState('');
   const [judulKerjasama, setJudulKerjasama]             = useState('');
   const [referensiKerjasama, setReferensiKerjasama]     = useState('');
   const [mitraKerjasama, setMitraKerjasama]             = useState('');
   const [unitPengaju, setUnitPengaju]                   = useState('');
   const [kegiatanText, setKegiatanText]                 = useState('');
+  const [maksudTujuanText, setMaksudTujuanText]         = useState('');
   const [capaianText, setCapaianText]                   = useState('');
   const [hasilText, setHasilText]                       = useState('');
+  const [timelineText, setTimelineText]                 = useState('');
+  const [skemaPembiayaanText, setSkemaPembiayaanText]   = useState('');
+  const [jumlahPeserta, setJumlahPeserta]               = useState('');
+  const [ringkasanCatatanText, setRingkasanCatatanText] = useState('');
   const [tautanDokumentasi, setTautanDokumentasi]       = useState('');
   const [namaPenanggungJawab, setNamaPenanggungJawab]   = useState('');
+  const [jabatanPenanggungJawab, setJabatanPenanggungJawab] = useState('');
   const [nipPenanggungJawab, setNipPenanggungJawab]     = useState('');
+  const [namaTtdMitra, setNamaTtdMitra]                 = useState('');
+  const [jabatanTtdMitra, setJabatanTtdMitra]           = useState('');
   const [jabatanMengetahui, setJabatanMengetahui]       = useState('');
   const [namaMengetahui, setNamaMengetahui]             = useState('');
   const [nipMengetahui, setNipMengetahui]               = useState('');
@@ -82,30 +104,32 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
   }
 
   function buildDefault(d: LaporanPelaksanaanData): FormState {
-    const tahun = new Date().getFullYear();
+    const now = new Date();
+    const tahun = now.getFullYear();
+    const bulanRomawi = romanMonths[now.getMonth()];
     return {
+      nomorIAPolibatam:    `${d.noDokumen}/IA.PL29/${bulanRomawi}/${tahun}`,
+      nomorIAMitra:        '',
       judulKerjasama:      `Program ${d.ruangLingkup[0] || 'Kerja Sama'} dengan ${d.namaMitra}`,
       referensiKerjasama:  `${d.noDokumen}/${d.jenis}/${tahun}`,
       mitraKerjasama:      d.namaMitra,
       unitPengaju:         d.unit || '',
       kegiatanText: [
-        'Koordinasi awal pelaksanaan program antara Polibatam dan mitra kerja sama.',
-        'Pelaksanaan kegiatan inti sesuai jadwal, target, dan ruang lingkup yang telah disepakati.',
-        ...d.ruangLingkup.map((rl, i) => `${i + 1}. Pelaksanaan kegiatan pada bidang ${rl} bersama ${d.namaMitra}.`),
+        ...d.ruangLingkup.map((rl, i) => `${i + 1}. ${rl}`),
       ].join('\n'),
-      capaianText: [
-        'Kegiatan terlaksana sesuai rencana kerja dan jadwal pelaksanaan.',
-        'Dokumentasi, daftar hadir, dan bukti pendukung kegiatan tersedia dengan baik.',
-        `Peningkatan kolaborasi pada bidang ${d.ruangLingkup.join(', ') || 'kerja sama'}.`,
-      ].join('\n'),
-      hasilText: [
-        'Dokumentasi pelaksanaan program.',
-        'Laporan kegiatan yang telah ditandatangani.',
-        'Bahan evaluasi dan tindak lanjut untuk periode kerja sama berikutnya.',
-      ].join('\n'),
-      tautanDokumentasi:   'https://polibatam.ac.id/kerjasama/laporan-kegiatan',
+      maksudTujuanText:    '',
+      capaianText:         '',
+      hasilText:           '',
+      timelineText:        '',
+      skemaPembiayaanText: '',
+      jumlahPeserta:       '',
+      ringkasanCatatanText: '',
+      tautanDokumentasi:   '',
       namaPenanggungJawab: '',
+      jabatanPenanggungJawab: '',
       nipPenanggungJawab:  '',
+      namaTtdMitra:        '',
+      jabatanTtdMitra:     '',
       jabatanMengetahui:   'Wakil Direktur Bidang Kemahasiswaan, Alumni dan Kerja Sama',
       namaMengetahui:      'Dr. Muhammad Zaenuddin',
       nipMengetahui:       '197602142014041008',
@@ -115,16 +139,26 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
   }
 
   function applyState(s: FormState) {
+    setNomorIAPolibatam(s.nomorIAPolibatam);
+    setNomorIAMitra(s.nomorIAMitra);
     setJudulKerjasama(s.judulKerjasama);
     setReferensiKerjasama(s.referensiKerjasama);
     setMitraKerjasama(s.mitraKerjasama);
     setUnitPengaju(s.unitPengaju);
     setKegiatanText(s.kegiatanText);
+    setMaksudTujuanText(s.maksudTujuanText);
     setCapaianText(s.capaianText);
     setHasilText(s.hasilText);
+    setTimelineText(s.timelineText);
+    setSkemaPembiayaanText(s.skemaPembiayaanText);
+    setJumlahPeserta(s.jumlahPeserta);
+    setRingkasanCatatanText(s.ringkasanCatatanText);
     setTautanDokumentasi(s.tautanDokumentasi);
     setNamaPenanggungJawab(s.namaPenanggungJawab);
+    setJabatanPenanggungJawab(s.jabatanPenanggungJawab);
     setNipPenanggungJawab(s.nipPenanggungJawab);
+    setNamaTtdMitra(s.namaTtdMitra);
+    setJabatanTtdMitra(s.jabatanTtdMitra);
     setJabatanMengetahui(s.jabatanMengetahui);
     setNamaMengetahui(s.namaMengetahui);
     setNipMengetahui(s.nipMengetahui);
@@ -134,9 +168,11 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
 
   function currentState(): FormState {
     return {
-      judulKerjasama, referensiKerjasama, mitraKerjasama, unitPengaju,
-      kegiatanText, capaianText, hasilText, tautanDokumentasi,
-      namaPenanggungJawab, nipPenanggungJawab, jabatanMengetahui,
+      nomorIAPolibatam, nomorIAMitra, judulKerjasama, referensiKerjasama, mitraKerjasama, unitPengaju,
+      kegiatanText, maksudTujuanText, capaianText, hasilText, timelineText, skemaPembiayaanText,
+      jumlahPeserta, ringkasanCatatanText, tautanDokumentasi,
+      namaPenanggungJawab, jabatanPenanggungJawab, nipPenanggungJawab,
+      namaTtdMitra, jabatanTtdMitra, jabatanMengetahui,
       namaMengetahui, nipMengetahui, workflowStatus, uploadedFile,
     };
   }
@@ -263,22 +299,25 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
       ? `<img src="${logoSrc}" alt="Logo Polibatam" style="max-height:56px;width:auto;object-fit:contain;" />`
       : `<div style="font-size:18px;font-weight:800;color:#1A4EA1;">POLIBATAM</div>`;
 
-    const infoUpload = uploadedFile
-      ? `${uploadedFile.nama} (${uploadedFile.ukuran}) - ${uploadedFile.uploadedAt}`
-      : '-';
+    const bilingual = (id: string, en: string) => `${escapeHtml(id)}<br/><em>${escapeHtml(en)}</em>`;
+    const multi = (v: string) => escapeHtml(v).replaceAll('\n', '<br/>');
 
     const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word'>
-<head><meta charset='utf-8'/><title>Laporan Pelaksanaan Kerja Sama</title>
+<head><meta charset='utf-8'/><title>Implementation Arrangement</title>
 <style>
 body{font-family:Arial,sans-serif;font-size:12px;padding:24px;}
 table{border-collapse:collapse;width:100%;}
 td{border:1px solid #888;padding:6px;vertical-align:top;}
-.title{text-align:center;font-weight:700;margin:10px 0;}
-.label{width:220px;font-weight:700;}
+.title{text-align:center;font-weight:700;font-size:15px;margin:4px 0;}
+.center{text-align:center;}
+.label{width:260px;font-weight:700;}
 .no{width:30px;text-align:center;}
 .header{display:flex;justify-content:space-between;align-items:center;border:1px solid #cbd5e1;padding:10px 14px;background:#f8fbff;margin-bottom:10px;}
 .mitra-wrap{display:flex;align-items:center;gap:10px;}
 .mitra-box{width:56px;height:56px;border:1px dashed #94a3b8;text-align:center;line-height:56px;font-size:10px;font-weight:700;color:#475569;background:#fff;}
+.nomor-table td{border:none;text-align:center;padding:2px;}
+.intro{margin:14px 0;text-align:justify;}
+.sign-table td{text-align:center;vertical-align:top;padding:10px 8px;}
 </style></head>
 <body>
 <div class='header'>
@@ -288,23 +327,58 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
   </div>
   <div>${logoHtml}</div>
 </div>
-<div class='title'>LAPORAN PELAKSANAAN KERJA SAMA</div>
-<table>
-  <tr><td class='no'>1</td><td class='label'>JUDUL KERJASAMA</td><td>${escapeHtml(judulKerjasama)}</td></tr>
-  <tr><td class='no'>2</td><td class='label'>REFERENSI KERJA SAMA</td><td>${escapeHtml(referensiKerjasama)}</td></tr>
-  <tr><td class='no'>3</td><td class='label'>MITRA KERJA SAMA</td><td>${escapeHtml(mitraKerjasama)}</td></tr>
-  <tr><td class='no'>4</td><td class='label'>UNIT PENGAJU</td><td>${escapeHtml(unitPengaju)}</td></tr>
-  <tr><td class='no'>5</td><td class='label'>KEGIATAN YANG DILAKSANAKAN</td><td>${escapeHtml(kegiatanText).replaceAll('\n','<br/>')}</td></tr>
-  <tr><td class='no'>6</td><td class='label'>CAPAIAN KINERJA</td><td>${escapeHtml(capaianText).replaceAll('\n','<br/>')}</td></tr>
-  <tr><td class='no'>7</td><td class='label'>HASIL PELAKSANAAN</td><td>${escapeHtml(hasilText).replaceAll('\n','<br/>')}</td></tr>
-  <tr><td class='no'>8</td><td class='label'>TAUTAN DOKUMENTASI</td><td>${escapeHtml(tautanDokumentasi)}</td></tr>
-  <tr><td class='no'>9</td><td class='label'>FILE LAPORAN TERLAMPIR</td><td>${escapeHtml(infoUpload)}</td></tr>
-</table>
-<br/>
-<table>
+
+<div class='title'>IMPLEMENTATION ARRANGEMENT</div>
+<div class='center'>ANTARA</div>
+<div class='center' style='font-weight:700;'>POLITEKNIK NEGERI BATAM</div>
+<div class='center'>DENGAN</div>
+<div class='center' style='font-weight:700;'>${escapeHtml(mitraKerjasama)}</div>
+
+<table class='nomor-table'>
   <tr>
-    <td style='width:50%'><strong>PENANGGUNG JAWAB KEGIATAN</strong><br/><br/><br/><strong>${escapeHtml(namaPenanggungJawab)}</strong><br/>NIP. ${escapeHtml(nipPenanggungJawab)}</td>
-    <td style='width:50%'><strong>Mengetahui</strong><br/><strong>${escapeHtml(jabatanMengetahui)}</strong><br/><br/><strong>${escapeHtml(namaMengetahui)}</strong><br/>NIP. ${escapeHtml(nipMengetahui)}</td>
+    <td style='width:50%'>NOMOR: ${escapeHtml(nomorIAPolibatam)}</td>
+    <td style='width:50%'>NOMOR: ${escapeHtml(nomorIAMitra || '..............................')}</td>
+  </tr>
+</table>
+
+<p class='intro'>Dokumen ini disusun sebagai bentuk pelaksanaan dan implementasi atas Nota Kesepahaman (MoU) dan/atau Memorandum of Agreement (MOA) yang telah ditandatangani antara Politeknik Negeri Batam dengan ${escapeHtml(mitraKerjasama)}, PARA PIHAK sepakat untuk melaksanakan kerja sama sebagai berikut:</p>
+
+<table>
+  <tr><td class='no'>1</td><td class='label'>${bilingual('Judul Kegiatan/Project/Penelitian/Pengabdian', 'Project / Activity Title')}</td><td>${escapeHtml(judulKerjasama)}</td></tr>
+  <tr><td class='no'>2</td><td class='label'>${bilingual('Dasar Referensi Pelaksanaan (MOU/MOA)', 'Legal Basis of Implementation')}</td><td>${escapeHtml(referensiKerjasama)}</td></tr>
+  <tr><td class='no'>3</td><td class='label'>Nama Mitra/Partner</td><td>${escapeHtml(mitraKerjasama)}</td></tr>
+  <tr><td class='no'>4</td><td class='label'>${bilingual('Ruang Lingkup', 'Scope of Activities')}</td><td>${multi(kegiatanText)}</td></tr>
+  <tr><td class='no'>5</td><td class='label'>${bilingual('Maksud dan Tujuan', 'Purpose and Objective')}</td><td>${multi(maksudTujuanText)}</td></tr>
+  <tr><td class='no'>6</td><td class='label'>${bilingual('Peran dan Tanggung Jawab Para Pihak', 'Roles and Responsibilities of the Parties')}</td><td>${multi(capaianText)}</td></tr>
+  <tr><td class='no'>7</td><td class='label'>Output/outcome</td><td>${multi(hasilText)}</td></tr>
+  <tr><td class='no'>8</td><td class='label'>${bilingual('Timeline/Waktu Pelaksanaan', 'Date and Time of Implementation')}</td><td>${multi(timelineText)}</td></tr>
+  <tr><td class='no'>9</td><td class='label'>${bilingual('Skema Pembiayaan', 'Financing Scheme')}</td><td>${multi(skemaPembiayaanText)}</td></tr>
+  <tr><td class='no'>10</td><td class='label'>${bilingual('Jumlah Peserta', 'Number of Participants')}</td><td>${escapeHtml(jumlahPeserta)}</td></tr>
+  <tr><td class='no'>11</td><td class='label'>${bilingual('Ringkasan/Catatan', 'Meeting Summary and Notes')}</td><td>${multi(ringkasanCatatanText)}</td></tr>
+  <tr><td class='no'>12</td><td class='label'>${bilingual('Lampiran IA dalam bentuk link', 'Annexes (Accessible via Link)')}</td><td>${escapeHtml(tautanDokumentasi)}</td></tr>
+</table>
+
+<br/>
+<table class='sign-table'>
+  <tr>
+    <td style='width:33.33%'><strong>Pelaksana<br/>Unit/Prodi</strong></td>
+    <td style='width:33.33%'><strong>Mitra/Partner</strong></td>
+    <td style='width:33.34%'><strong>Mengetahui<br/>(WD/Kajur/Ka.Unit)</strong></td>
+  </tr>
+  <tr>
+    <td><br/><br/><br/>(${escapeHtml(namaPenanggungJawab || 'NAMA')})</td>
+    <td><br/><br/><br/>(${escapeHtml(namaTtdMitra || 'NAMA')})</td>
+    <td><br/><br/><br/>(${escapeHtml(namaMengetahui || 'NAMA')})</td>
+  </tr>
+  <tr>
+    <td>(${escapeHtml(jabatanPenanggungJawab || 'JABATAN')})</td>
+    <td>(${escapeHtml(jabatanTtdMitra || 'JABATAN')})</td>
+    <td>(${escapeHtml(jabatanMengetahui || 'JABATAN')})</td>
+  </tr>
+  <tr>
+    <td>Tanggal :</td>
+    <td>Tanggal :</td>
+    <td>Tanggal :</td>
   </tr>
 </table>
 </body></html>`;
@@ -314,7 +388,7 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
     const blob = new Blob(['﻿', html], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `Laporan_Pelaksanaan_${data.noDokumen}.doc`;
+    a.href = url; a.download = `Implementation_Arrangement_${data.noDokumen}.doc`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     window.setTimeout(() => URL.revokeObjectURL(url), 10000);
     showToast('Template berhasil diunduh.');
@@ -416,12 +490,27 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
 
           {/* Form isian */}
           <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-            <p className="text-sm font-bold text-[#1E376C]">Data Laporan</p>
+            <p className="text-sm font-bold text-[#1E376C]">Data Implementation Arrangement (IA)</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                { label: 'Nomor IA - Polibatam', val: nomorIAPolibatam, set: setNomorIAPolibatam },
+                { label: 'Nomor IA - Mitra', val: nomorIAMitra, set: setNomorIAMitra },
+              ].map((f) => (
+                <div key={f.label}>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">{f.label}</label>
+                  <input
+                    type="text" value={f.val} disabled={!isDraftEditable}
+                    onChange={(e) => f.set(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1E376C] disabled:bg-slate-50 disabled:text-slate-500"
+                  />
+                </div>
+              ))}
+            </div>
             {[
-              { label: 'Judul Kerjasama', val: judulKerjasama, set: setJudulKerjasama },
-              { label: 'Referensi (No. Dokumen/Jenis/Tahun)', val: referensiKerjasama, set: setReferensiKerjasama },
-              { label: 'Mitra Kerjasama', val: mitraKerjasama, set: setMitraKerjasama },
-              { label: 'Unit/Jurusan Pengaju', val: unitPengaju, set: setUnitPengaju },
+              { label: 'Judul Kegiatan/Project/Penelitian/Pengabdian (Project / Activity Title)', val: judulKerjasama, set: setJudulKerjasama },
+              { label: 'Dasar Referensi Pelaksanaan - MOU/MOA (Legal Basis of Implementation)', val: referensiKerjasama, set: setReferensiKerjasama },
+              { label: 'Nama Mitra/Partner', val: mitraKerjasama, set: setMitraKerjasama },
+              { label: 'Unit/Jurusan Pelaksana', val: unitPengaju, set: setUnitPengaju },
             ].map((f) => (
               <div key={f.label}>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">{f.label}</label>
@@ -433,9 +522,13 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
               </div>
             ))}
             {[
-              { label: 'Kegiatan yang Dilaksanakan', val: kegiatanText, set: setKegiatanText },
-              { label: 'Capaian Kinerja', val: capaianText, set: setCapaianText },
-              { label: 'Hasil Pelaksanaan (Output & Outcome)', val: hasilText, set: setHasilText },
+              { label: 'Ruang Lingkup (Scope of Activities)', val: kegiatanText, set: setKegiatanText },
+              { label: 'Maksud dan Tujuan (Purpose and Objective)', val: maksudTujuanText, set: setMaksudTujuanText },
+              { label: 'Peran dan Tanggung Jawab Para Pihak (Roles and Responsibilities of the Parties)', val: capaianText, set: setCapaianText },
+              { label: 'Output/Outcome', val: hasilText, set: setHasilText },
+              { label: 'Timeline/Waktu Pelaksanaan (Date and Time of Implementation)', val: timelineText, set: setTimelineText },
+              { label: 'Skema Pembiayaan (Financing Scheme)', val: skemaPembiayaanText, set: setSkemaPembiayaanText },
+              { label: 'Ringkasan/Catatan (Meeting Summary and Notes)', val: ringkasanCatatanText, set: setRingkasanCatatanText },
             ].map((f) => (
               <div key={f.label}>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">{f.label}</label>
@@ -447,7 +540,14 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
               </div>
             ))}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Tautan Dokumentasi</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Jumlah Peserta (Number of Participants)</label>
+              <input type="text" value={jumlahPeserta} disabled={!isDraftEditable}
+                onChange={(e) => setJumlahPeserta(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1E376C] disabled:bg-slate-50 disabled:text-slate-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Lampiran IA dalam bentuk Link (Annexes Accessible via Link)</label>
               <input type="text" value={tautanDokumentasi} disabled={!isDraftEditable}
                 onChange={(e) => setTautanDokumentasi(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1E376C] disabled:bg-slate-50 disabled:text-slate-500"
@@ -458,12 +558,13 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
           {/* Tanda Tangan */}
           <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
             <p className="text-sm font-bold text-[#1E376C]">Tanda Tangan</p>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 space-y-2">
-                <p className="text-xs font-semibold text-slate-700">Penanggung Jawab Kegiatan</p>
+                <p className="text-xs font-semibold text-slate-700">Pelaksana Unit/Prodi</p>
                 {[
                   { label: 'Nama', val: namaPenanggungJawab, set: setNamaPenanggungJawab },
-                  { label: 'NIP', val: nipPenanggungJawab, set: setNipPenanggungJawab },
+                  { label: 'Jabatan', val: jabatanPenanggungJawab, set: setJabatanPenanggungJawab },
+                  { label: 'NIP (opsional)', val: nipPenanggungJawab, set: setNipPenanggungJawab },
                 ].map((f) => (
                   <div key={f.label}>
                     <label className="block text-[11px] font-medium text-slate-500 mb-0.5">{f.label}</label>
@@ -475,11 +576,26 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
                 ))}
               </div>
               <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 space-y-2">
-                <p className="text-xs font-semibold text-slate-700">Mengetahui (PIC / Pejabat)</p>
+                <p className="text-xs font-semibold text-slate-700">Mitra/Partner</p>
+                {[
+                  { label: 'Nama', val: namaTtdMitra, set: setNamaTtdMitra },
+                  { label: 'Jabatan', val: jabatanTtdMitra, set: setJabatanTtdMitra },
+                ].map((f) => (
+                  <div key={f.label}>
+                    <label className="block text-[11px] font-medium text-slate-500 mb-0.5">{f.label}</label>
+                    <input type="text" value={f.val} disabled={!isDraftEditable}
+                      onChange={(e) => f.set(e.target.value)}
+                      className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs outline-none focus:border-[#1E376C] disabled:bg-white disabled:text-slate-500"
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 space-y-2">
+                <p className="text-xs font-semibold text-slate-700">Mengetahui (WD/Kajur/Ka.Unit)</p>
                 {[
                   { label: 'Jabatan', val: jabatanMengetahui, set: setJabatanMengetahui },
                   { label: 'Nama', val: namaMengetahui, set: setNamaMengetahui },
-                  { label: 'NIP', val: nipMengetahui, set: setNipMengetahui },
+                  { label: 'NIP (opsional)', val: nipMengetahui, set: setNipMengetahui },
                 ].map((f) => (
                   <div key={f.label}>
                     <label className="block text-[11px] font-medium text-slate-500 mb-0.5">{f.label}</label>

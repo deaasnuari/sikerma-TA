@@ -6,6 +6,7 @@ use App\Models\LaporanPelaksanaan;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class LaporanPelaksanaanController extends Controller
 {
@@ -72,7 +73,17 @@ class LaporanPelaksanaanController extends Controller
             'jabatan_mengetahui' => ['nullable', 'string', 'max:150'],
             'nama_mengetahui' => ['nullable', 'string', 'max:150'],
             'nip_mengetahui' => ['nullable', 'string', 'max:50'],
-            'file' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:10240'],
+            'file' => [
+                'nullable',
+                'file',
+                'max:10240',
+                function ($attribute, $value, $fail) {
+                    $ext = strtolower((string) $value->getClientOriginalExtension());
+                    if (!in_array($ext, ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'], true)) {
+                        $fail('The file field must be a file of type: pdf, doc, docx, jpg, jpeg, png.');
+                    }
+                },
+            ],
         ]);
 
         if (empty($validated['pengajuan_id']) && empty($validated['dokumen_kerjasama_id'])) {
@@ -84,7 +95,11 @@ class LaporanPelaksanaanController extends Controller
 
         if ($request->hasFile('file')) {
             $uploadedFile = $request->file('file');
-            $path = $uploadedFile->store('laporan-pelaksanaan/' . now()->format('Y/m'), 'public');
+            // Simpan pakai ekstensi asli dari nama file klien, bukan tebakan MIME dari isi berkas —
+            // finfo sering mendeteksi .docx sebagai application/zip sehingga store() bawaan salah beri ekstensi .zip.
+            $originalExt = strtolower($uploadedFile->getClientOriginalExtension());
+            $fileName = Str::random(32) . ($originalExt !== '' ? '.' . $originalExt : '');
+            $path = $uploadedFile->storeAs('laporan-pelaksanaan/' . now()->format('Y/m'), $fileName, 'public');
 
             $validated['file_path'] = $path;
             $validated['file_nama'] = $uploadedFile->getClientOriginalName();

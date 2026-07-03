@@ -1,17 +1,22 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   Calendar,
   CheckCircle2,
   Clock,
   ClipboardList,
+  Download,
+  FileText,
   Mail,
   MapPin,
   Phone,
   Users,
 } from 'lucide-react';
 import type { KerjasamaStory, Aktivitas } from './page';
+import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
+import { getLaporanPelaksanaanByPengajuanIds, type LaporanPelaksanaanRecord } from '@/services/laporanPelaksanaanService';
 
 type Jenis = 'MoA' | 'MoU' | 'IA';
 type StatusKerjasama = 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
@@ -58,11 +63,56 @@ const aktivitasIconColor: Record<StatusAktivitas, string> = {
   selesai: 'text-green-500',
 };
 
+function formatLaporanDate(value?: string): string {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return parsed.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 export default function DetailStoryModal({ story, onBack }: DetailStoryModalProps) {
   const totalAktivitas = story.aktivitas.length;
   const selesai = story.aktivitas.filter((a) => a.status === 'selesai').length;
   const berlangsung = story.aktivitas.filter((a) => a.status === 'berlangsung').length;
   const direncanakan = story.aktivitas.filter((a) => a.status === 'direncanakan').length;
+
+  const [showLaporanModal, setShowLaporanModal] = useState(false);
+  const [laporanTerkirim, setLaporanTerkirim] = useState<LaporanPelaksanaanRecord[]>([]);
+  const [laporanLoading, setLaporanLoading] = useState(false);
+
+  useEffect(() => {
+    if (!story.pengajuanId) {
+      setLaporanTerkirim([]);
+      return;
+    }
+
+    let isMounted = true;
+    setLaporanLoading(true);
+    getLaporanPelaksanaanByPengajuanIds([story.pengajuanId])
+      .then((rows) => {
+        if (isMounted) setLaporanTerkirim(rows);
+      })
+      .catch(() => {
+        if (isMounted) setLaporanTerkirim([]);
+      })
+      .finally(() => {
+        if (isMounted) setLaporanLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [story.pengajuanId, showLaporanModal]);
+
+  const laporanData = story.pengajuanId
+    ? {
+        namaMitra: story.namaMitra,
+        noDokumen: story.noDokumen,
+        jenis: story.jenis,
+        ruangLingkup: story.ruangLingkup,
+        pengajuanId: story.pengajuanId,
+      }
+    : null;
 
   return (
     <div className="space-y-5">
@@ -187,9 +237,21 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
 
       {/* Story & Aktivitas */}
       <div>
-        <h3 className="mb-4 text-[13.5px] font-bold text-gray-900">
-          <span className="mr-1">📖</span> Story Kerjasama & Aktivitas
-        </h3>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-[13.5px] font-bold text-gray-900">
+            <span className="mr-1">📖</span> Story Kerjasama & Aktivitas
+          </h3>
+          <button
+            type="button"
+            onClick={() => setShowLaporanModal(true)}
+            disabled={!laporanData}
+            title={!laporanData ? 'Kerja sama ini tidak terhubung ke pengajuan manapun' : undefined}
+            className="relative z-10 inline-flex items-center gap-1.5 rounded-xl border border-[#091222] px-4 py-2.5 text-[10px] font-semibold text-[#091222] shadow-sm transition hover:bg-[#091222]/5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <FileText size={14} />
+            Laporan Pelaksanaan
+          </button>
+        </div>
 
         <div className="space-y-4">
           {story.aktivitas.length === 0 ? (
@@ -235,6 +297,61 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
           )}
         </div>
       </div>
+
+      {/* Laporan Pelaksanaan Terkirim */}
+      <div>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-[13.5px] font-bold text-gray-900">
+            <span className="mr-1">📝</span> Laporan Pelaksanaan Terkirim
+          </h3>
+          <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[10px] font-semibold text-gray-600">
+            {laporanTerkirim.length} laporan
+          </span>
+        </div>
+
+        {laporanLoading ? (
+          <p className="text-[12px] text-gray-500">Memuat laporan...</p>
+        ) : laporanTerkirim.length === 0 ? (
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-10 text-center text-[12px] text-gray-500">
+            Belum ada laporan pelaksanaan yang dikirim untuk kerja sama ini.
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {laporanTerkirim.map((laporan) => (
+              <div key={laporan.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[12px] font-bold text-gray-900">{laporan.judulKerjasama || 'Laporan Pelaksanaan'}</p>
+                    <p className="mt-0.5 text-[10px] text-gray-500">
+                      Dikirim {formatLaporanDate(laporan.dikirimPada)}
+                    </p>
+                  </div>
+                  {laporan.fileUrl && (
+                    <a
+                      href={laporan.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[#091222] px-2.5 py-1.5 text-[10px] font-semibold text-[#091222] hover:bg-[#091222]/5"
+                    >
+                      <Download size={12} />
+                      {laporan.fileNama || 'Unduh File'}
+                    </a>
+                  )}
+                </div>
+                {laporan.kegiatan && (
+                  <p className="mt-2 text-[11px] text-gray-600 whitespace-pre-line">{laporan.kegiatan}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <LaporanPelaksanaanModal
+        isOpen={showLaporanModal}
+        onClose={() => setShowLaporanModal(false)}
+        data={laporanData}
+      />
     </div>
   );
 }

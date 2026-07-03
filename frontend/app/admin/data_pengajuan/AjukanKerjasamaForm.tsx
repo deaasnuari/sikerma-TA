@@ -18,7 +18,7 @@ import {
   type MasterRuangLingkup,
 } from '@/services/masterRuangLingkupService';
 import { getMasterNegara } from '@/services/masterNegaraService';
-import { getMasterMitra, upsertMasterMitraByName, type MasterMitra as MasterMitraRow } from '@/services/masterMitraService';
+import { getMasterMitra, type MasterMitra as MasterMitraRow } from '@/services/masterMitraService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 
 type TemplateDokumenConfig = {
@@ -848,26 +848,10 @@ export default function AdminAjukanKerjasamaForm({
       return;
     }
 
-    // Resolve mitra_id: gunakan selectedMitraId jika ada, otherwise upsert
-    let resolvedMitraId: number | undefined;
-    if (selectedMitraId) {
-      resolvedMitraId = selectedMitraId;
-    } else if (formData.namaMitra.trim()) {
-      try {
-        const mitra = await upsertMasterMitraByName(formData.namaMitra.trim(), {
-          kategoriMitra: formData.jenisMitra.trim() || null,
-          tingkatPerusahaan: formData.tingkatPerusahaan.trim() || null,
-          extra: {
-            telepon_mitra: formData.teleponMitra.trim() || null,
-            alamat: formData.alamatMitra.trim() || null,
-            negara: formData.negara.trim() || null,
-          },
-        });
-        resolvedMitraId = mitra.id;
-      } catch {
-        // Lanjutkan tanpa mitra_id jika upsert gagal
-      }
-    }
+    // Kalau mitra dipilih dari daftar, pakai id-nya. Kalau nama diketik manual dan belum
+    // terdaftar di Data Kemitraan, biarkan sebagai teks bebas saja (mitra_id kosong) —
+    // admin yang akan membuatkan record mitra yang benar di Data Kemitraan nanti.
+    const resolvedMitraId: number | undefined = selectedMitraId ?? undefined;
 
     for (const jenisKerjasama of selectedJenisKerjasama) {
       const submitPayload: Parameters<typeof submitPengajuanApi>[0] = {
@@ -1027,7 +1011,7 @@ export default function AdminAjukanKerjasamaForm({
                       />
                     </div>
                     <ul className="max-h-52 overflow-y-auto py-1">
-                      {filteredMitraOptions.length === 0 && (
+                      {filteredMitraOptions.length === 0 && !mitraSearch.trim() && (
                         <li className="px-4 py-3 text-sm text-slate-400">Tidak ada mitra ditemukan</li>
                       )}
                       {filteredMitraOptions.map((m) => (
@@ -1051,6 +1035,25 @@ export default function AdminAjukanKerjasamaForm({
                           </button>
                         </li>
                       ))}
+                      {mitraSearch.trim() && (
+                        <li className="border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedMitraId(null);
+                              handleChange('namaMitra', mitraSearch.trim());
+                              setMitraOpen(false);
+                              setMitraSearch('');
+                            }}
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-[#173B82] hover:bg-slate-50"
+                          >
+                            <Plus size={14} className="shrink-0" />
+                            <span>
+                              Pakai &quot;<span className="font-semibold">{mitraSearch.trim()}</span>&quot; (mitra belum terdaftar)
+                            </span>
+                          </button>
+                        </li>
+                      )}
                     </ul>
                   </div>
                 )}
