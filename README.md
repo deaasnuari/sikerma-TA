@@ -18,9 +18,10 @@
 ## 🌐 Link Penting
 
 * 🔗 Repository: https://github.com/deaasnuari/sikerma-polibatam
-* 📄 Laporan: https://docs.google.com/document/d/1QS-k2jZFqldICti1kPClhsECcS3cQVT66ZkDTYDFylI/edit?usp=sharing
-* 📄 Dokumen Pendukung: https://drive.google.com/drive/folders/1dFuGZH6FeIqrPVPVeCMZq0mXI50oAI_n?usp=sharing
-* 🎥 YouTube: https://youtu.be/B-XkPpAVX58?si=qERjljIDkDyH-j8F
+* 📄 Laporan: https://docs.google.com/document/d/10Z2K9T9zNSGueUITlnfLLwy200hdOuAk/edit?usp=sharing&ouid=110380600661712431729&rtpof=true&sd=true
+* 📄 Dokumen Pendukung: https://drive.google.com/drive/folders/1YfFfAPJV8UaLK7RMPEd07yB-a6IMiIfl?usp=sharing
+* 🎥 YouTube ATS: https://youtu.be/B-XkPpAVX58?si=qERjljIDkDyH-j8F
+* 🎥 YouTube AAS:https://youtu.be/ypi1s3DsBXc
 * 🎨 Figma: https://www.figma.com/design/bY44yx8V1jxzrcXmjJ40kS/SIKERMA?node-id=0-1&t=4wge3MLy3dB70Eo5-1
 * 🎨 Prototipe: https://www.figma.com/proto/bY44yx8V1jxzrcXmjJ40kS/SIKERMA?node-id=0-1&t=4wge3MLy3dB70Eo5-1
 
