@@ -15,6 +15,10 @@ export interface LaporanPelaksanaanData {
   // muncul di Story Aktivitas (dikelompokkan lewat pengajuanId) atau di data dokumen.
   pengajuanId?: number;
   dokumenKerjasamaId?: number;
+  // Membedakan draft laporan antar aktivitas dalam mitra/dokumen yang sama,
+  // supaya membuat laporan untuk aktivitas baru tidak menimpa/menampilkan
+  // draft & status kirim dari aktivitas sebelumnya.
+  aktivitasKey?: string;
 }
 
 interface Props {
@@ -100,7 +104,7 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
   const initializedKeyRef = useRef<string | null>(null);
 
   function storageKey(d: LaporanPelaksanaanData) {
-    return `laporan-pelaksanaan-${d.noDokumen}-${d.jenis}`;
+    return `laporan-pelaksanaan-${d.noDokumen}-${d.jenis}-${d.aktivitasKey ?? 'default'}`;
   }
 
   function buildDefault(d: LaporanPelaksanaanData): FormState {

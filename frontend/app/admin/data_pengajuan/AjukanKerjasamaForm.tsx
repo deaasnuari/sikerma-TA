@@ -816,6 +816,11 @@ export default function AdminAjukanKerjasamaForm({
     return;
   }
 
+  if ([...dokumen, ...dokumenPendukung].some((item) => !item.dataUrl)) {
+    setSubmitError('File masih diproses, mohon tunggu beberapa detik lalu klik tombol ajukan lagi.');
+    return;
+  }
+
   setSubmitError(null);
   setIsSubmitting(true);
 

@@ -106,7 +106,7 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
   if (!response.ok) {
     if (response.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('user');
-      window.location.replace('/login?reason=deleted');
+      window.location.replace('/login?reason=expired');
       throw new Error('Unauthenticated.');
     }
 

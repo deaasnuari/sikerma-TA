@@ -18,15 +18,11 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-type UploadedDokumenLike = File | { file: File; dataUrl?: string };
+type UploadedDokumenLike = { file: File; dataUrl?: string };
 
 function normalizeUploadedDokumen(items: UploadedDokumenLike[]) {
   return items
     .map((item) => {
-      if (item instanceof File) {
-        return { file: item, dataUrl: '' };
-      }
-
       if (item && 'file' in item && item.file instanceof File) {
         return { file: item.file, dataUrl: item.dataUrl || '' };
       }
@@ -98,8 +94,8 @@ export default function PengajuanBaruEksternalPage() {
         initialMasterRuangLingkupRows={masterRuangLingkupRows}
         initialCustomNegaraOptions={masterNegaraRows.map((item) => item.nama_negara)}
         onCancel={() => router.push('/eksternal/daftar_kerjasama')}
-        onSubmitOverride={async ({ formData, selectedRuangLingkup, dokumen, selectedProdiId }) => {
-          const normalizedDokumen = normalizeUploadedDokumen(dokumen as UploadedDokumenLike[]);
+        onSubmitOverride={async ({ formData, selectedRuangLingkup, dokumenAttachments, selectedProdiId }) => {
+          const normalizedDokumen = normalizeUploadedDokumen(dokumenAttachments);
           const ruangLingkupIds = (selectedRuangLingkup || [])
             .map((name) => masterRuangLingkupRows.find((row) => row.nama_ruang_lingkup === name)?.id)
             .filter((id): id is number => typeof id === 'number');
@@ -108,6 +104,9 @@ export default function PengajuanBaruEksternalPage() {
             judulPengajuan: formData.judulKerjasama,
             namaPengusul: formData.namaKontak || 'Mitra Eksternal',
             namaMitra: formData.namaMitra,
+            mitraKategori: formData.jenisMitra.trim() || undefined,
+            mitraTingkatPerusahaan: formData.tingkatPerusahaan.trim() || undefined,
+            mitraTelepon: formData.teleponMitra.trim() || undefined,
             jenisDokumen: formData.jenisKerjasama,
             namaUnitProdi: formData.unitPelaksana,
             unitProdiId: selectedProdiId,

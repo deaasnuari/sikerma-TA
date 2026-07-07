@@ -104,6 +104,11 @@ export function syncExternalPengajuanWithAdminData(): PengajuanItem[] {
       finalFileName: fromAdmin.finalFileName ?? item.finalFileName,
       finalFilePath: fromAdmin.finalFilePath ?? item.finalFilePath,
       fileAttachments: fromAdmin.fileAttachments?.length ? fromAdmin.fileAttachments : item.fileAttachments,
+      namaUnitProdi: fromAdmin.namaUnitProdi && fromAdmin.namaUnitProdi !== '-' ? fromAdmin.namaUnitProdi : item.namaUnitProdi,
+      namaMitra: fromAdmin.namaMitra ?? item.namaMitra,
+      mitraKategori: fromAdmin.mitraKategori ?? item.mitraKategori,
+      mitraTingkatPerusahaan: fromAdmin.mitraTingkatPerusahaan ?? item.mitraTingkatPerusahaan,
+      mitraTelepon: fromAdmin.mitraTelepon ?? item.mitraTelepon,
     };
 
     const changed =
@@ -116,7 +121,12 @@ export function syncExternalPengajuanWithAdminData(): PengajuanItem[] {
       nextItem.tahapanStage !== item.tahapanStage ||
       nextItem.tahapanGroup !== item.tahapanGroup ||
       nextItem.finalFileName !== item.finalFileName ||
-      nextItem.finalFilePath !== item.finalFilePath;
+      nextItem.finalFilePath !== item.finalFilePath ||
+      nextItem.namaUnitProdi !== item.namaUnitProdi ||
+      nextItem.namaMitra !== item.namaMitra ||
+      nextItem.mitraKategori !== item.mitraKategori ||
+      nextItem.mitraTingkatPerusahaan !== item.mitraTingkatPerusahaan ||
+      nextItem.mitraTelepon !== item.mitraTelepon;
 
     if (changed) {
       hasChanges = true;

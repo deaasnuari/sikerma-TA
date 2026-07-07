@@ -216,6 +216,7 @@ export default function DetailStoryAktivitasPage() {
   const [showForm, setShowForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingRef, setEditingRef] = useState<{ sourcePengajuanId: number; activityId: number } | null>(null);
+  const [activeLaporanKey, setActiveLaporanKey] = useState<string>('default');
   const [laporanDiterima, setLaporanDiterima] = useState<LaporanPelaksanaanRecord[]>([]);
   const [laporanLoading, setLaporanLoading] = useState(false);
 
@@ -341,8 +342,9 @@ export default function DetailStoryAktivitasPage() {
       jenis: storyGroup.jenis,
       ruangLingkup: storyGroup.ruangLingkup,
       pengajuanId: storyGroup.pengajuan[0]?.id,
+      aktivitasKey: activeLaporanKey,
     };
-  }, [storyGroup]);
+  }, [storyGroup, activeLaporanKey]);
 
   const handleCreate = () => {
     if (!storyGroup) {
@@ -351,6 +353,7 @@ export default function DetailStoryAktivitasPage() {
 
     setEditingRef(null);
     setFormState(emptyForm(storyGroup.pengajuan[0]?.id ?? 0));
+    setActiveLaporanKey(`new-${Date.now()}`);
     setShowForm(true);
   };
 
@@ -372,6 +375,7 @@ export default function DetailStoryAktivitasPage() {
       sourcePengajuanId: item.sourcePengajuanId,
     });
 
+    setActiveLaporanKey(String(item.id));
     setShowForm(true);
   };
 

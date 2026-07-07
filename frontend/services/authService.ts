@@ -188,7 +188,7 @@ export async function resetPassword(payload: {
   });
 }
 
-export async function verifyCurrentUser(): Promise<'valid' | 'deleted' | 'offline'> {
+export async function verifyCurrentUser(): Promise<'valid' | 'invalid' | 'offline'> {
   const stored = getStoredUser();
   if (!stored?.accessToken) return 'valid';
 
@@ -199,7 +199,9 @@ export async function verifyCurrentUser(): Promise<'valid' | 'deleted' | 'offlin
     const message = error instanceof Error ? error.message : '';
     const isNetwork = /gagal terhubung|failed to fetch|network|load failed|fetch/i.test(message);
     if (isNetwork) return 'offline';
-    return 'deleted';
+    // Token kedaluwarsa/tidak valid tidak selalu berarti akun dihapus admin,
+    // jadi jangan diklaim sebagai penghapusan akun di sini.
+    return 'invalid';
   }
 }
 

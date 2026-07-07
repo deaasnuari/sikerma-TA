@@ -28,6 +28,7 @@ function LoginPageContent() {
   const [roleError, setRoleError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [accountDeleted, setAccountDeleted] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [fpSuccessDone, setFpSuccessDone] = useState(false);
 
   // Forgot password modal state
@@ -55,8 +56,11 @@ function LoginPageContent() {
   const { login } = useAuth();
 
   useEffect(() => {
-    if (searchParams.get('reason') === 'deleted') {
+    const reason = searchParams.get('reason');
+    if (reason === 'deleted') {
       setAccountDeleted(true);
+    } else if (reason === 'expired') {
+      setSessionExpired(true);
     }
   }, [searchParams]);
 
@@ -64,12 +68,14 @@ function LoginPageContent() {
     setRole(value);
     setRoleError(false);
     setAccountDeleted(false);
+    setSessionExpired(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setAccountDeleted(false);
+    setSessionExpired(false);
 
     if (!role) {
       setRoleError(true);
@@ -264,9 +270,23 @@ function LoginPageContent() {
                   <div className="flex items-start gap-2">
                     <AlertCircle size={17} className="mt-0.5 shrink-0 text-red-600" />
                     <div>
-                      <p className="text-sm font-semibold text-red-700">Akun Anda telah dihapus</p>
+                      <p className="text-sm font-semibold text-red-700">Akun tidak ditemukan</p>
                       <p className="mt-0.5 text-xs text-red-600">
-                        Akun Anda telah dihapus oleh admin. Silakan hubungi administrator jika ini merupakan kesalahan.
+                        Email/username tidak terdaftar atau akun mitra ini telah dihapus oleh admin. Silakan hubungi administrator jika ini merupakan kesalahan.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {sessionExpired && (
+                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={17} className="mt-0.5 shrink-0 text-amber-600" />
+                    <div>
+                      <p className="text-sm font-semibold text-amber-700">Sesi Anda telah berakhir</p>
+                      <p className="mt-0.5 text-xs text-amber-600">
+                        Silakan login kembali untuk melanjutkan.
                       </p>
                     </div>
                   </div>

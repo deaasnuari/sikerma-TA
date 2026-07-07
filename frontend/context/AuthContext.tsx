@@ -28,10 +28,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     verifyCurrentUser().then((status) => {
-      if (status === 'deleted') {
+      if (status === 'invalid') {
         clearStoredUser();
         setUser(null);
-        router.replace('/login?reason=deleted');
+        router.replace('/login?reason=expired');
       } else {
         setUser(storedUser);
       }

@@ -1208,8 +1208,9 @@ function addEditJurusanUnitOption() {
       const updated = await updatePengajuanItemApi(editForm.id, editPayload);
       setPengajuanData((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
       void refreshPengajuanData(true);
-    } catch {
-      setInfoModalMessage('Gagal memperbarui data pengajuan di server.');
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : '';
+      setInfoModalMessage(`Gagal memperbarui data pengajuan di server.${detail ? ` (${detail})` : ''}`);
       return;
     }
 
@@ -1361,8 +1362,9 @@ function addEditJurusanUnitOption() {
       void refreshPengajuanData(true);
       setInfoModalMessage('Data pengajuan berhasil diperbarui.');
       return true;
-    } catch {
-      setInfoModalMessage('Gagal memperbarui data pengajuan di server.');
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : '';
+      setInfoModalMessage(`Gagal memperbarui data pengajuan di server.${detail ? ` (${detail})` : ''}`);
       return false;
     }
   }
@@ -2113,18 +2115,24 @@ function addEditJurusanUnitOption() {
                       ) : (
                         <div className="space-y-2 mb-3">
                           {originalFiles.map((doc, index) => {
-                            const sourceUrl = doc.url || detailFallbackTemplateUrl || `http://localhost:8000/storage/uploads/${doc.name}`;
+                            const sourceUrl = doc.url || detailFallbackTemplateUrl;
                             return (
                               <div key={`orig-${doc.name}-${index}`} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                                 <Paperclip size={14} className="shrink-0 text-slate-500" />
-                                <a
-                                  href={sourceUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="truncate text-[10px] font-medium text-blue-600 underline hover:text-blue-800"
-                                >
-                                  {doc.name}
-                                </a>
+                                {sourceUrl ? (
+                                  <a
+                                    href={sourceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="truncate text-[10px] font-medium text-blue-600 underline hover:text-blue-800"
+                                  >
+                                    {doc.name}
+                                  </a>
+                                ) : (
+                                  <span className="truncate text-[10px] font-medium text-slate-400" title="File tidak ditemukan di server">
+                                    {doc.name} (file tidak tersedia)
+                                  </span>
+                                )}
                               </div>
                             );
                           })}

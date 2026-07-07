@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\DokumenFile;
 use App\Models\DokumenLog;
 use App\Models\DokumenKerjasama;
+use App\Models\Pengajuan;
+use App\Models\PengajuanAktivitas;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -623,6 +625,38 @@ class DokumenKerjasamaController extends Controller
                         'mime_type' => $mimeMap[$ext] ?? null,
                         'diunggah_oleh_user_id' => $request->user()?->id,
                         'diunggah_pada' => now(),
+                    ]);
+                }
+
+                // Catat perpanjangan yang disetujui sebagai aktivitas baru di Story & Aktivitas,
+                // supaya riwayat kerjasama tetap lengkap (bukan cuma penandatanganan awal).
+                if ($dokumen->sumber_pengajuan_id && Schema::hasTable('pengajuan_aktivitas')) {
+                    $namaMitra = $dokumen->mitra?->nama_mitra ?? $dokumen->snap_nama_mitra ?? 'mitra';
+                    $tanggalBerakhirBaru = optional($dokumen_log->tanggal_berakhir_perpanjangan)->format('d-m-Y');
+
+                    PengajuanAktivitas::create([
+                        'pengajuan_id' => $dokumen->sumber_pengajuan_id,
+                        'judul' => 'Perpanjangan Kerja Sama',
+                        'jenis_aktivitas' => 'Lainnya',
+                        'tanggal' => now()->toDateString(),
+                        'jumlah_peserta' => 0,
+                        'deskripsi' => "Kerja sama dengan {$namaMitra} telah disetujui untuk diperpanjang"
+                            . ($tanggalBerakhirBaru ? " hingga {$tanggalBerakhirBaru}." : '.'),
+                        'pic_polibatam' => $request->user()?->name ?: 'Admin SIKERMA',
+                        'pic_mitra' => $namaMitra,
+                        'status' => 'selesai',
+                        'dibuat_oleh_user_id' => $request->user()?->id,
+                    ]);
+                }
+
+                // Sinkronkan tanggal mulai/berakhir ke pengajuan sumbernya juga —
+                // Story & Aktivitas dan halaman lain membaca masa berlaku dari data
+                // pengajuan, bukan dari dokumen_kerjasama, jadi tanpa ini tanggalnya
+                // akan tetap menampilkan periode lama meski perpanjangan sudah disetujui.
+                if ($dokumen->sumber_pengajuan_id) {
+                    Pengajuan::query()->where('id', $dokumen->sumber_pengajuan_id)->update([
+                        'tanggal_mulai' => $dokumen_log->tanggal_mulai_perpanjangan,
+                        'tanggal_berakhir' => $dokumen_log->tanggal_berakhir_perpanjangan,
                     ]);
                 }
             }

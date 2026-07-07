@@ -647,6 +647,15 @@ class PengajuanController extends Controller
                 continue;
             }
 
+            // Lewati lampiran yang belum benar-benar berisi file (mis. FileReader di
+            // browser belum selesai membaca file saat form disubmit) — daripada menyimpan
+            // path palsu berupa nama file saja, yang nanti jadi link 404/403 saat dibuka.
+            $hasUsableSource = trim((string) ($attachment['path'] ?? $attachment['path_file'] ?? '')) !== ''
+                || trim((string) ($attachment['url'] ?? '')) !== '';
+            if (! $hasUsableSource) {
+                continue;
+            }
+
             $path = $this->persistDataUrlAttachment($attachment) ?? $this->normalizeAttachmentPath($attachment);
 
             $payload[] = [
@@ -689,6 +698,12 @@ class PengajuanController extends Controller
 
             $name = trim((string) ($attachment['name'] ?? $attachment['nama_file'] ?? ''));
             if ($name === '') {
+                continue;
+            }
+
+            $hasUsableSource = trim((string) ($attachment['path'] ?? $attachment['path_file'] ?? '')) !== ''
+                || trim((string) ($attachment['url'] ?? '')) !== '';
+            if (! $hasUsableSource) {
                 continue;
             }
 
@@ -1086,6 +1101,14 @@ class PengajuanController extends Controller
                 'message' => 'Gagal menyimpan pengajuan.',
                 'error' => $exception->getMessage(),
             ], 422);
+        }
+
+        if ($this->shouldLoadPengajuanRelations()) {
+            $pengajuan->load([
+                'unitProdi:id,nama,jenis_node,kategori_unit',
+                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,telepon_mitra',
+                'dokumenFiles',
+            ]);
         }
 
         return response([

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { AlertCircle, Building2, ChevronDown, ChevronLeft, ChevronRight, Globe, Pencil, Plus, Search, Trash2, Users, type LucideIcon } from 'lucide-react';
+import { AlertCircle, Building2, ChevronDown, ChevronLeft, ChevronRight, Globe, Pencil, Plus, Search, Trash2, Users, X, type LucideIcon } from 'lucide-react';
 import { getPageNumbers } from '@/lib/pagination';
 import {
   createMasterMitra,
@@ -74,6 +74,26 @@ const kategoriOptions = [
 const tingkatOptions = ['Lokal', 'Nasional', 'Internasional', 'Multinasional'] as const;
 const tingkatFilterOptions = ['Semua Tingkat', ...tingkatOptions] as const;
 
+const DISMISSED_MITRA_ALERTS_KEY = 'admin-mitra-alerts-dismissed';
+
+function normalizeMitraName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getDismissedMitraAlerts(): string[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(DISMISSED_MITRA_ALERTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function MasterMitraPage() {
   const searchParams = useSearchParams();
   const [rows, setRows] = useState<MasterMitra[]>([]);
@@ -91,6 +111,7 @@ export default function MasterMitraPage() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [pengajuanItems, setPengajuanItems] = useState<PengajuanItem[]>([]);
+  const [dismissedMitraAlerts, setDismissedMitraAlerts] = useState<string[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -120,6 +141,23 @@ export default function MasterMitraPage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    setDismissedMitraAlerts(getDismissedMitraAlerts());
+  }, []);
+
+  const dismissMitraAlert = (nama: string) => {
+    const normalized = normalizeMitraName(nama);
+    setDismissedMitraAlerts((prev) => {
+      if (prev.includes(normalized)) {
+        return prev;
+      }
+
+      const next = [...prev, normalized];
+      window.localStorage.setItem(DISMISSED_MITRA_ALERTS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
 
   // Ambil data pengajuan untuk mendeteksi nama mitra yang diketik manual (belum terdaftar
   // atau sudah terdaftar tapi belum ada kode) supaya admin bisa cepat melengkapinya di sini.
@@ -170,12 +208,13 @@ export default function MasterMitraPage() {
   }, [searchParams]);
 
   // Nama mitra dari pengajuan yang perlu ditindaklanjuti: belum terdaftar sama sekali,
-  // atau sudah terdaftar tapi belum diberi kode.
+  // atau sudah terdaftar tapi belum diberi kode. Nama yang sudah di-dismiss (mis. sudah
+  // dihapus dari Data Kemitraan secara sengaja) tidak dimunculkan lagi di sini.
   const mitraAlerts = useMemo(() => {
-    const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
     const masterByName = new Map<string, MasterMitra>();
-    rows.forEach((row) => masterByName.set(normalize(row.nama_mitra), row));
+    rows.forEach((row) => masterByName.set(normalizeMitraName(row.nama_mitra), row));
 
+    const dismissedSet = new Set(dismissedMitraAlerts);
     const seen = new Set<string>();
     const alerts: { nama: string; masterMitra: MasterMitra | null }[] = [];
 
@@ -185,8 +224,8 @@ export default function MasterMitraPage() {
         return;
       }
 
-      const norm = normalize(nama);
-      if (seen.has(norm)) {
+      const norm = normalizeMitraName(nama);
+      if (seen.has(norm) || dismissedSet.has(norm)) {
         return;
       }
       seen.add(norm);
@@ -200,7 +239,7 @@ export default function MasterMitraPage() {
     });
 
     return alerts;
-  }, [rows, pengajuanItems]);
+  }, [rows, pengajuanItems, dismissedMitraAlerts]);
 
   const openCreate = () => {
     setEditingRow(null);
@@ -300,6 +339,9 @@ export default function MasterMitraPage() {
 
     try {
       await deleteMasterMitra(target.id);
+      // Mitra yang sengaja dihapus admin tidak perlu muncul lagi di alert
+      // "perlu ditindaklanjuti" walau masih ada pengajuan yang menyebut namanya.
+      dismissMitraAlert(target.nama_mitra);
     } catch (err) {
       setRows((prev) => [...prev, target]);
       setError(err instanceof Error ? err.message : 'Gagal menghapus master mitra.');
@@ -447,13 +489,23 @@ export default function MasterMitraPage() {
                     {alert.masterMitra ? 'Sudah terdaftar, tapi belum ada kode' : 'Belum terdaftar di Data Kemitraan'}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => (alert.masterMitra ? openEdit(alert.masterMitra) : openCreateWithName(alert.nama))}
-                  className="shrink-0 rounded-md bg-[#1E376C] px-3 py-1.5 text-[10.5px] font-semibold text-white hover:bg-[#2B4A93]"
-                >
-                  {alert.masterMitra ? 'Lengkapi Kode' : 'Tambah Mitra'}
-                </button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => (alert.masterMitra ? openEdit(alert.masterMitra) : openCreateWithName(alert.nama))}
+                    className="rounded-md bg-[#1E376C] px-3 py-1.5 text-[10.5px] font-semibold text-white hover:bg-[#2B4A93]"
+                  >
+                    {alert.masterMitra ? 'Lengkapi Kode' : 'Tambah Mitra'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => dismissMitraAlert(alert.nama)}
+                    title="Abaikan, jangan tampilkan lagi"
+                    className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

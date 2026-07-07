@@ -475,7 +475,7 @@ export default function InternalAjukanKerjasamaForm({
       return;
     }
 
-    if (typeof window === 'undefined') {
+    if (disableDraftPersistence || typeof window === 'undefined') {
       return;
     }
 
@@ -501,7 +501,7 @@ export default function InternalAjukanKerjasamaForm({
     } catch {
       // Abaikan draft rusak agar form tetap bisa dipakai normal.
     }
-  }, [initialData]);
+  }, [initialData, disableDraftPersistence]);
 
   useEffect(() => {
     if (!enableAppearanceEdit || typeof window === 'undefined') {
@@ -800,6 +800,11 @@ export default function InternalAjukanKerjasamaForm({
         setSubmitError('Dokumen pendukung (TOR, KAK, atau Proposal/Laporan Kegiatan) wajib dilampirkan untuk jenis dokumen MoA atau IA.');
         return;
       }
+    }
+
+    if ([...dokumen, ...dokumenPendukung].some((item) => !item.dataUrl)) {
+      setSubmitError('File masih diproses, mohon tunggu beberapa detik lalu klik tombol ajukan lagi.');
+      return;
     }
 
     setSubmitError(null);

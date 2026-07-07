@@ -40,6 +40,8 @@ interface KerjasamaItem {
   namaPengusul: string;
   diajukanPada: string;
   namaMitra: string;
+  jenisMitra: string;
+  tingkatPerusahaan: string;
   jenis: 'MoU' | 'MoA' | 'IA';
   unit: string;
   tanggalMulai: string;
@@ -83,6 +85,8 @@ function mapPengajuanToItem(item: PengajuanItem): KerjasamaItem {
     namaPengusul: item.namaPengusul || '-',
     diajukanPada: toDisplayDate(item.diajukanPada),
     namaMitra: item.namaMitra,
+    jenisMitra: item.mitraKategori || '-',
+    tingkatPerusahaan: item.mitraTingkatPerusahaan || '-',
     jenis,
     unit: item.namaUnitProdi,
     tanggalMulai: toDisplayDate(item.tanggalMulai),
@@ -241,10 +245,12 @@ export default function DaftarKerjasamaEksternalPage() {
   }, [data]);
 
   const handleExport = () => {
-    const headers = ['No. Dokumen', 'Nama Mitra', 'Jenis', 'Unit', 'Tanggal Mulai', 'Berlaku Hingga', 'Tahun', 'Status'];
+    const headers = ['No. Dokumen', 'Nama Mitra', 'Jenis Mitra', 'Tingkat Perusahaan', 'Jenis', 'Jurusan/Unit', 'Tanggal Mulai', 'Berlaku Hingga', 'Tahun', 'Status'];
     const rows = filteredItems.map((item) => [
       item.noDokumen,
       item.namaMitra,
+      item.jenisMitra,
+      item.tingkatPerusahaan,
       item.jenis,
       item.unit,
       item.tanggalMulai,
@@ -409,13 +415,15 @@ export default function DaftarKerjasamaEksternalPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1080px] w-full border-collapse text-[12px]">
+          <table className="min-w-[1280px] w-full border-collapse text-[12px]">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600">
                 <th className="px-4 py-3">No. Dokumen</th>
                 <th className="px-4 py-3">Nama Mitra</th>
+                <th className="px-4 py-3">Jenis Mitra</th>
+                <th className="px-4 py-3">Tingkat Perusahaan</th>
                 <th className="px-4 py-3">Jenis</th>
-                <th className="px-4 py-3">Unit</th>
+                <th className="px-4 py-3">Jurusan/Unit</th>
                 <th className="px-4 py-3">Tanggal Mulai</th>
                 <th className="px-4 py-3">Berlaku Hingga</th>
                 <th className="px-4 py-3">Status</th>
@@ -426,7 +434,7 @@ export default function DaftarKerjasamaEksternalPage() {
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={11} className="px-4 py-8 text-center text-slate-400">
                     Tidak ada data kerjasama.
                   </td>
                 </tr>
@@ -435,6 +443,8 @@ export default function DaftarKerjasamaEksternalPage() {
                   <tr key={item.id} className="border-b border-slate-100 text-slate-700 hover:bg-slate-50/70">
                     <td className="px-4 py-3 font-medium text-slate-800">{item.noDokumen}</td>
                     <td className="px-4 py-3">{item.namaMitra}</td>
+                    <td className="px-4 py-3">{item.jenisMitra}</td>
+                    <td className="px-4 py-3">{item.tingkatPerusahaan}</td>
                     <td className="px-4 py-3">
                       <span className="rounded-md bg-slate-100 px-2 py-1 text-[10.5px] font-semibold text-slate-700">
                         {item.jenis}
@@ -545,6 +555,8 @@ export default function DaftarKerjasamaEksternalPage() {
                 <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">Informasi Umum</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <InfoRow icon={<Building2 size={15} />} label="Mitra" value={detailItem.namaMitra} />
+                  <InfoRow icon={<Tag size={15} />} label="Jenis Mitra" value={detailItem.jenisMitra} />
+                  <InfoRow icon={<Tag size={15} />} label="Tingkat Perusahaan" value={detailItem.tingkatPerusahaan} />
                   <InfoRow icon={<User size={15} />} label="Pengusul" value={detailItem.namaPengusul} />
                   <InfoRow icon={<Tag size={15} />} label="Jurusan / Unit" value={detailItem.unit} />
                   <InfoRow icon={<FileText size={15} />} label="Jenis Dokumen" value={detailItem.jenis} />
@@ -618,21 +630,53 @@ export default function DaftarKerjasamaEksternalPage() {
                     <ShieldCheck size={14} />
                     Dokumen Final (Resmi)
                   </div>
-                  {detailItem.finalFileName && detailItem.finalFilePath ? (
-                    <a
-                      href={detailItem.finalFilePath.startsWith('http') ? detailItem.finalFilePath : `http://127.0.0.1:8000/storage/${detailItem.finalFilePath.replace(/^\/+/, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      download={detailItem.finalFileName}
-                      className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100"
-                    >
-                      <Paperclip size={13} className="shrink-0 text-emerald-600" />
-                      <span className="truncate">{detailItem.finalFileName}</span>
-                      <Download size={13} className="ml-auto shrink-0" />
-                    </a>
-                  ) : (
-                    <p className="text-[10px] text-slate-500">Belum ada dokumen final yang diupload oleh admin.</p>
-                  )}
+                  {(() => {
+                    // Dedup by name, keep the last (terbaru) — sama seperti tampilan admin.
+                    const accFilesMap = new Map<string, { name: string; url: string; isAcc?: boolean }>();
+                    for (const f of detailItem.fileAttachments.filter((f) => f.isAcc)) {
+                      accFilesMap.set(f.name, f);
+                    }
+                    const accFiles = Array.from(accFilesMap.values());
+
+                    if (accFiles.length > 0) {
+                      return (
+                        <div className="space-y-2">
+                          {accFiles.map((file, index) => (
+                            <a
+                              key={`${file.name}-${index}`}
+                              href={file.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={file.name}
+                              className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100"
+                            >
+                              <Paperclip size={13} className="shrink-0 text-emerald-600" />
+                              <span className="truncate">{file.name}</span>
+                              <Download size={13} className="ml-auto shrink-0" />
+                            </a>
+                          ))}
+                        </div>
+                      );
+                    }
+
+                    if (detailItem.finalFileName && detailItem.finalFilePath) {
+                      return (
+                        <a
+                          href={detailItem.finalFilePath.startsWith('http') ? detailItem.finalFilePath : `http://127.0.0.1:8000/storage/${detailItem.finalFilePath.replace(/^\/+/, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={detailItem.finalFileName}
+                          className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100"
+                        >
+                          <Paperclip size={13} className="shrink-0 text-emerald-600" />
+                          <span className="truncate">{detailItem.finalFileName}</span>
+                          <Download size={13} className="ml-auto shrink-0" />
+                        </a>
+                      );
+                    }
+
+                    return <p className="text-[10px] text-slate-500">Belum ada dokumen final yang diupload oleh admin.</p>;
+                  })()}
                 </div>
               </section>
 
