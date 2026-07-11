@@ -22,6 +22,7 @@
 * 📄 Dokumen Pendukung: https://drive.google.com/drive/folders/1YfFfAPJV8UaLK7RMPEd07yB-a6IMiIfl?usp=sharing
 * 🎥 YouTube ATS: https://youtu.be/B-XkPpAVX58?si=qERjljIDkDyH-j8F
 * 🎥 YouTube AAS:https://youtu.be/ypi1s3DsBXc
+* 🎥 YouTube Video Demo AAS:https://youtu.be/316gLBvyuds
 * 🎨 Figma: https://www.figma.com/design/bY44yx8V1jxzrcXmjJ40kS/SIKERMA?node-id=0-1&t=4wge3MLy3dB70Eo5-1
 * 🎨 Prototipe: https://www.figma.com/proto/bY44yx8V1jxzrcXmjJ40kS/SIKERMA?node-id=0-1&t=4wge3MLy3dB70Eo5-1
 
