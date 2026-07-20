@@ -20,6 +20,7 @@
 * 🔗 Repository: https://github.com/deaasnuari/sikerma-polibatam
 * 📄 Laporan: https://docs.google.com/document/d/10Z2K9T9zNSGueUITlnfLLwy200hdOuAk/edit?usp=sharing&ouid=110380600661712431729&rtpof=true&sd=true
 * 📄 Dokumen Pendukung: https://drive.google.com/drive/folders/1YfFfAPJV8UaLK7RMPEd07yB-a6IMiIfl?usp=sharing
+* 📄 Dokumen Pengujian: https://drive.google.com/drive/folders/1_8-acLu2oaxFKkQcgua-LMb25LF-Czv8?hl=ID
 * 🎥 YouTube ATS: https://youtu.be/B-XkPpAVX58?si=qERjljIDkDyH-j8F
 * 🎥 YouTube AAS:https://youtu.be/ypi1s3DsBXc
 * 🎥 YouTube Video Demo AAS:https://youtu.be/316gLBvyuds
