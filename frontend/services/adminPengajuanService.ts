@@ -31,6 +31,8 @@ export interface PengajuanItem {
   judulPengajuan: string;
   deskripsiPengajuan?: string;
   namaPengusul: string;
+  // Nama akun SIKERMA yang benar-benar login & submit (bisa beda dari namaPengusul yang diketik manual).
+  akunPengaju?: string;
   jabatanPengusul?: string;
   diajukanPada: string;
   mitraId?: number;
@@ -224,6 +226,7 @@ type ApiPengajuanRow = {
     | 'final_approved';
   diajukan_pada?: string | null;
   unit_prodi?: { id: number; nama: string } | null;
+  user_pengusul?: { id: number; name: string; username?: string | null } | null;
   mitra?: { id: number; nama_mitra: string; kategori_mitra?: string | null; tingkat_perusahaan?: string | null; negara?: string | null; alamat?: string | null; email_mitra?: string | null; telepon_mitra?: string | null; } | string | null;
   // Legacy schema keys (from recent pulled backend)
   judul?: string;
@@ -462,6 +465,7 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
     judulPengajuan: row.judul_pengajuan || row.judul || '-',
     deskripsiPengajuan: (row.deskripsi_pengajuan ?? row.deskripsi) || undefined,
     namaPengusul: row.nama_pengusul || row.pengusul || '-',
+    akunPengaju: row.user_pengusul?.name || undefined,
     jabatanPengusul: row.jabatan_pengusul || undefined,
     diajukanPada,
     mitraId: row.mitra_id ?? undefined,
@@ -914,15 +918,11 @@ export function getPengajuanData(options?: { excludeAdmin?: boolean }): Pengajua
       return defaultPengajuanData;
     }
 
-    const merged = [
-      ...stored,
-      ...defaultPengajuanData.filter((dummy) => !stored.some((item) => item.id === dummy.id)),
-    ];
     // Jika diminta excludeAdmin, filter data admin
     if (options?.excludeAdmin) {
-      return merged.filter((item) => !item.isFromAdmin);
+      return stored.filter((item) => !item.isFromAdmin);
     }
-    return merged;
+    return stored;
   } catch {
     return defaultPengajuanData;
   }

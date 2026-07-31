@@ -169,6 +169,40 @@ export async function loginUser(payload: LoginPayload): Promise<AuthUser> {
   return matchedDemoUser;
 }
 
+export async function loginWithCampusAccount(payload: {
+  username: string;
+  password: string;
+  role: string;
+}): Promise<AuthUser> {
+  const response = await apiRequest<{ user?: Partial<AuthUser>; data?: Partial<AuthUser> }>('/login-kampus', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  const token =
+    (response as { access_token?: string; token?: string }).access_token ||
+    (response as { access_token?: string; token?: string }).token;
+
+  const userData = response.user || response.data;
+  if (!userData?.email && !userData?.username) {
+    throw new Error('Login akun kampus gagal diproses');
+  }
+
+  return {
+    id: String(userData.id ?? ''),
+    name: userData.name ?? payload.username,
+    username: userData.username,
+    email: userData.email ?? '',
+    institution_name: userData.institution_name,
+    phone: userData.phone,
+    position: userData.position,
+    account_type: userData.account_type,
+    approval_status: userData.approval_status as 'active' | 'pending' | 'rejected' | undefined,
+    accessToken: typeof token === 'string' ? token : undefined,
+    role: normalizeRole(userData.role),
+  };
+}
+
 export async function requestPasswordReset(email: string): Promise<{ message: string }> {
   return apiRequest<{ message: string }>('/forgot-password', {
     method: 'POST',

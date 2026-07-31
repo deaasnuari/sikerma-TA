@@ -927,10 +927,31 @@ class PengajuanController extends Controller
     {
         $query = Pengajuan::query();
 
+        $user = $request->user();
+        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+
+        if ($normalizedRole === 'internal') {
+            $ownerColumn = $this->hasPengajuanColumn('user_pengusul_id')
+                ? 'user_pengusul_id'
+                : ($this->hasPengajuanColumn('dibuat_oleh_user_id') ? 'dibuat_oleh_user_id' : null);
+            $hasDistribusiColumn = $this->hasPengajuanColumn('distribusi_user_ids');
+
+            if ($ownerColumn) {
+                $query->where(function ($builder) use ($ownerColumn, $hasDistribusiColumn, $user) {
+                    $builder->where($ownerColumn, $user->id);
+
+                    if ($hasDistribusiColumn) {
+                        $builder->orWhereJsonContains('distribusi_user_ids', $user->id);
+                    }
+                });
+            }
+        }
+
         if ($this->shouldLoadPengajuanRelations()) {
             $query->with([
                 'unitProdi:id,nama,jenis_node,kategori_unit',
                 'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,telepon_mitra',
+                'userPengusul:id,name,username',
                 'dokumenFiles',
                 'dokumenKerjasama:id,no_permohonan,nomor_dokumen,file',
                 'dokumenKerjasama.dokumenFiles' => function ($q) {
@@ -985,6 +1006,7 @@ class PengajuanController extends Controller
             $pengajuan->load([
                 'unitProdi:id,nama,jenis_node,kategori_unit',
                 'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,telepon_mitra',
+                'userPengusul:id,name,username',
                 'dokumenFiles',
                 'dokumenKerjasama:id,no_permohonan,nomor_dokumen,file',
                 'dokumenKerjasama.dokumenFiles' => function ($q) {

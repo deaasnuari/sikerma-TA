@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'civitas' => [
+        'base_url' => env('CIVITAS_API_BASE_URL'),
+        'api_key' => env('CIVITAS_API_KEY'),
+        'secret' => env('CIVITAS_API_SECRET'),
+    ],
+
 ];

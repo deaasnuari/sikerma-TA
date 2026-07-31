@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Building2,
   CheckCircle2,
+  GraduationCap,
   KeyRound,
   Lock,
   Mail,
@@ -20,8 +21,11 @@ import { useAuth } from '@/context/AuthContext';
 import { requestPasswordReset, resetPassword } from '@/services/authService';
 
 function LoginPageContent() {
+  const [loginMode, setLoginMode] = useState<'local' | 'campus'>('local');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [campusUsername, setCampusUsername] = useState('');
+  const [campusPassword, setCampusPassword] = useState('');
   const [role, setRole] = useState('');
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
@@ -53,7 +57,7 @@ function LoginPageContent() {
   ];
 
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, loginWithCampus } = useAuth();
 
   useEffect(() => {
     const reason = searchParams.get('reason');
@@ -71,6 +75,17 @@ function LoginPageContent() {
     setSessionExpired(false);
   };
 
+  const handleModeChange = (mode: 'local' | 'campus') => {
+    setLoginMode(mode);
+    setError('');
+    setRoleError(false);
+    setAccountDeleted(false);
+    setSessionExpired(false);
+    if (mode === 'campus' && role === 'external') {
+      setRole('');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -85,7 +100,10 @@ function LoginPageContent() {
     setIsLoading(true);
 
     try {
-      const loggedInUser = await login(email, password, role);
+      const loggedInUser =
+        loginMode === 'campus'
+          ? await loginWithCampus(campusUsername, campusPassword, role)
+          : await login(email, password, role);
 
       const roleRouteMap: Record<string, string> = {
         admin: '/admin',
@@ -100,7 +118,7 @@ function LoginPageContent() {
         err instanceof Error ? err.message : 'Login gagal. Silakan coba lagi.';
 
       const isNotFound = /tidak terdaftar/i.test(message);
-      if (role === 'external' && isNotFound) {
+      if (loginMode === 'local' && role === 'external' && isNotFound) {
         setAccountDeleted(true);
       } else {
         setError(message);
@@ -294,21 +312,39 @@ function LoginPageContent() {
               )}
 
               <form onSubmit={handleSubmit} className="space-y-3">
+                {loginMode === 'campus' && (
+                  <div className="rounded-xl border border-blue-100 bg-blue-50/90 p-3 text-xs leading-relaxed text-slate-600">
+                    Login menggunakan akun LDAP/DOKPOL/Learning Polibatam (akun pegawai/dosen). Khusus untuk role Admin, Pimpinan, dan Internal.
+                  </div>
+                )}
+
                 <div>
                   <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">
-                    Email
+                    {loginMode === 'campus' ? 'Username Kampus' : 'Email'}
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Masukkan email terdaftar"
-                      autoComplete="email"
-                      className="input-field h-10 w-full rounded-xl pl-10 pr-4 text-sm"
-                      required
-                    />
+                    {loginMode === 'campus' ? (
+                      <input
+                        type="text"
+                        value={campusUsername}
+                        onChange={(e) => setCampusUsername(e.target.value)}
+                        placeholder="Username Dokpol/Learning"
+                        autoComplete="username"
+                        className="input-field h-10 w-full rounded-xl pl-10 pr-4 text-sm"
+                        required
+                      />
+                    ) : (
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="Masukkan email terdaftar"
+                        autoComplete="email"
+                        className="input-field h-10 w-full rounded-xl pl-10 pr-4 text-sm"
+                        required
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -318,15 +354,27 @@ function LoginPageContent() {
                   </label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 text-slate-400" size={18} />
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Masukkan password akun"
-                      autoComplete="current-password"
-                      className="input-field h-10 w-full rounded-xl pl-10 pr-4 text-sm"
-                      required
-                    />
+                    {loginMode === 'campus' ? (
+                      <input
+                        type="password"
+                        value={campusPassword}
+                        onChange={(e) => setCampusPassword(e.target.value)}
+                        placeholder="Password Dokpol/Learning"
+                        autoComplete="current-password"
+                        className="input-field h-10 w-full rounded-xl pl-10 pr-4 text-sm"
+                        required
+                      />
+                    ) : (
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Masukkan password akun"
+                        autoComplete="current-password"
+                        className="input-field h-10 w-full rounded-xl pl-10 pr-4 text-sm"
+                        required
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -335,7 +383,9 @@ function LoginPageContent() {
                     Role Akses <span className="font-normal text-red-500">*</span>
                   </label>
                   <div className="grid grid-cols-2 gap-2">
-                    {roles.map(({ value, label, icon: Icon, desc }) => {
+                    {roles
+                      .filter((r) => loginMode === 'local' || r.value !== 'external')
+                      .map(({ value, label, icon: Icon, desc }) => {
                       const isSelected = role === value;
                       return (
                         <button
@@ -382,24 +432,56 @@ function LoginPageContent() {
                   {isLoading ? 'Memproses...' : 'Masuk'}
                 </button>
 
-                <div className="flex items-center justify-end pt-1 text-xs text-slate-600">
-                  <button
-                    type="button"
-                    onClick={openForgotPassword}
-                    className="font-semibold text-[#173B82] transition hover:underline"
-                  >
-                    Lupa Password?
-                  </button>
-                </div>
+                {loginMode === 'local' && (
+                  <div className="flex items-center justify-end pt-1 text-xs text-slate-600">
+                    <button
+                      type="button"
+                      onClick={openForgotPassword}
+                      className="font-semibold text-[#173B82] transition hover:underline"
+                    >
+                      Lupa Password?
+                    </button>
+                  </div>
+                )}
                 {fpSuccessDone && (
                   <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                     <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
                     <p className="text-xs text-emerald-700 font-medium">Password berhasil direset. Silakan login dengan password baru Anda.</p>
                   </div>
                 )}
-                <p className="text-[11px] text-slate-500">
-                  Gunakan email yang terdaftar dan password akun Anda untuk masuk.
-                </p>
+
+                {loginMode === 'local' ? (
+                  <>
+                    <div className="flex items-center gap-3 pt-1">
+                      <div className="h-px flex-1 bg-slate-200" />
+                      <span className="text-[11px] font-medium text-slate-400">Atau masuk dengan</span>
+                      <div className="h-px flex-1 bg-slate-200" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleModeChange('campus')}
+                      className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <GraduationCap size={16} className="text-[#173B82]" />
+                      Login dengan Akun Kampus
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleModeChange('local')}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#173B82] hover:underline"
+                  >
+                    <ArrowLeft size={12} />
+                    Kembali ke login Email &amp; Password
+                  </button>
+                )}
+
+                {loginMode === 'local' && (
+                  <p className="text-[11px] text-slate-500">
+                    Gunakan email yang terdaftar dan password akun Anda untuk masuk.
+                  </p>
+                )}
               </form>
 
               <div className="mt-5 border-t border-slate-200 pt-3 text-center text-sm text-slate-600 md:hidden">

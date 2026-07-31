@@ -55,8 +55,8 @@ class PengajuanTest extends TestCase
     public function test_daftar_pengajuan_berhasil(): void
     {
         $user = $this->internal();
-        $this->buatPengajuan();
-        $this->buatPengajuan(['judul_pengajuan' => 'Kerja Sama Lain']);
+        $this->buatPengajuan(['user_pengusul_id' => $user->id]);
+        $this->buatPengajuan(['judul_pengajuan' => 'Kerja Sama Lain', 'user_pengusul_id' => $user->id]);
 
         $response = $this->actingAs($user)->getJson('/api/pengajuan');
 
@@ -95,8 +95,8 @@ class PengajuanTest extends TestCase
     public function test_cari_pengajuan_berhasil(): void
     {
         $user = $this->internal();
-        $this->buatPengajuan(['judul_pengajuan' => 'Kerja Sama Pendidikan']);
-        $this->buatPengajuan(['judul_pengajuan' => 'Proyek Riset Bersama']);
+        $this->buatPengajuan(['judul_pengajuan' => 'Kerja Sama Pendidikan', 'user_pengusul_id' => $user->id]);
+        $this->buatPengajuan(['judul_pengajuan' => 'Proyek Riset Bersama', 'user_pengusul_id' => $user->id]);
 
         $response = $this->actingAs($user)->getJson('/api/pengajuan?search=pendidikan');
 

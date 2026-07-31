@@ -1990,6 +1990,9 @@ function addEditJurusanUnitOption() {
               <div>
                 <h3 className="text-[17px] font-bold text-gray-900">Detail Pengajuan</h3>
                 <p className="text-[10px] text-gray-600">ID: {detailItem.id}</p>
+                {detailItem.akunPengaju && (
+                  <p className="text-[10px] text-gray-500 mt-0.5">Akun pengaju: <span className="font-semibold text-gray-700">{detailItem.akunPengaju}</span></p>
+                )}
               </div>
               <button type="button" onClick={() => { setDetailItem(null); }} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />

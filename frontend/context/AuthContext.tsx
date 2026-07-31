@@ -2,13 +2,22 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { clearStoredUser, getStoredUser, loginUser, logoutUser, persistUser, verifyCurrentUser } from '@/services/authService';
+import {
+  clearStoredUser,
+  getStoredUser,
+  loginUser,
+  loginWithCampusAccount,
+  logoutUser,
+  persistUser,
+  verifyCurrentUser,
+} from '@/services/authService';
 import type { AuthUser } from '@/types/auth';
 
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   login: (email: string, password: string, role?: string) => Promise<AuthUser>;
+  loginWithCampus: (username: string, password: string, role: string) => Promise<AuthUser>;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -52,6 +61,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const loginWithCampus = async (username: string, password: string, role: string) => {
+    setIsLoading(true);
+    try {
+      const loggedInUser = await loginWithCampusAccount({ username, password, role });
+      setUser(loggedInUser);
+      persistUser(loggedInUser);
+      return loggedInUser;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = () => {
     void logoutUser();
     setUser(null);
@@ -59,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, isLoading, login, loginWithCampus, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

@@ -76,6 +76,18 @@ class DokumenKerjasamaController extends Controller
             },
         ]);
 
+        $user = $request->user();
+        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+
+        if ($normalizedRole === 'internal') {
+            $query->whereHas('pengajuan', function ($builder) use ($user) {
+                $builder->where(function ($inner) use ($user) {
+                    $inner->where('user_pengusul_id', $user->id)
+                        ->orWhereJsonContains('distribusi_user_ids', $user->id);
+                });
+            });
+        }
+
         if ($request->filled('status_siklus')) {
             $query->where('status_siklus', $request->string('status_siklus')->toString());
         }

@@ -6,6 +6,7 @@ use App\Mail\SendResetPasswordMail;
 use App\Models\MasterMitra;
 use App\Models\OtpCode;
 use App\Models\User;
+use App\Services\CivitasAuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 class AuthController extends Controller
 {
@@ -147,6 +149,65 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken('web-login')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Login berhasil.',
+            'token_type' => 'Bearer',
+            'access_token' => $token,
+            'user' => $this->toUserPayload($user),
+        ]);
+    }
+
+    public function loginLdap(Request $request, CivitasAuthService $civitasAuth): JsonResponse
+    {
+        $validated = $request->validate([
+            'username' => ['required', 'string'],
+            'password' => ['required', 'string'],
+            'role' => ['required', 'string', Rule::in(['admin', 'pimpinan', 'internal'])],
+        ]);
+
+        try {
+            $civitasData = $civitasAuth->loginStaff($validated['username'], $validated['password']);
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages([
+                'password' => [$e->getMessage()],
+            ]);
+        }
+
+        $email = Str::lower(trim((string) ($civitasData['EMAIL'] ?? '')));
+        $nik = $civitasData['NIK'] ?? null;
+
+        $user = null;
+        if ($nik) {
+            $user = User::query()->where('nik', $nik)->first();
+        }
+        if (! $user && $email) {
+            $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+        }
+
+        if (! $user) {
+            $user = User::create([
+                'name' => $civitasData['NAMA'] ?? $validated['username'],
+                'username' => $validated['username'],
+                'email' => $email ?: null,
+                'nik' => $nik,
+                'nip' => $civitasData['NIP'] ?? null,
+                'unit_kerja' => $civitasData['UNIT_KERJA'] ?? null,
+                'position' => $civitasData['STAFF'] ?? null,
+                'role' => 'internal',
+                'approval_status' => 'active',
+                'auth_provider' => 'ldap',
+                'password' => Hash::make(Str::random(40)),
+            ]);
+        }
+
+        if ($validated['role'] !== $user->role) {
+            throw ValidationException::withMessages([
+                'role' => ['Akun kampus Anda belum memiliki akses untuk role yang dipilih. Hubungi admin Sikerma jika ini seharusnya sudah diberikan.'],
+            ]);
+        }
+
+        $token = $user->createToken('web-login-ldap')->plainTextToken;
 
         return response()->json([
             'message' => 'Login berhasil.',
