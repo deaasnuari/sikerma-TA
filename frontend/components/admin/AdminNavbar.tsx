@@ -16,10 +16,11 @@ import type { AdminNotification } from '@/types/admin';
 
 interface AdminNavbarProps {
   toggleSidebar?: () => void;
+  isSidebarOpen?: boolean;
   isPublic?: boolean;
 }
 
-export default function AdminNavbar({ toggleSidebar, isPublic = false }: AdminNavbarProps) {
+export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPublic = false }: AdminNavbarProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showPublicMenu, setShowPublicMenu] = useState(false);
@@ -133,6 +134,17 @@ export default function AdminNavbar({ toggleSidebar, isPublic = false }: AdminNa
     >
       <div className="px-3 py-1 flex justify-between items-center">
         <div className="flex items-center gap-2 flex-1">
+          {!isPublic && toggleSidebar && (
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="flex-shrink-0 inline-flex items-center justify-center rounded-lg bg-[#091222] p-2 text-white shadow-sm transition hover:bg-[#173B82] md:hidden"
+              aria-label={isSidebarOpen ? 'Tutup menu' : 'Buka menu'}
+              title={isSidebarOpen ? 'Tutup menu' : 'Buka menu'}
+            >
+              {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
+          )}
           <div className="flex items-center gap-2 min-w-0">
             <div className="flex items-center justify-center flex-shrink-0">
               <Image

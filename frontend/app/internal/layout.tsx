@@ -74,7 +74,7 @@ export default function InternalLayout({ children }: { children: React.ReactNode
       <div className="flex h-screen flex-col bg-gray-100">
         <div className="sticky top-0 z-50 px-1 pt-1">
           <div style={fixedChromeStyle}>
-            <AdminNavbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
+            <AdminNavbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} isSidebarOpen={sidebarOpen} />
           </div>
         </div>
 

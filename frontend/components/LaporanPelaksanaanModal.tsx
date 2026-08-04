@@ -315,21 +315,17 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
 .title{text-align:center;font-weight:700;font-size:15px;margin:4px 0;}
 .center{text-align:center;}
 .label{width:260px;font-weight:700;}
-.no{width:30px;text-align:center;}
-.header{display:flex;justify-content:space-between;align-items:center;border:1px solid #cbd5e1;padding:10px 14px;background:#f8fbff;margin-bottom:10px;}
-.mitra-wrap{display:flex;align-items:center;gap:10px;}
-.mitra-box{width:56px;height:56px;border:1px dashed #94a3b8;text-align:center;line-height:56px;font-size:10px;font-weight:700;color:#475569;background:#fff;}
-.nomor-table td{border:none;text-align:center;padding:2px;}
+.colon{width:16px;text-align:center;}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}
+.mitra-box{width:64px;height:64px;border:1px dashed #94a3b8;text-align:center;line-height:64px;font-size:10px;font-weight:700;color:#475569;background:#fff;}
+.nomor{text-align:center;margin:2px 0;}
 .intro{margin:14px 0;text-align:justify;}
 .sign-table td{text-align:center;vertical-align:top;padding:10px 8px;}
 </style></head>
 <body>
 <div class='header'>
-  <div class='mitra-wrap'>
-    <div class='mitra-box'>LOGO MITRA</div>
-    <div><div style='font-weight:700;color:#1F429A;'>${escapeHtml(data.namaMitra)}</div><div style='font-size:10px;color:#64748b;'>Area logo mitra kerja sama</div></div>
-  </div>
   <div>${logoHtml}</div>
+  <div class='mitra-box'>LOGO MITRA</div>
 </div>
 
 <div class='title'>IMPLEMENTATION ARRANGEMENT</div>
@@ -338,28 +334,24 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
 <div class='center'>DENGAN</div>
 <div class='center' style='font-weight:700;'>${escapeHtml(mitraKerjasama)}</div>
 
-<table class='nomor-table'>
-  <tr>
-    <td style='width:50%'>NOMOR: ${escapeHtml(nomorIAPolibatam)}</td>
-    <td style='width:50%'>NOMOR: ${escapeHtml(nomorIAMitra || '..............................')}</td>
-  </tr>
-</table>
+<p class='nomor'>NOMOR: ${escapeHtml(nomorIAPolibatam)}</p>
+<p class='nomor'>NOMOR: ${escapeHtml(nomorIAMitra || '..............................')}</p>
 
 <p class='intro'>Dokumen ini disusun sebagai bentuk pelaksanaan dan implementasi atas Nota Kesepahaman (MoU) dan/atau Memorandum of Agreement (MOA) yang telah ditandatangani antara Politeknik Negeri Batam dengan ${escapeHtml(mitraKerjasama)}, PARA PIHAK sepakat untuk melaksanakan kerja sama sebagai berikut:</p>
 
 <table>
-  <tr><td class='no'>1</td><td class='label'>${bilingual('Judul Kegiatan/Project/Penelitian/Pengabdian', 'Project / Activity Title')}</td><td>${escapeHtml(judulKerjasama)}</td></tr>
-  <tr><td class='no'>2</td><td class='label'>${bilingual('Dasar Referensi Pelaksanaan (MOU/MOA)', 'Legal Basis of Implementation')}</td><td>${escapeHtml(referensiKerjasama)}</td></tr>
-  <tr><td class='no'>3</td><td class='label'>Nama Mitra/Partner</td><td>${escapeHtml(mitraKerjasama)}</td></tr>
-  <tr><td class='no'>4</td><td class='label'>${bilingual('Ruang Lingkup', 'Scope of Activities')}</td><td>${multi(kegiatanText)}</td></tr>
-  <tr><td class='no'>5</td><td class='label'>${bilingual('Maksud dan Tujuan', 'Purpose and Objective')}</td><td>${multi(maksudTujuanText)}</td></tr>
-  <tr><td class='no'>6</td><td class='label'>${bilingual('Peran dan Tanggung Jawab Para Pihak', 'Roles and Responsibilities of the Parties')}</td><td>${multi(capaianText)}</td></tr>
-  <tr><td class='no'>7</td><td class='label'>Output/outcome</td><td>${multi(hasilText)}</td></tr>
-  <tr><td class='no'>8</td><td class='label'>${bilingual('Timeline/Waktu Pelaksanaan', 'Date and Time of Implementation')}</td><td>${multi(timelineText)}</td></tr>
-  <tr><td class='no'>9</td><td class='label'>${bilingual('Skema Pembiayaan', 'Financing Scheme')}</td><td>${multi(skemaPembiayaanText)}</td></tr>
-  <tr><td class='no'>10</td><td class='label'>${bilingual('Jumlah Peserta', 'Number of Participants')}</td><td>${escapeHtml(jumlahPeserta)}</td></tr>
-  <tr><td class='no'>11</td><td class='label'>${bilingual('Ringkasan/Catatan', 'Meeting Summary and Notes')}</td><td>${multi(ringkasanCatatanText)}</td></tr>
-  <tr><td class='no'>12</td><td class='label'>${bilingual('Lampiran IA dalam bentuk link', 'Annexes (Accessible via Link)')}</td><td>${escapeHtml(tautanDokumentasi)}</td></tr>
+  <tr><td class='label'>${bilingual('Judul Kegiatan/Project/Penelitian/Pengabdian', 'Project / Activity Title')}</td><td class='colon'>:</td><td>${escapeHtml(judulKerjasama)}</td></tr>
+  <tr><td class='label'>${bilingual('Dasar Referensi Pelaksanaan (MOU/MOA)', 'Legal Basis of Implementation')}</td><td class='colon'>:</td><td>${escapeHtml(referensiKerjasama)}</td></tr>
+  <tr><td class='label'>Nama Mitra/Partner</td><td class='colon'>:</td><td>${escapeHtml(mitraKerjasama)}</td></tr>
+  <tr><td class='label'>${bilingual('Ruang Lingkup', 'Scope of Activities')}</td><td class='colon'>:</td><td>${multi(kegiatanText)}</td></tr>
+  <tr><td class='label'>${bilingual('Maksud dan Tujuan', 'Purpose and Objective')}</td><td class='colon'>:</td><td>${multi(maksudTujuanText)}</td></tr>
+  <tr><td class='label'>${bilingual('Peran dan Tanggung Jawab Para Pihak', 'Roles and Responsibilities of the Parties')}</td><td class='colon'>:</td><td>${multi(capaianText)}</td></tr>
+  <tr><td class='label'>Output/outcome</td><td class='colon'>:</td><td>${multi(hasilText)}</td></tr>
+  <tr><td class='label'>${bilingual('Timeline/Waktu Pelaksanaan', 'Date and Time of Implementation')}</td><td class='colon'>:</td><td>${multi(timelineText)}</td></tr>
+  <tr><td class='label'>${bilingual('Skema Pembiayaan', 'Financing Scheme')}</td><td class='colon'>:</td><td>${multi(skemaPembiayaanText)}</td></tr>
+  <tr><td class='label'>${bilingual('Jumlah Peserta', 'Number of Participants')}</td><td class='colon'>:</td><td>${escapeHtml(jumlahPeserta)}</td></tr>
+  <tr><td class='label'>${bilingual('Ringkasan/Catatan', 'Meeting Summary and Notes')}</td><td class='colon'>:</td><td>${multi(ringkasanCatatanText)}</td></tr>
+  <tr><td class='label'>${bilingual('Lampiran IA dalam bentuk link', 'Annexes (Accessible via Link)')}</td><td class='colon'>:</td><td>${escapeHtml(tautanDokumentasi)}</td></tr>
 </table>
 
 <br/>
