@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
 import {
+  deleteLaporanPelaksanaan,
   getLaporanPelaksanaanByPengajuanIds,
   type LaporanPelaksanaanRecord,
 } from '@/services/laporanPelaksanaanService';
@@ -219,6 +220,7 @@ export default function DetailStoryAktivitasPage() {
   const [activeLaporanKey, setActiveLaporanKey] = useState<string>('default');
   const [laporanDiterima, setLaporanDiterima] = useState<LaporanPelaksanaanRecord[]>([]);
   const [laporanLoading, setLaporanLoading] = useState(false);
+  const [deletingLaporanId, setDeletingLaporanId] = useState<number | null>(null);
 
   const storyGroup = useMemo(
     () => findStoryAktivitasGroupByRouteParam(sourceData, routeId, hiddenStoryIds),
@@ -392,6 +394,23 @@ export default function DetailStoryAktivitasPage() {
       window.alert(error instanceof Error ? error.message : 'Gagal menghapus aktivitas.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteLaporan = async (laporan: LaporanPelaksanaanRecord) => {
+    const confirmed = window.confirm('Hapus laporan pelaksanaan ini?');
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingLaporanId(laporan.id);
+    try {
+      await deleteLaporanPelaksanaan(laporan.id);
+      setLaporanDiterima((prev) => prev.filter((item) => item.id !== laporan.id));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Gagal menghapus laporan pelaksanaan.');
+    } finally {
+      setDeletingLaporanId(null);
     }
   };
 
@@ -596,17 +615,29 @@ export default function DetailStoryAktivitasPage() {
                       {laporan.dikirimOlehRole ? ` (${laporan.dikirimOlehRole})` : ''} · {formatDate(laporan.dikirimPada)}
                     </p>
                   </div>
-                  {laporan.fileUrl && (
-                    <a
-                      href={laporan.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[#1E376C] px-2.5 py-1.5 text-[10px] font-semibold text-[#1E376C] hover:bg-[#EEF2FF]"
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    {laporan.fileUrl && (
+                      <a
+                        href={laporan.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#1E376C] px-2.5 py-1.5 text-[10px] font-semibold text-[#1E376C] hover:bg-[#EEF2FF]"
+                      >
+                        <Download size={12} />
+                        {laporan.fileNama || 'Unduh File'}
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteLaporan(laporan)}
+                      disabled={deletingLaporanId === laporan.id}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-2.5 py-1.5 text-[10px] font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Hapus laporan"
                     >
-                      <Download size={12} />
-                      {laporan.fileNama || 'Unduh File'}
-                    </a>
-                  )}
+                      <Trash2 size={12} />
+                      {deletingLaporanId === laporan.id ? 'Menghapus...' : 'Hapus'}
+                    </button>
+                  </div>
                 </div>
 
                 {laporan.kegiatan && (

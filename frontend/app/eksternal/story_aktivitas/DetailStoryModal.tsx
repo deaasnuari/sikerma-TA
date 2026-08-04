@@ -81,14 +81,14 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
   const [laporanLoading, setLaporanLoading] = useState(false);
 
   useEffect(() => {
-    if (!story.pengajuanId) {
+    if (story.pengajuanIds.length === 0) {
       setLaporanTerkirim([]);
       return;
     }
 
     let isMounted = true;
     setLaporanLoading(true);
-    getLaporanPelaksanaanByPengajuanIds([story.pengajuanId])
+    getLaporanPelaksanaanByPengajuanIds(story.pengajuanIds)
       .then((rows) => {
         if (isMounted) setLaporanTerkirim(rows);
       })
@@ -102,7 +102,7 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
     return () => {
       isMounted = false;
     };
-  }, [story.pengajuanId, showLaporanModal]);
+  }, [story.pengajuanIds, showLaporanModal]);
 
   const laporanData = story.pengajuanId
     ? {

@@ -1,5 +1,5 @@
 <?php
-
+//fungsi untuk login akun LDAP/DOKPOL/Learning Polibatam lewat Civitas API (UPA TIK)
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;

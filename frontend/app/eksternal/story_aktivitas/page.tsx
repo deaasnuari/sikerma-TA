@@ -60,6 +60,7 @@ export interface KerjasamaStory {
   aktivitas: Aktivitas[];
   totalPengajuan: number;
   pengajuanId?: number;
+  pengajuanIds: number[];
 }
 
 // ── Helpers ────────────────────────────────────────────
@@ -119,6 +120,7 @@ function mapStoryGroupToStory(group: StoryAktivitasGroup): KerjasamaStory {
     })),
     totalPengajuan: group.totalPengajuan,
     pengajuanId: group.pengajuan[0]?.id,
+    pengajuanIds: group.pengajuan.map((p) => p.id),
   };
 }
 
