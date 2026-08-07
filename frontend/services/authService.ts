@@ -71,11 +71,10 @@ export async function registerUser(payload: RegisterPayload): Promise<AuthUser> 
 
 export async function loginUser(payload: LoginPayload): Promise<AuthUser> {
   const identifier = payload.email.trim().toLowerCase();
-  const selectedRole = normalizeRole(payload.role);
+  // Role tidak lagi dipilih manual — server yang menentukan dari akun yang cocok.
   const apiPayload = {
-    ...payload,
     email: identifier,
-    role: selectedRole === 'user' ? payload.role : selectedRole,
+    password: payload.password,
   };
 
   try {
@@ -158,10 +157,9 @@ export async function loginUser(payload: LoginPayload): Promise<AuthUser> {
     throw new Error('Email atau username tidak terdaftar.');
   }
 
-  if (selectedRole !== 'user' && matchedDemoUser.role !== selectedRole) {
-    throw new Error('Role yang dipilih tidak sesuai dengan akun ini.');
-  }
-
+  // Akun demo ini bukan hasil sinkron LDAP sungguhan (cuma dipakai saat backend offline),
+  // jadi tetap boleh login manual apapun role-nya — konsisten dengan akun lama/testing
+  // yang auth_provider-nya bukan 'ldap' di backend.
   if (payload.password !== 'Sikerma#2026') {
     throw new Error('Password yang Anda masukkan salah.');
   }
@@ -172,7 +170,6 @@ export async function loginUser(payload: LoginPayload): Promise<AuthUser> {
 export async function loginWithCampusAccount(payload: {
   username: string;
   password: string;
-  role: string;
 }): Promise<AuthUser> {
   const response = await apiRequest<{ user?: Partial<AuthUser>; data?: Partial<AuthUser> }>('/login-kampus', {
     method: 'POST',

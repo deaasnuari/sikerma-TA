@@ -366,10 +366,11 @@ class PengajuanWorkflowTest extends TestCase
     {
         Mail::fake();
 
-        // User yang ingin reset password
+        // User yang ingin reset password (pakai role yang login lokal, bukan lewat LDAP)
         $user = User::factory()->create([
             'email'    => 'resetme@test.com',
             'password' => Hash::make('OldPassword@123'),
+            'role'     => 'external',
         ]);
 
         // 1. Request reset password

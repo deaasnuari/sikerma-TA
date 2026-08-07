@@ -16,8 +16,8 @@ import type { AuthUser } from '@/types/auth';
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
-  login: (email: string, password: string, role?: string) => Promise<AuthUser>;
-  loginWithCampus: (username: string, password: string, role: string) => Promise<AuthUser>;
+  login: (email: string, password: string) => Promise<AuthUser>;
+  loginWithCampus: (username: string, password: string) => Promise<AuthUser>;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -49,10 +49,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const login = async (email: string, password: string, role?: string) => {
+  const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      const loggedInUser = await loginUser({ email, password, role });
+      const loggedInUser = await loginUser({ email, password });
       setUser(loggedInUser);
       persistUser(loggedInUser);
       return loggedInUser;
@@ -61,10 +61,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loginWithCampus = async (username: string, password: string, role: string) => {
+  const loginWithCampus = async (username: string, password: string) => {
     setIsLoading(true);
     try {
-      const loggedInUser = await loginWithCampusAccount({ username, password, role });
+      const loggedInUser = await loginWithCampusAccount({ username, password });
       setUser(loggedInUser);
       persistUser(loggedInUser);
       return loggedInUser;

@@ -132,12 +132,12 @@ class AuthTest extends TestCase
         $response = $this->postJson('/api/login', [
             'email'    => 'budi@example.com',
             'password' => 'Password@123',
-            'role'     => 'external',
         ]);
 
         $response->assertStatus(200)
             ->assertJsonStructure(['access_token', 'token_type', 'user'])
-            ->assertJsonPath('token_type', 'Bearer');
+            ->assertJsonPath('token_type', 'Bearer')
+            ->assertJsonPath('user.role', 'external');
     }
 
     public function test_login_berhasil_menggunakan_username(): void
@@ -147,11 +147,22 @@ class AuthTest extends TestCase
         $response = $this->postJson('/api/login', [
             'email'    => 'budisantoso',
             'password' => 'Password@123',
-            'role'     => 'external',
         ]);
 
         $response->assertStatus(200)
             ->assertJsonStructure(['access_token']);
+    }
+
+    public function test_login_role_diambil_otomatis_dari_akun_bukan_dari_request(): void
+    {
+        $this->buatUserLogin(['role' => 'admin']);
+
+        $response = $this->postJson('/api/login', [
+            'email'    => 'budi@example.com',
+            'password' => 'Password@123',
+        ]);
+
+        $response->assertStatus(200)->assertJsonPath('user.role', 'admin');
     }
 
     public function test_login_gagal_jika_password_salah(): void
@@ -161,7 +172,6 @@ class AuthTest extends TestCase
         $response = $this->postJson('/api/login', [
             'email'    => 'budi@example.com',
             'password' => 'PasswordSalah!99',
-            'role'     => 'external',
         ]);
 
         $response->assertStatus(422)
@@ -173,37 +183,165 @@ class AuthTest extends TestCase
         $response = $this->postJson('/api/login', [
             'email'    => 'tidakada@example.com',
             'password' => 'Password@123',
-            'role'     => 'external',
         ]);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['email']);
     }
 
-    public function test_login_gagal_jika_role_tidak_sesuai(): void
+    public function test_login_akun_internal_hasil_ldap_ditolak_harus_pakai_ldap(): void
     {
-        $this->buatUserLogin(['role' => 'internal']);
+        $this->buatUserLogin(['role' => 'internal', 'auth_provider' => 'ldap']);
 
         $response = $this->postJson('/api/login', [
             'email'    => 'budi@example.com',
             'password' => 'Password@123',
-            'role'     => 'external',
         ]);
 
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['role']);
+        $response->assertStatus(422)->assertJsonValidationErrors(['email']);
     }
 
-    public function test_login_gagal_jika_role_tidak_valid(): void
+    public function test_login_akun_pimpinan_hasil_ldap_ditolak_harus_pakai_ldap(): void
     {
+        $this->buatUserLogin(['role' => 'pimpinan', 'auth_provider' => 'ldap']);
+
         $response = $this->postJson('/api/login', [
             'email'    => 'budi@example.com',
             'password' => 'Password@123',
-            'role'     => 'superadmin',
         ]);
 
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['role']);
+        $response->assertStatus(422)->assertJsonValidationErrors(['email']);
+    }
+
+    public function test_login_akun_internal_lama_non_ldap_tetap_bisa_login_manual(): void
+    {
+        // Akun demo/testing lama (auth_provider bukan 'ldap') tetap boleh login manual
+        // walau role-nya internal, supaya akun-akun testing yang sudah ada tidak hilang aksesnya.
+        $this->buatUserLogin(['role' => 'internal', 'auth_provider' => 'local']);
+
+        $response = $this->postJson('/api/login', [
+            'email'    => 'budi@example.com',
+            'password' => 'Password@123',
+        ]);
+
+        $response->assertStatus(200)->assertJsonPath('user.role', 'internal');
+    }
+
+    public function test_login_akun_pimpinan_lama_non_ldap_tetap_bisa_login_manual(): void
+    {
+        $this->buatUserLogin(['role' => 'pimpinan', 'auth_provider' => 'local']);
+
+        $response = $this->postJson('/api/login', [
+            'email'    => 'budi@example.com',
+            'password' => 'Password@123',
+        ]);
+
+        $response->assertStatus(200)->assertJsonPath('user.role', 'pimpinan');
+    }
+
+    // -------------------------------------------------------------------------
+    // Login LDAP (akun kampus)
+    // -------------------------------------------------------------------------
+
+    private function mockCivitas(array $data): void
+    {
+        $this->mock(\App\Services\CivitasAuthService::class, function ($mock) use ($data) {
+            $mock->shouldReceive('loginStaff')->once()->andReturn($data);
+        });
+    }
+
+    public function test_login_ldap_berhasil_untuk_akun_yang_sudah_terdaftar(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'internal',
+            'nik'  => '1234567890',
+            'email' => 'dosen@polibatam.ac.id',
+        ]);
+
+        $this->mockCivitas([
+            'NIK'   => '1234567890',
+            'NAMA'  => $user->name,
+            'EMAIL' => 'dosen@polibatam.ac.id',
+        ]);
+
+        $response = $this->postJson('/api/login-kampus', [
+            'username' => 'dosen.polibatam',
+            'password' => 'PasswordKampus123',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('user.id', (string) $user->id)
+            ->assertJsonPath('user.role', 'internal');
+    }
+
+    public function test_login_ldap_membuat_akun_baru_jika_belum_terdaftar(): void
+    {
+        $this->mockCivitas([
+            'NIK'        => '9988776655',
+            'NAMA'       => 'Dosen Baru',
+            'EMAIL'      => 'dosenbaru@polibatam.ac.id',
+            'NIP'        => '198001012020',
+            'UNIT_KERJA' => 'Teknik Informatika',
+            'STAFF'      => 'Dosen',
+        ]);
+
+        $response = $this->postJson('/api/login-kampus', [
+            'username' => 'dosenbaru',
+            'password' => 'PasswordKampus123',
+        ]);
+
+        $response->assertStatus(200)->assertJsonPath('user.role', 'internal');
+
+        $this->assertDatabaseHas('users', [
+            'nik'  => '9988776655',
+            'role' => 'internal',
+            'auth_provider' => 'ldap',
+        ]);
+    }
+
+    public function test_login_ldap_gagal_jika_kredensial_kampus_salah(): void
+    {
+        $this->mock(\App\Services\CivitasAuthService::class, function ($mock) {
+            $mock->shouldReceive('loginStaff')
+                ->once()
+                ->andThrow(new \RuntimeException('Username atau password kampus salah.'));
+        });
+
+        $response = $this->postJson('/api/login-kampus', [
+            'username' => 'dosen.polibatam',
+            'password' => 'salah',
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['password']);
+    }
+
+    public function test_login_ldap_ditolak_untuk_akun_admin(): void
+    {
+        User::factory()->create([
+            'role'  => 'admin',
+            'nik'   => '1234567890',
+            'email' => 'admin-civitas@polibatam.ac.id',
+        ]);
+
+        $this->mockCivitas([
+            'NIK'   => '1234567890',
+            'NAMA'  => 'Admin Civitas',
+            'EMAIL' => 'admin-civitas@polibatam.ac.id',
+        ]);
+
+        $response = $this->postJson('/api/login-kampus', [
+            'username' => 'admin.civitas',
+            'password' => 'PasswordKampus123',
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['password']);
+    }
+
+    public function test_login_ldap_gagal_tanpa_username_atau_password(): void
+    {
+        $this->postJson('/api/login-kampus', [])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['username', 'password']);
     }
 
     // -------------------------------------------------------------------------

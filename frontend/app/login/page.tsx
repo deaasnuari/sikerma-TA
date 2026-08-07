@@ -5,17 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
   ArrowLeft,
-  Building2,
   CheckCircle2,
   GraduationCap,
   KeyRound,
   Lock,
   Mail,
   RefreshCw,
-  Shield,
-  UserPlus,
-  Users,
-  UserCog,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { requestPasswordReset, resetPassword } from '@/services/authService';
@@ -26,10 +21,8 @@ function LoginPageContent() {
   const [password, setPassword] = useState('');
   const [campusUsername, setCampusUsername] = useState('');
   const [campusPassword, setCampusPassword] = useState('');
-  const [role, setRole] = useState('');
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
-  const [roleError, setRoleError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [accountDeleted, setAccountDeleted] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -49,13 +42,6 @@ function LoginPageContent() {
 
   const searchParams = useSearchParams();
 
-  const roles = [
-    { value: 'admin', label: 'Admin', icon: Shield, desc: 'Administrator sistem' },
-    { value: 'pimpinan', label: 'Pimpinan', icon: UserCog, desc: 'Pimpinan institusi' },
-    { value: 'internal', label: 'Internal', icon: Users, desc: 'Civitas Polibatam' },
-    { value: 'external', label: 'Eksternal', icon: Building2, desc: 'Mitra eksternal' },
-  ];
-
   const router = useRouter();
   const { login, loginWithCampus } = useAuth();
 
@@ -68,22 +54,11 @@ function LoginPageContent() {
     }
   }, [searchParams]);
 
-  const handleRoleSelect = (value: string) => {
-    setRole(value);
-    setRoleError(false);
-    setAccountDeleted(false);
-    setSessionExpired(false);
-  };
-
   const handleModeChange = (mode: 'local' | 'campus') => {
     setLoginMode(mode);
     setError('');
-    setRoleError(false);
     setAccountDeleted(false);
     setSessionExpired(false);
-    if (mode === 'campus' && role === 'external') {
-      setRole('');
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,19 +66,13 @@ function LoginPageContent() {
     setError('');
     setAccountDeleted(false);
     setSessionExpired(false);
-
-    if (!role) {
-      setRoleError(true);
-      return;
-    }
-
     setIsLoading(true);
 
     try {
       const loggedInUser =
         loginMode === 'campus'
-          ? await loginWithCampus(campusUsername, campusPassword, role)
-          : await login(email, password, role);
+          ? await loginWithCampus(campusUsername, campusPassword)
+          : await login(email, password);
 
       const roleRouteMap: Record<string, string> = {
         admin: '/admin',
@@ -118,7 +87,7 @@ function LoginPageContent() {
         err instanceof Error ? err.message : 'Login gagal. Silakan coba lagi.';
 
       const isNotFound = /tidak terdaftar/i.test(message);
-      if (loginMode === 'local' && role === 'external' && isNotFound) {
+      if (loginMode === 'local' && isNotFound) {
         setAccountDeleted(true);
       } else {
         setError(message);
@@ -227,54 +196,36 @@ function LoginPageContent() {
 
   return (
     <div
-      className="min-h-screen bg-slate-900 bg-cover bg-center bg-no-repeat px-4 py-6"
+      className="min-h-screen bg-slate-900 bg-cover bg-center bg-no-repeat px-4 py-8"
       style={{ backgroundImage: "url('/polibatam.jpg')" }}
     >
-      <div className="flex min-h-screen items-center justify-center bg-slate-950/55">
-        <div className="w-full max-w-[920px] rounded-[30px] border border-white/30 bg-white/90 p-4 text-slate-800 shadow-[0_20px_60px_rgba(15,23,42,0.45)] backdrop-blur-md md:p-6">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => router.push('/')}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              <ArrowLeft size={14} />
-              Home
-            </button>
+      <div className="flex min-h-screen items-center justify-center bg-slate-950/60">
+        <div className="w-full max-w-[400px]">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-800 shadow-xl sm:p-7">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => router.push('/')}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 transition hover:text-slate-900"
+              >
+                <ArrowLeft size={14} />
+                Kembali ke beranda
+              </button>
 
-            <img src="/polibatam_logo.png" alt="Logo Polibatam" className="h-9 w-auto object-contain" />
-          </div>
-
-          <div className="grid gap-5 md:grid-cols-[0.9fr_1.1fr] md:items-start md:gap-6">
-            <div className="rounded-2xl bg-slate-50/90 p-4 md:p-5">
-              <div className="text-center md:text-left">
-                <p className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#173B82]">
-                  Sikerma Polibatam
-                </p>
-                <h2 className="mt-3 text-3xl font-extrabold text-[#173B82]">Login</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Masuk untuk mengakses sistem kerja sama Polibatam.
-                </p>
-              </div>
-
-              <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/90 p-3 text-xs leading-relaxed text-slate-600">
-                Registrasi mandiri saat ini hanya untuk <span className="font-semibold text-[#173B82]">mitra eksternal</span>.
-                Setelah daftar, akun mitra bisa langsung login tanpa menunggu approval.
-              </div>
-
-              <div className="mt-4 hidden border-t border-slate-200 pt-4 text-sm text-slate-600 md:block">
-                Belum punya akun mitra?{' '}
-                <button
-                  type="button"
-                  onClick={() => router.push('/register')}
-                  className="font-semibold text-[#173B82] hover:underline"
-                >
-                  Registrasi Mitra
-                </button>
-              </div>
+              <img src="/polibatam_logo.png" alt="Logo Polibatam" className="h-8 w-auto object-contain" />
             </div>
 
-            <div>
+            <div className="text-center">
+              <h1 className="mt-1.5 text-2xl font-extrabold text-slate-900">Login</h1>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#173B82]">
+                Sikerma Polibatam
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                Masuk untuk mengakses sistem kerja sama Polibatam.
+              </p>
+            </div>
+
+            <div className="mt-5">
               {error && (
                 <div className="mb-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
                   <AlertCircle size={17} className="mt-0.5 shrink-0 text-red-600" />
@@ -314,7 +265,7 @@ function LoginPageContent() {
               <form onSubmit={handleSubmit} className="space-y-3">
                 {loginMode === 'campus' && (
                   <div className="rounded-xl border border-blue-100 bg-blue-50/90 p-3 text-xs leading-relaxed text-slate-600">
-                    Login menggunakan akun LDAP/DOKPOL/Learning Polibatam (akun pegawai/dosen). Khusus untuk role Admin, Pimpinan, dan Internal.
+                    Login menggunakan akun LDAP/DOKPOL/Learning Polibatam (akun pegawai/dosen). Role Anda otomatis dikenali dari akun kampus setelah berhasil login.
                   </div>
                 )}
 
@@ -378,52 +329,6 @@ function LoginPageContent() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">
-                    Role Akses <span className="font-normal text-red-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {roles
-                      .filter((r) => loginMode === 'local' || r.value !== 'external')
-                      .map(({ value, label, icon: Icon, desc }) => {
-                      const isSelected = role === value;
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => handleRoleSelect(value)}
-                          className={`flex items-center gap-2.5 rounded-xl border-2 px-3 py-2.5 text-left transition-all duration-150 ${
-                            isSelected
-                              ? 'border-[#173B82] bg-[#173B82] text-white shadow-md'
-                              : roleError
-                              ? 'border-red-300 bg-red-50 text-slate-700 hover:border-[#173B82] hover:bg-blue-50'
-                              : 'border-slate-200 bg-white text-slate-700 hover:border-[#173B82] hover:bg-blue-50'
-                          }`}
-                        >
-                          <Icon
-                            size={18}
-                            className={`shrink-0 ${isSelected ? 'text-white' : 'text-[#173B82]'}`}
-                          />
-                          <div className="min-w-0">
-                            <p className={`text-xs font-semibold leading-tight ${isSelected ? 'text-white' : 'text-slate-800'}`}>
-                              {label}
-                            </p>
-                            <p className={`truncate text-[10px] leading-tight ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>
-                              {desc}
-                            </p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {roleError && (
-                    <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-                      <AlertCircle size={14} className="shrink-0 text-red-500" />
-                      <p className="text-xs text-red-600">Pilih role akses terlebih dahulu sebelum masuk.</p>
-                    </div>
-                  )}
-                </div>
-
                 <button
                   type="submit"
                   disabled={isLoading}
@@ -484,16 +389,25 @@ function LoginPageContent() {
                 )}
               </form>
 
-              <div className="mt-5 border-t border-slate-200 pt-3 text-center text-sm text-slate-600 md:hidden">
-                Belum punya akun mitra?{' '}
-                <button
-                  type="button"
-                  onClick={() => router.push('/register')}
-                  className="font-semibold text-[#173B82] hover:underline"
-                >
-                  Registrasi Mitra
-                </button>
-              </div>
+              {loginMode === 'local' && (
+                <>
+                  <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/90 p-3 text-xs leading-relaxed text-slate-600">
+                    Registrasi mandiri saat ini hanya untuk <span className="font-semibold text-[#173B82]">mitra eksternal</span>.
+                    Setelah daftar, akun mitra bisa langsung login tanpa menunggu approval.
+                  </div>
+
+                  <div className="mt-4 border-t border-slate-200 pt-4 text-center text-sm text-slate-600">
+                    Belum punya akun mitra?{' '}
+                    <button
+                      type="button"
+                      onClick={() => router.push('/register')}
+                      className="font-semibold text-[#173B82] hover:underline"
+                    >
+                      Registrasi Mitra
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

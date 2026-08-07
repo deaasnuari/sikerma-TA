@@ -36,11 +36,6 @@ class AuthController extends Controller
         ];
     }
 
-    private function allowedRoles(): array
-    {
-        return ['admin', 'pimpinan', 'internal', 'external'];
-    }
-
     public function register(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -109,12 +104,20 @@ class AuthController extends Controller
         ], 201);
     }
 
+    /**
+     * Role yang wajib login lewat LDAP (tombol "Login dengan Akun Kampus"),
+     * tidak boleh lagi login manual pakai email + password di sini.
+     */
+    private function ldapOnlyRoles(): array
+    {
+        return ['internal', 'pimpinan'];
+    }
+
     public function login(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'email' => ['required', 'string'],
             'password' => ['required', 'string'],
-            'role' => ['required', 'string', Rule::in($this->allowedRoles())],
         ]);
 
         $identifier = Str::lower(trim($validated['email']));
@@ -130,9 +133,10 @@ class AuthController extends Controller
             ]);
         }
 
-        if ($validated['role'] !== $user->role) {
+        
+        if (in_array($user->role, $this->ldapOnlyRoles(), true) && $user->auth_provider === 'ldap') {
             throw ValidationException::withMessages([
-                'role' => ['Role yang dipilih tidak sesuai dengan akun ini.'],
+                'email' => ['Akun civitas Polibatam sekarang login lewat tombol "Login dengan Akun Kampus".'],
             ]);
         }
 
@@ -157,13 +161,12 @@ class AuthController extends Controller
             'user' => $this->toUserPayload($user),
         ]);
     }
-
+//akses login untuk akun kampus (internal) menggunakan LDAP
     public function loginLdap(Request $request, CivitasAuthService $civitasAuth): JsonResponse
     {
         $validated = $request->validate([
             'username' => ['required', 'string'],
             'password' => ['required', 'string'],
-            'role' => ['required', 'string', Rule::in(['admin', 'pimpinan', 'internal'])],
         ]);
 
         try {
@@ -201,9 +204,10 @@ class AuthController extends Controller
             ]);
         }
 
-        if ($validated['role'] !== $user->role) {
+        // Pastikan akun civitas Polibatam tidak bisa login manual pakai email + password di sini
+        if (! in_array($user->role, $this->ldapOnlyRoles(), true)) {
             throw ValidationException::withMessages([
-                'role' => ['Akun kampus Anda belum memiliki akses untuk role yang dipilih. Hubungi admin Sikerma jika ini seharusnya sudah diberikan.'],
+                'password' => ['Akun ini bukan akun civitas Polibatam. Silakan login lewat form Email & Password biasa.'],
             ]);
         }
 
