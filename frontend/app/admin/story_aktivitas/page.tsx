@@ -1,89 +1,111 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
-  Building2,
-  CalendarClock,
-  ChevronDown,
-  Eye,
+  CheckCircle,
+  CalendarDays,
+  BarChart3,
   Filter,
-  FolderKanban,
   Search,
   Users,
+  FileText,
+  Eye,
+  ChevronDown,
 } from 'lucide-react';
-import { getHiddenStoryIds, refreshAktivitasDataFromApi } from '@/services/adminStoryAktivitasService';
-import {
-  getPengajuanData,
-  refreshPengajuanDataFromApi,
-  type PengajuanItem,
-} from '@/services/adminPengajuanService';
-import {
-  groupStoryAktivitasByMitra,
-  type StoryAktivitasGroup,
-  type StoryAktivitasTimelineItem,
-} from '@/services/storyAktivitasGrouping';
+import { getHiddenStoryIds, getAktivitasByKerjasamaId } from '@/services/adminStoryAktivitasService';
+import { getPengajuanData, refreshPengajuanDataFromApi, type PengajuanItem } from '../../../services/adminPengajuanService';
 
-function parseDate(value?: string): Date | null {
+interface Kerjasama {
+  id: number;
+  nama: string;
+  nomorDokumen: string;
+  jenis: 'MoA' | 'MoU' | 'IA';
+  berakhir: string;
+  tahun: number;
+  status: 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
+  aktivitas: number;
+  jurusanTerlibat: number;
+  ruangLingkup: string[];
+  jurusan: string[];
+}
+
+function parseDateString(value?: string): Date | null {
   if (!value) {
     return null;
-  }
-
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
-    const [day, month, year] = value.split('/').map(Number);
-    const parsed = new Date(year, month - 1, day);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function formatTimelineDate(value?: string): string {
-  const parsed = parseDate(value);
+function toDisplayDate(value?: string): string {
+  const parsed = parseDateString(value);
   if (!parsed) {
     return '-';
   }
 
-  return parsed.toLocaleDateString('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  return parsed.toLocaleDateString('en-GB');
 }
 
-function statusBadge(status: StoryAktivitasGroup['status']): string {
-  if (status === 'Aktif') {
-    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+function getKerjasamaStatus(tanggalBerakhir?: string): Kerjasama['status'] {
+  const endDate = parseDateString(tanggalBerakhir);
+
+  if (!endDate) {
+    return 'Aktif';
   }
 
-  if (status === 'Akan Berakhir') {
-    return 'bg-amber-50 text-amber-700 border-amber-200';
+  const now = new Date();
+  const diffDays = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return 'Kadaluarsa';
   }
 
-  return 'bg-rose-50 text-rose-700 border-rose-200';
+  if (diffDays <= 120) {
+    return 'Akan Berakhir';
+  }
+
+  return 'Aktif';
 }
 
-function timelineColor(status: StoryAktivitasTimelineItem['status']): string {
-  if (status === 'selesai') {
-    return 'bg-emerald-500';
-  }
+function mapPengajuanToKerjasama(item: PengajuanItem): Kerjasama {
+  const tahun = Number(item.diajukanPada?.slice(0, 4)) || new Date().getFullYear();
+  const jenis = (['MoA', 'MoU', 'IA'].includes(item.jenisDokumen) ? item.jenisDokumen : 'MoU') as Kerjasama['jenis'];
 
-  if (status === 'berlangsung') {
-    return 'bg-blue-500';
-  }
-
-  return 'bg-amber-500';
+  return {
+    id: item.id,
+    nama: item.namaMitra,
+    nomorDokumen: `${jenis}/${String(item.id).padStart(3, '0')}/${tahun}`,
+    jenis,
+    berakhir: toDisplayDate(item.tanggalBerakhir),
+    tahun,
+    status: getKerjasamaStatus(item.tanggalBerakhir),
+    aktivitas: getAktivitasByKerjasamaId(item.id).length,
+    jurusanTerlibat: item.namaUnitProdi ? 1 : 0,
+    ruangLingkup: [...item.ruangLingkup],
+    jurusan: item.namaUnitProdi ? [item.namaUnitProdi] : [],
+  };
 }
 
-function normalizeSearchText(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+const statusColor: Record<string, { dot: string; text: string }> = {
+  Aktif: { dot: 'bg-green-500', text: 'text-green-700' },
+  'Akan Berakhir': { dot: 'bg-yellow-400', text: 'text-yellow-700' },
+  Kadaluarsa: { dot: 'bg-red-500', text: 'text-red-700' },
+};
+
+const jenisColor: Record<string, string> = {
+  MoA: 'border-blue-500 text-blue-700 bg-blue-50',
+  MoU: 'border-purple-500 text-purple-700 bg-purple-50',
+  IA: 'border-orange-500 text-orange-700 bg-orange-50',
+};
+
+const accentColor: Record<string, string> = {
+  Aktif: 'from-green-400 to-green-500',
+  'Akan Berakhir': 'from-yellow-400 to-yellow-500',
+  Kadaluarsa: 'from-red-400 to-red-500',
+};
 
 export default function StoryAktivitasPage() {
   const router = useRouter();
@@ -92,8 +114,7 @@ export default function StoryAktivitasPage() {
   const [filterTahun, setFilterTahun] = useState('Semua Tahun');
   const [search, setSearch] = useState('');
   const [hiddenStoryIds, setHiddenStoryIds] = useState<number[]>([]);
-  const [sourceData, setSourceData] = useState<PengajuanItem[]>([]);
-  const [aktivitasRevision, setAktivitasRevision] = useState(0);
+  const [sourceData, setSourceData] = useState<Kerjasama[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -103,379 +124,285 @@ export default function StoryAktivitasPage() {
         return;
       }
 
-      setSourceData(getPengajuanData());
+      setSourceData(getPengajuanData().map(mapPengajuanToKerjasama));
     };
 
-    const syncStoryState = () => {
+    const syncHiddenStoryIds = () => {
       if (!isMounted) {
         return;
       }
 
       setHiddenStoryIds(getHiddenStoryIds());
-      setAktivitasRevision((r) => r + 1);
     };
 
-    void Promise.all([
-      refreshPengajuanDataFromApi(true),
-      refreshAktivitasDataFromApi(),
-    ])
-      .catch(() => {
-        // Keep rendering cached timeline if aktivitas API is temporarily unavailable.
-      })
-      .finally(() => {
-        syncData();
-        syncStoryState();
-      });
+    void refreshPengajuanDataFromApi(true).finally(syncData);
+    syncHiddenStoryIds();
 
     window.addEventListener('pengajuan-data-updated', syncData);
-    window.addEventListener('story-data-updated', syncStoryState);
+    window.addEventListener('story-data-updated', syncHiddenStoryIds);
 
     return () => {
       isMounted = false;
       window.removeEventListener('pengajuan-data-updated', syncData);
-      window.removeEventListener('story-data-updated', syncStoryState);
+      window.removeEventListener('story-data-updated', syncHiddenStoryIds);
     };
   }, []);
 
-  const groupedData = useMemo(
-    () => groupStoryAktivitasByMitra(sourceData, hiddenStoryIds),
-    [sourceData, hiddenStoryIds, aktivitasRevision]
-  );
+  const visibleData = sourceData.filter((item) => !hiddenStoryIds.includes(item.id));
 
-  const tahunOptions = useMemo(
-    () => Array.from(new Set(groupedData.map((d) => d.tahun))).sort((a, b) => b - a),
-    [groupedData]
-  );
+  const tahunOptions = Array.from(
+    new Set(visibleData.map((d) => d.tahun))
+  ).sort((a, b) => b - a);
 
-  const filtered = useMemo(() => {
-    return groupedData.filter((item) => {
-      const keyword = normalizeSearchText(search);
-      const matchJenis = filterJenis === 'Semua Jenis' || item.jenis === filterJenis;
-      const matchStatus = filterStatus === 'Semua Status' || item.status === filterStatus;
-      const matchTahun = filterTahun === 'Semua Tahun' || item.tahun === Number(filterTahun);
+  // Filter dan deduplikasi berdasarkan id
+  const filteredRaw = visibleData.filter((item) => {
+    const matchJenis =
+      filterJenis === 'Semua Jenis' || item.jenis === filterJenis;
+    const matchStatus =
+      filterStatus === 'Semua Status' || item.status === filterStatus;
+    const matchTahun =
+      filterTahun === 'Semua Tahun' || item.tahun === Number(filterTahun);
+    const matchSearch = item.nama
+      .toLowerCase()
+      .includes(search.toLowerCase());
+    return matchJenis && matchStatus && matchTahun && matchSearch;
+  });
+  const seen = new Set();
+  const filtered = [];
+  for (const item of filteredRaw) {
+    if (!seen.has(item.id)) {
+      filtered.push(item);
+      seen.add(item.id);
+    }
+  }
 
-      const searchableText = normalizeSearchText([
-        item.namaMitra,
-        item.nomorDokumen,
-        item.jenis,
-        item.status,
-        item.pengajuan
-          .map((pengajuan) => [
-            pengajuan.nomorPengajuan,
-            pengajuan.judulPengajuan,
-            pengajuan.namaUnitProdi,
-            pengajuan.namaPengusul,
-            pengajuan.namaMitra,
-          ].join(' '))
-          .join(' '),
-        item.ruangLingkup.join(' '),
-        item.jurusanTerlibat.join(' '),
-        item.aktivitas
-          .map((aktivitas) => [
-            aktivitas.judul,
-            aktivitas.jenisAktivitas,
-            aktivitas.deskripsi,
-            aktivitas.picPolibatam,
-            aktivitas.picMitra,
-            aktivitas.sourceNomorPengajuan,
-            aktivitas.sourceJudulPengajuan,
-          ].join(' '))
-          .join(' '),
-      ].join(' '));
-
-      const matchSearch = keyword === '' || searchableText.includes(keyword);
-
-      return matchJenis && matchStatus && matchTahun && matchSearch;
-    });
-  }, [groupedData, search, filterJenis, filterStatus, filterTahun]);
-
-  const summary = useMemo(() => {
-    const totalAktivitas = groupedData.reduce((acc, group) => acc + group.totalAktivitas, 0);
-    const totalPengajuan = groupedData.reduce((acc, group) => acc + group.totalPengajuan, 0);
-    const akanBerakhir = groupedData.filter((group) => group.status === 'Akan Berakhir').length;
-
-    return {
-      totalMitra: groupedData.length,
-      totalPengajuan,
-      totalAktivitas,
-      akanBerakhir,
-    };
-  }, [groupedData]);
+  const totalAktivitas = visibleData.reduce((s, i) => s + i.aktivitas, 0);
+  const kerjasamaAktif = visibleData.filter((i) => i.status === 'Aktif').length;
+  const now = new Date();
+  const bulanIni = sourceData.filter((item) => {
+    const year = Number(item.tahun);
+    return year === now.getFullYear();
+  }).length;
+  const rataRata =
+    visibleData.length > 0
+      ? Math.round(totalAktivitas / visibleData.length)
+      : 0;
 
   return (
-    <div className="space-y-4 pb-8">
-      <section>
-        <h1 className="text-[17px] font-bold text-[#091222]">Story Aktivitas</h1>
-        <p className="mt-0.5 text-[10px] text-slate-500">
-          Daftar story kerja sama per mitra dengan riwayat aktivitas gabungan dari seluruh pengajuan.
-        </p>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <button
-          type="button"
-          onClick={() => {
-            setFilterJenis('Semua Jenis');
-            setFilterStatus('Semua Status');
-            setFilterTahun('Semua Tahun');
-            setSearch('');
-          }}
-          className="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:bg-slate-50"
-          title="Klik untuk memfilter ke semua data"
-        >
-          <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
-            <Building2 size={16} />
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+            <Activity size={22} className="text-blue-600" />
           </div>
-          <p className="text-[10px] text-slate-500">Total Mitra</p>
-          <p className="mt-1 text-[17px] font-bold text-slate-900">{summary.totalMitra}</p>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setFilterJenis('Semua Jenis');
-            setFilterStatus('Semua Status');
-            setFilterTahun('Semua Tahun');
-            setSearch('');
-          }}
-          className="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:bg-slate-50"
-        >
-          <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
-            <FolderKanban size={16} />
-          </div>
-          <p className="text-[10px] text-slate-500">Total Pengajuan</p>
-          <p className="mt-1 text-[17px] font-bold text-slate-900">{summary.totalPengajuan}</p>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setFilterJenis('Semua Jenis');
-            setFilterStatus('Semua Status');
-            setFilterTahun('Semua Tahun');
-            setSearch('');
-          }}
-          className="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:bg-slate-50"
-        >
-          <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-            <Activity size={16} />
-          </div>
-          <p className="text-[10px] text-slate-500">Aktivitas Gabungan</p>
-          <p className="mt-1 text-[17px] font-bold text-slate-900">{summary.totalAktivitas}</p>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setFilterStatus((prev) => (prev === 'Akan Berakhir' ? 'Semua Status' : 'Akan Berakhir'));
-          }}
-          className={`rounded-2xl border p-4 shadow-sm text-left transition-colors ${
-            filterStatus === 'Akan Berakhir'
-              ? 'border-amber-300 bg-amber-50'
-              : 'border-slate-100 bg-white hover:bg-slate-50'
-          }`}
-        >
-          <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
-            <CalendarClock size={16} />
-          </div>
-          <p className="text-[10px] text-slate-500">Akan Berakhir</p>
-          <p className="mt-1 text-[17px] font-bold text-slate-900">{summary.akanBerakhir}</p>
-        </button>
-      </section>
-
-      <section className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-semibold text-slate-700">
-            <Filter size={14} />
-            Filter
-          </div>
-
-          <div className="relative">
-            <select
-              value={filterJenis}
-              onChange={(event) => setFilterJenis(event.target.value)}
-              className="appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-3 pr-8 text-[10px] text-slate-700 outline-none transition focus:border-slate-400"
-            >
-              <option>Semua Jenis</option>
-              <option>MoA</option>
-              <option>MoU</option>
-              <option>IA</option>
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" />
-          </div>
-
-          <div className="relative">
-            <select
-              value={filterStatus}
-              onChange={(event) => setFilterStatus(event.target.value)}
-              className="appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-3 pr-8 text-[10px] text-slate-700 outline-none transition focus:border-slate-400"
-            >
-              <option>Semua Status</option>
-              <option>Aktif</option>
-              <option>Akan Berakhir</option>
-              <option>Kadaluarsa</option>
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" />
-          </div>
-
-          <div className="relative">
-            <select
-              value={filterTahun}
-              onChange={(event) => setFilterTahun(event.target.value)}
-              className="appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-3 pr-8 text-[10px] text-slate-700 outline-none transition focus:border-slate-400"
-            >
-              <option>Semua Tahun</option>
-              {tahunOptions.map((tahun) => (
-                <option key={tahun} value={tahun}>
-                  {tahun}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" />
-          </div>
-
-          <div className="relative ml-auto w-full max-w-sm">
-            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              type="text"
-              placeholder="Cari mitra, nomor, judul pengajuan"
-              className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-9 pr-3 text-[10px] text-slate-700 outline-none transition focus:border-slate-400"
-            />
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Total Aktivitas</p>
+            <p className="text-3xl font-bold text-gray-900">{totalAktivitas}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Semua aktivitas tercatat</p>
           </div>
         </div>
-      </section>
 
-      <section className="space-y-4">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center shrink-0">
+            <CheckCircle size={22} className="text-green-600" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Kerjasama Aktif</p>
+            <p className="text-3xl font-bold text-gray-900">{kerjasamaAktif}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Memiliki aktivitas</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
+            <CalendarDays size={22} className="text-purple-600" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Bulan Ini</p>
+            <p className="text-3xl font-bold text-gray-900">{bulanIni}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Aktivitas di bulan ini</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-pink-100 flex items-center justify-center shrink-0">
+            <BarChart3 size={22} className="text-pink-600" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Rata-rata</p>
+            <p className="text-3xl font-bold text-gray-900">{rataRata}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Aktivitas per kerjasama</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter & Search */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2 text-gray-700 font-semibold">
+          <Filter size={16} />
+          <span>Filter:</span>
+        </div>
+
+        <div className="relative">
+          <select
+            value={filterJenis}
+            onChange={(e) => setFilterJenis(e.target.value)}
+            className="appearance-none bg-white border border-gray-300 rounded-lg pl-4 pr-9 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          >
+            <option>Semua Jenis</option>
+            <option>MoA</option>
+            <option>MoU</option>
+            <option>IA</option>
+          </select>
+          <ChevronDown
+            size={14}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+          />
+        </div>
+
+        <div className="relative">
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="appearance-none bg-white border border-gray-300 rounded-lg pl-4 pr-9 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          >
+            <option>Semua Status</option>
+            <option>Aktif</option>
+            <option>Akan Berakhir</option>
+            <option>Kadaluarsa</option>
+          </select>
+          <ChevronDown
+            size={14}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+          />
+        </div>
+
+        <div className="relative">
+          <select
+            value={filterTahun}
+            onChange={(e) => setFilterTahun(e.target.value)}
+            className="appearance-none bg-white border border-gray-300 rounded-lg pl-4 pr-9 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          >
+            <option>Semua Tahun</option>
+            {tahunOptions.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            size={14}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+          />
+        </div>
+
+        <div className="relative ml-auto">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+          <input
+            type="text"
+            placeholder="Cari berdasarkan nama mitra"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm w-72 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          />
+        </div>
+      </div>
+
+      {/* Kerjasama List */}
+      <div className="space-y-4">
         {filtered.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-[12px] text-slate-500">
-            Data story aktivitas tidak ditemukan untuk filter saat ini.
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-12 text-center text-gray-400">
+            Tidak ada data ditemukan
           </div>
         )}
 
-        {filtered.map((group) => {
-          const timelinePreview = [...group.aktivitas]
-            .sort((left, right) => (parseDate(right.tanggal)?.getTime() ?? 0) - (parseDate(left.tanggal)?.getTime() ?? 0))
-            .slice(0, 3);
+        {filtered.map((item) => (
+          <div
+            key={item.id}
+            className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex"
+          >
+            <div
+              className={`w-2 shrink-0 bg-gradient-to-b ${accentColor[item.status]}`}
+            />
 
-          return (
-            <article key={group.key} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-              <div className="border-b border-slate-100 bg-slate-50/80 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-[15px] font-bold text-slate-900">{group.namaMitra}</h2>
-                      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-                        {group.jenis}
-                      </span>
-                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusBadge(group.status)}`}>
-                        {group.status}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[10px] text-slate-500">
-                      Dokumen acuan: {group.nomorDokumen} • Berlaku hingga {group.berakhir}
-                    </p>
-                  </div>
-                  <div className="text-right text-[10px] text-slate-600">
-                    <p className="font-semibold text-slate-900">{group.totalPengajuan} Pengajuan</p>
-                    <p>{group.totalAktivitas} Aktivitas Gabungan</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-3 p-4 lg:grid-cols-[1.3fr_1fr]">
+            <div className="flex-1 p-5">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Story Kerja Sama</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {group.pengajuan.map((pengajuan) => (
-                      <span
-                        key={pengajuan.id}
-                        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] text-slate-700"
-                      >
-                        {pengajuan.nomorPengajuan}
-                      </span>
-                    ))}
-                  </div>
-
-                  {(() => {
-                    const moaList = group.pengajuan.filter((p) => p.jenisDokumen === 'MoA');
-                    if (moaList.length === 0) return null;
-                    return (
-                      <div className="mt-4">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Dokumen MoA</p>
-                        <div className="mt-2 space-y-1.5">
-                          {moaList.map((moa) => (
-                            <div key={moa.id} className="flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2">
-                              <span className="mt-0.5 shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-[9.5px] font-semibold text-indigo-700">MoA</span>
-                              <div className="min-w-0">
-                                <p className="truncate text-[10px] font-semibold text-slate-800">{moa.nomorPengajuan}</p>
-                                <p className="truncate text-[10px] text-slate-500">{moa.judulPengajuan}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {group.ruangLingkup.map((scope) => (
-                      <span key={scope} className="rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-medium text-blue-700">
-                        {scope}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-4 text-[10px] text-slate-600">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Users size={14} className="text-slate-400" />
-                      {group.jurusanTerlibat.length} Jurusan/Unit
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h3 className="text-lg font-bold text-gray-900">
+                      {item.nama}
+                    </h3>
+                    <span
+                      className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${jenisColor[item.jenis]}`}
+                    >
+                      {item.jenis}
                     </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Activity size={14} className="text-slate-400" />
-                      {group.totalAktivitas} Aktivitas
-                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                    <span>{item.nomorDokumen}</span>
+                    <span>• Berakhir: {item.berakhir}</span>
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Preview Timeline Aktivitas</p>
-                  {timelinePreview.length === 0 ? (
-                    <p className="mt-2 text-[10px] text-slate-500">Belum ada aktivitas tercatat.</p>
-                  ) : (
-                    <ol className="mt-2 space-y-2">
-                      {timelinePreview.map((item, index) => (
-                        <li key={`${group.key}-${item.sourcePengajuanId}-${item.id}-${index}`} className="flex gap-2.5">
-                          <div className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: 'transparent' }}>
-                            <span className={`block h-2.5 w-2.5 rounded-full ${timelineColor(item.status)}`} />
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-semibold text-slate-900">{item.judul}</p>
-                            <p className="text-[10px] text-slate-500">
-                              {formatTimelineDate(item.tanggal)} • {item.jenisAktivitas}
-                            </p>
-                          </div>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
+                <div className="flex items-center gap-2 shrink-0">
+                  <div
+                    className={`w-3 h-3 rounded-full ${statusColor[item.status].dot}`}
+                  />
+                  <span
+                    className={`text-sm font-semibold ${statusColor[item.status].text}`}
+                  >
+                    {item.status}
+                  </span>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 p-3">
-                <button
-                  onClick={() => router.push(`/admin/story_aktivitas/${group.key}`)}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1d34] px-3 py-1.5 text-[10px] font-medium text-white transition hover:bg-[#183053]"
-                >
-                  <Eye size={14} />
-                  Lihat Detail Story
-                </button>
+              <div className="flex items-center justify-between mt-4">
+                <div className="flex items-center gap-6 text-sm text-gray-600">
+                  <span className="flex items-center gap-1.5">
+                    <Activity size={14} className="text-gray-400" />
+                    {item.aktivitas} Aktivitas
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Users size={14} className="text-gray-400" />
+                    {item.jurusanTerlibat} Jurusan Terlibat
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <FileText size={14} className="text-gray-400" />
+                    {item.ruangLingkup.length} Ruang Lingkup
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() =>
+                      router.push(`/admin/story_aktivitas/${item.id}`)
+                    }
+                    className="flex items-center gap-1.5 bg-[#0e1d34] hover:bg-[#1a2d4a] text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+                  >
+                    <Eye size={14} />
+                    Lihat Detail Story
+                  </button>
+                </div>
               </div>
-            </article>
-          );
-        })}
-      </section>
+
+              <div className="flex flex-wrap gap-2 mt-3">
+                {item.jurusan.map((j) => (
+                  <span
+                    key={j}
+                    className="bg-gray-100 text-gray-700 text-xs font-medium px-3 py-1 rounded-lg"
+                  >
+                    {j}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

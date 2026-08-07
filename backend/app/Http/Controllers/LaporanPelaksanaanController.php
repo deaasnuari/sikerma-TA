@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\LaporanPelaksanaan;
+use App\Models\Pengajuan;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
@@ -10,13 +11,20 @@ use Illuminate\Support\Str;
 
 class LaporanPelaksanaanController extends Controller
 {
-    private function ensureAdmin(Request $request): ?Response
+    private function normalizedRole(Request $request): string
     {
         $user = $request->user();
-        $rawRole = (string) ($user?->role ?? '');
-        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim($rawRole)));
+        return strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+    }
 
-        if (!in_array($normalizedRole, ['admin', 'admin-humas'], true)) {
+    private function isAdminRole(Request $request): bool
+    {
+        return in_array($this->normalizedRole($request), ['admin', 'admin-humas'], true);
+    }
+
+    private function ensureAdmin(Request $request): ?Response
+    {
+        if (!$this->isAdminRole($request)) {
             return response([
                 'success' => false,
                 'message' => 'Only admin can perform this action',
@@ -27,19 +35,60 @@ class LaporanPelaksanaanController extends Controller
     }
 
     /**
+     * ID pengajuan yang boleh DILIHAT (pemilik ATAU yang di-CC admin lewat distribusi_user_ids).
+     * Null berarti tidak ada batasan (admin/admin-humas).
+     */
+    private function viewablePengajuanIds(Request $request): ?array
+    {
+        if ($this->isAdminRole($request)) {
+            return null;
+        }
+
+        $user = $request->user();
+        if (!$user) {
+            return [];
+        }
+
+        return Pengajuan::query()
+            ->where(function ($builder) use ($user) {
+                $builder->where('user_pengusul_id', $user->id)
+                    ->orWhereJsonContains('distribusi_user_ids', $user->id);
+            })
+            ->pluck('id')
+            ->all();
+    }
+
+    /**
      * Daftar laporan pelaksanaan, difilter berdasarkan pengajuan_id[] atau dokumen_kerjasama_id[].
      * Dipakai oleh halaman Story Aktivitas untuk menampilkan laporan yang masuk per mitra.
      */
     public function index(Request $request): Response
     {
         $query = LaporanPelaksanaan::query()->with(['dikirimOleh:id,name,role']);
+        $viewableIds = $this->viewablePengajuanIds($request);
 
         if ($request->filled('pengajuan_ids')) {
             $ids = array_filter(array_map('intval', explode(',', (string) $request->query('pengajuan_ids'))));
+
+            if ($viewableIds !== null) {
+                $ids = array_values(array_intersect($ids, $viewableIds));
+            }
+
             $query->whereIn('pengajuan_id', $ids);
+        } elseif ($viewableIds !== null) {
+            $query->whereIn('pengajuan_id', $viewableIds);
         }
 
         if ($request->filled('dokumen_kerjasama_ids')) {
+            // Belum ada model kepemilikan per-user untuk dokumen_kerjasama, dan saat ini
+            // tidak ada pemanggil non-admin di frontend — batasi ke admin untuk jaga-jaga.
+            if (!$this->isAdminRole($request)) {
+                return response([
+                    'success' => false,
+                    'message' => 'Only admin can filter by dokumen_kerjasama_ids',
+                ], 403);
+            }
+
             $ids = array_filter(array_map('intval', explode(',', (string) $request->query('dokumen_kerjasama_ids'))));
             $query->whereIn('dokumen_kerjasama_id', $ids);
         }
@@ -91,6 +140,23 @@ class LaporanPelaksanaanController extends Controller
                 'success' => false,
                 'message' => 'Laporan harus terhubung ke pengajuan atau dokumen kerjasama.',
             ], 422);
+        }
+
+        if (!$this->isAdminRole($request)) {
+            // Yang di-CC (distribusi_user_ids) cuma boleh melihat — hanya pemilik asli
+            // pengajuan yang boleh mengirim laporan pelaksanaan.
+            $user = $request->user();
+            $isOwner = !empty($validated['pengajuan_id']) && $user && Pengajuan::query()
+                ->where('id', $validated['pengajuan_id'])
+                ->where('user_pengusul_id', $user->id)
+                ->exists();
+
+            if (!$isOwner) {
+                return response([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki akses untuk mengirim laporan pelaksanaan pada pengajuan ini.',
+                ], 403);
+            }
         }
 
         if ($request->hasFile('file')) {

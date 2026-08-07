@@ -930,7 +930,11 @@ class PengajuanController extends Controller
         $user = $request->user();
         $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
 
-        if ($normalizedRole === 'internal') {
+        // Internal & external cuma boleh lihat pengajuan milik sendiri (atau yang di-CC
+        // admin lewat distribusi_user_ids). Admin/admin-humas tetap lihat semua.
+        // Catatan: role user eksternal tersimpan sebagai 'external' (Inggris) di kolom
+        // users.role, beda dari 'eksternal' (Indonesia) yang dipakai untuk kategori_pengajuan.
+        if (in_array($normalizedRole, ['internal', 'external'], true)) {
             $ownerColumn = $this->hasPengajuanColumn('user_pengusul_id')
                 ? 'user_pengusul_id'
                 : ($this->hasPengajuanColumn('dibuat_oleh_user_id') ? 'dibuat_oleh_user_id' : null);

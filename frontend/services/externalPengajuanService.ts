@@ -78,17 +78,30 @@ export function syncExternalPengajuanWithAdminData(): PengajuanItem[] {
     return externalItems;
   }
 
-  const adminExternalById = new Map(
-    getPengajuanData()
-      .filter((item) => item.kategoriPengajuan === 'Eksternal')
-      .map((item) => [item.id, item]),
-  );
+  const liveExternalItems = getPengajuanData().filter((item) => item.kategoriPengajuan === 'Eksternal');
+  const adminExternalById = new Map(liveExternalItems.map((item) => [item.id, item]));
+
+  // Kalau data admin gagal dimuat (mis. sedang offline), jangan buang cache lokal —
+  // hanya buang entri basi/orphan saat kita yakin datanya benar-benar segar dari server.
+  const canPruneStale = liveExternalItems.length > 0;
 
   let hasChanges = false;
-  const synced = externalItems.map((item) => {
+  const synced: PengajuanItem[] = [];
+
+  for (const item of externalItems) {
     const fromAdmin = adminExternalById.get(item.id);
+
     if (!fromAdmin) {
-      return item;
+      if (canPruneStale) {
+        // Pengajuan ini sudah tidak ketemu lagi di server (id berubah/record lama sudah
+        // tidak ada) — buang dari cache lokal supaya tidak dipakai untuk aksi seperti
+        // Laporan Pelaksanaan yang pasti gagal dengan "The selected pengajuan id is invalid".
+        hasChanges = true;
+        continue;
+      }
+
+      synced.push(item);
+      continue;
     }
 
     const nextItem: PengajuanItem = {
@@ -132,8 +145,8 @@ export function syncExternalPengajuanWithAdminData(): PengajuanItem[] {
       hasChanges = true;
     }
 
-    return nextItem;
-  });
+    synced.push(nextItem);
+  }
 
   if (hasChanges) {
     saveExternalPengajuanData(synced);

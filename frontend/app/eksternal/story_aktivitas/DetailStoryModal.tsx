@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Calendar,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   ClipboardList,
   Download,
@@ -12,11 +14,13 @@ import {
   Mail,
   MapPin,
   Phone,
+  Plus,
   Users,
 } from 'lucide-react';
 import type { KerjasamaStory, Aktivitas } from './page';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
 import { getLaporanPelaksanaanByPengajuanIds, type LaporanPelaksanaanRecord } from '@/services/laporanPelaksanaanService';
+import { createAktivitasApi } from '@/services/adminStoryAktivitasService';
 
 type Jenis = 'MoA' | 'MoU' | 'IA';
 type StatusKerjasama = 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
@@ -71,12 +75,14 @@ function formatLaporanDate(value?: string): string {
 }
 
 export default function DetailStoryModal({ story, onBack }: DetailStoryModalProps) {
-  const totalAktivitas = story.aktivitas.length;
-  const selesai = story.aktivitas.filter((a) => a.status === 'selesai').length;
-  const berlangsung = story.aktivitas.filter((a) => a.status === 'berlangsung').length;
-  const direncanakan = story.aktivitas.filter((a) => a.status === 'direncanakan').length;
+  const [aktivitasList, setAktivitasList] = useState<Aktivitas[]>(story.aktivitas);
+  const totalAktivitas = aktivitasList.length;
+  const selesai = aktivitasList.filter((a) => a.status === 'selesai').length;
+  const berlangsung = aktivitasList.filter((a) => a.status === 'berlangsung').length;
+  const direncanakan = aktivitasList.filter((a) => a.status === 'direncanakan').length;
 
   const [showLaporanModal, setShowLaporanModal] = useState(false);
+  const [showTambah, setShowTambah] = useState(false);
   const [laporanTerkirim, setLaporanTerkirim] = useState<LaporanPelaksanaanRecord[]>([]);
   const [laporanLoading, setLaporanLoading] = useState(false);
 
@@ -113,6 +119,31 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
         pengajuanId: story.pengajuanId,
       }
     : null;
+
+  async function handleTambahAktivitas(data: Aktivitas, jenisAktivitas: string) {
+    const kerjasamaId = story.pengajuanId ?? story.pengajuanIds[0];
+    if (!kerjasamaId) {
+      alert('Aktivitas tidak bisa disimpan karena kerja sama ini tidak terhubung ke pengajuan manapun.');
+      return;
+    }
+
+    try {
+      const created = await createAktivitasApi(kerjasamaId, {
+        judul: data.judul,
+        jenisAktivitas,
+        tanggal: data.tanggal,
+        peserta: data.peserta,
+        deskripsi: data.deskripsi,
+        picPolibatam: data.picPolibatam,
+        picMitra: data.picMitra,
+        status: data.status,
+      });
+      setAktivitasList((prev) => [{ ...data, id: String(created.id) }, ...prev]);
+      setShowTambah(false);
+    } catch (error) {
+      alert(error instanceof Error && error.message ? error.message : 'Gagal menyimpan aktivitas ke server.');
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -241,25 +272,41 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
           <h3 className="text-[13.5px] font-bold text-gray-900">
             <span className="mr-1">📖</span> Story Kerjasama & Aktivitas
           </h3>
-          <button
-            type="button"
-            onClick={() => setShowLaporanModal(true)}
-            disabled={!laporanData}
-            title={!laporanData ? 'Kerja sama ini tidak terhubung ke pengajuan manapun' : undefined}
-            className="relative z-10 inline-flex items-center gap-1.5 rounded-xl border border-[#091222] px-4 py-2.5 text-[10px] font-semibold text-[#091222] shadow-sm transition hover:bg-[#091222]/5 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <FileText size={14} />
-            Laporan Pelaksanaan
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowLaporanModal(true)}
+              disabled={!laporanData}
+              title={!laporanData ? 'Kerja sama ini tidak terhubung ke pengajuan manapun' : undefined}
+              className="relative z-10 inline-flex items-center gap-1.5 rounded-xl border border-[#091222] px-4 py-2.5 text-[10px] font-semibold text-[#091222] shadow-sm transition hover:bg-[#091222]/5 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <FileText size={14} />
+              Laporan Pelaksanaan
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTambah((prev) => !prev)}
+              className="relative z-10 inline-flex items-center gap-1.5 rounded-xl bg-[#091222] px-4 py-2.5 text-[10px] font-semibold text-white shadow-sm transition hover:bg-[#173B82] hover:shadow-md"
+            >
+              <Plus size={14} />
+              Tambah Aktivitas
+            </button>
+          </div>
         </div>
 
+        {showTambah && (
+          <div className="mb-4">
+            <TambahAktivitasForm onClose={() => setShowTambah(false)} onSave={handleTambahAktivitas} />
+          </div>
+        )}
+
         <div className="space-y-4">
-          {story.aktivitas.length === 0 ? (
+          {aktivitasList.length === 0 ? (
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-10 text-center text-[12px] text-gray-500">
               Belum ada aktivitas tercatat untuk kerjasama ini.
             </div>
           ) : (
-            story.aktivitas.map((a) => {
+            aktivitasList.map((a) => {
               const badge = aktivitasStatusBadge[a.status];
               return (
                 <div key={a.id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -376,6 +423,310 @@ function MiniStat({
       <div className={`ml-auto flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${iconBg}`}>
         {icon}
       </div>
+    </div>
+  );
+}
+
+function TambahAktivitasForm({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (data: Aktivitas, jenisAktivitas: string) => void | Promise<void>;
+}) {
+  const [judul, setJudul] = useState('');
+  const [jenisAktivitas, setJenisAktivitas] = useState('');
+  const [tanggal, setTanggal] = useState('');
+  const [peserta, setPeserta] = useState('');
+  const [status, setStatus] = useState<StatusAktivitas>('direncanakan');
+  const [picPolibatam, setPicPolibatam] = useState('');
+  const [picMitra, setPicMitra] = useState('');
+  const [deskripsi, setDeskripsi] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  async function handleSubmit() {
+    if (!judul.trim()) {
+      alert('Judul aktivitas wajib diisi.');
+      return;
+    }
+    if (!jenisAktivitas) {
+      alert('Jenis aktivitas wajib dipilih.');
+      return;
+    }
+    if (!tanggal) {
+      alert('Tanggal wajib diisi.');
+      return;
+    }
+    if (!picPolibatam.trim()) {
+      alert('PIC Polibatam wajib diisi.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      await onSave(
+        {
+          id: `a-${Date.now()}`,
+          judul: `${jenisAktivitas} - ${judul}`,
+          // Kirim format ISO (YYYY-MM-DD) apa adanya — backend menolak format DD/MM/YYYY
+          // dengan error "must be a valid date".
+          tanggal,
+          peserta: Number(peserta) || 0,
+          deskripsi,
+          picPolibatam,
+          picMitra,
+          status,
+        },
+        jenisAktivitas
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-dashed border-gray-300 bg-white p-6 space-y-5">
+      <h3 className="text-[13.5px] font-bold text-gray-900">Tambah Aktivitas Baru</h3>
+
+      {/* Row 1: Judul & Jenis */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">
+            Judul Aktivitas <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={judul}
+            onChange={(e) => setJudul(e.target.value)}
+            placeholder="Contoh: Penyusunan kurikulum bersama"
+            className="input-field h-10 w-full px-3 text-[12px] text-gray-700 placeholder:text-gray-400"
+          />
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">
+            Jenis Aktivitas <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={jenisAktivitas}
+            onChange={(e) => setJenisAktivitas(e.target.value)}
+            className="input-field h-10 w-full px-3 text-[12px] text-gray-700"
+          >
+            <option value="">Pilih Jenis</option>
+            <option value="Workshop">Workshop</option>
+            <option value="Penelitian">Penelitian</option>
+            <option value="Pengabdian Masyarakat">Pengabdian Masyarakat</option>
+            <option value="Pelatihan">Pelatihan</option>
+            <option value="Seminar">Seminar</option>
+            <option value="Magang">Magang</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Row 2: Tanggal, Jumlah Peserta, Status */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div>
+          <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">
+            Tanggal <span className="text-red-500">*</span>
+          </label>
+          <InlineDatePicker value={tanggal} onChange={setTanggal} />
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">Jumlah Peserta</label>
+          <input
+            type="number"
+            value={peserta}
+            onChange={(e) => setPeserta(e.target.value)}
+            placeholder="0"
+            className="input-field h-10 w-full px-3 text-[12px] text-gray-700 placeholder:text-gray-400"
+          />
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">Status</label>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as StatusAktivitas)}
+            className="input-field h-10 w-full px-3 text-[12px] text-gray-700"
+          >
+            <option value="direncanakan">Direncanakan</option>
+            <option value="berlangsung">Berlangsung</option>
+            <option value="selesai">Selesai</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Row 3: PIC */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">
+            PIC Polibatam <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={picPolibatam}
+            onChange={(e) => setPicPolibatam(e.target.value)}
+            placeholder="Nama PIC dari Polibatam"
+            className="input-field h-10 w-full px-3 text-[12px] text-gray-700 placeholder:text-gray-400"
+          />
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">PIC Mitra</label>
+          <input
+            type="text"
+            value={picMitra}
+            onChange={(e) => setPicMitra(e.target.value)}
+            placeholder="Nama PIC dari mitra"
+            className="input-field h-10 w-full px-3 text-[12px] text-gray-700 placeholder:text-gray-400"
+          />
+        </div>
+      </div>
+
+      {/* Deskripsi */}
+      <div>
+        <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">Deskripsi</label>
+        <textarea
+          value={deskripsi}
+          onChange={(e) => setDeskripsi(e.target.value)}
+          rows={3}
+          placeholder="Jelaskan detail aktivitas ini..."
+          className="input-field w-full px-3 py-2 text-[12px] text-gray-700 resize-y placeholder:text-gray-400"
+        />
+      </div>
+
+      {/* Buttons */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={isSaving}
+          className="btn-primary px-5 py-2 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isSaving ? 'Menyimpan...' : 'Simpan Aktivitas'}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={isSaving}
+          className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-2 text-[12px] font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Batal
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Date-picker custom: sengaja tidak pakai <input type="date"> bawaan browser karena
+// spinner/kalender nativenya sering "mulai" dari tanggal hari ini begitu disentuh,
+// sehingga terasa seperti otomatis terisi tanggal sekarang. Di sini tidak ada tanggal
+// yang terpilih sampai pengguna benar-benar klik salah satu tanggal di kalender.
+function InlineDatePicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [viewDate, setViewDate] = useState(() => (value ? new Date(`${value}T00:00:00`) : new Date()));
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedDate = value ? new Date(`${value}T00:00:00`) : null;
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const startOffset = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthLabel = viewDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+  const dayLabels = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+  function formatIso(day: number): string {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  function isSelectedDay(day: number): boolean {
+    return (
+      !!selectedDate &&
+      selectedDate.getFullYear() === year &&
+      selectedDate.getMonth() === month &&
+      selectedDate.getDate() === day
+    );
+  }
+
+  const displayText = selectedDate
+    ? selectedDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+    : 'Pilih tanggal';
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className={`input-field flex h-10 w-full items-center justify-between gap-2 px-3 text-left text-[12px] ${
+          selectedDate ? 'text-gray-700' : 'text-gray-400'
+        }`}
+      >
+        {displayText}
+        <Calendar size={14} className="flex-shrink-0 text-gray-400" />
+      </button>
+
+      {open && (
+        <div className="absolute z-20 mt-1.5 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+          <div className="mb-2 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setViewDate(new Date(year, month - 1, 1))}
+              className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <p className="text-[11px] font-semibold capitalize text-gray-800">{monthLabel}</p>
+            <button
+              type="button"
+              onClick={() => setViewDate(new Date(year, month + 1, 1))}
+              className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-gray-400">
+            {dayLabels.map((label) => (
+              <span key={label}>{label}</span>
+            ))}
+          </div>
+
+          <div className="mt-1 grid grid-cols-7 gap-1">
+            {Array.from({ length: startOffset }).map((_, index) => (
+              <span key={`empty-${index}`} />
+            ))}
+            {Array.from({ length: daysInMonth }, (_, index) => index + 1).map((day) => (
+              <button
+                key={day}
+                type="button"
+                onClick={() => {
+                  onChange(formatIso(day));
+                  setOpen(false);
+                }}
+                className={`h-7 w-7 rounded-md text-[11px] transition-colors ${
+                  isSelectedDay(day) ? 'bg-[#173B82] font-semibold text-white' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                {day}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -264,6 +264,11 @@ const defaultAppearanceSettings: FormAppearanceSettings = {
 
 const DEFAULT_APPEARANCE_STORAGE_KEY = 'internal-pengajuan-appearance-v1';
 
+// Referensi stabil agar default parameter tidak membuat array baru di setiap render
+// (array baru setiap render membuat useEffect di bawah yang bergantung pada prop ini
+// terus-menerus terpicu -> "Maximum update depth exceeded").
+const EMPTY_CUSTOM_NEGARA_OPTIONS: string[] = [];
+
 export default function InternalAjukanKerjasamaForm({
   onCancel,
   onSubmitted,
@@ -274,7 +279,7 @@ export default function InternalAjukanKerjasamaForm({
   nomorPengajuanSource = 'internal',
   initialMasterUnitProdiTree,
   initialMasterRuangLingkupRows,
-  initialCustomNegaraOptions = [],
+  initialCustomNegaraOptions = EMPTY_CUSTOM_NEGARA_OPTIONS,
   disableDraftPersistence = false,
   lockJenisKerjasama = false,
   submitButtonLabel = 'Ajukan Kerjasama',

@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Calendar,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   ClipboardList,
   Download,
@@ -20,6 +22,7 @@ import {
 import type { KerjasamaStory, Aktivitas } from './page';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
 import { getLaporanPelaksanaanByPengajuanIds, type LaporanPelaksanaanRecord } from '@/services/laporanPelaksanaanService';
+import { createAktivitasApi, deleteAktivitasApi } from '@/services/adminStoryAktivitasService';
 
 type Jenis = 'MoA' | 'MoU' | 'IA';
 type StatusKerjasama = 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
@@ -79,11 +82,17 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
   const [showLaporanModal, setShowLaporanModal] = useState(false);
   const [laporanTerkirim, setLaporanTerkirim] = useState<LaporanPelaksanaanRecord[]>([]);
   const [laporanLoading, setLaporanLoading] = useState(false);
+  const [filterAktivitasStatus, setFilterAktivitasStatus] = useState<'semua' | StatusAktivitas>('semua');
 
   const totalAktivitas = aktivitasList.length;
   const selesai = aktivitasList.filter((a) => a.status === 'selesai').length;
   const berlangsung = aktivitasList.filter((a) => a.status === 'berlangsung').length;
   const direncanakan = aktivitasList.filter((a) => a.status === 'direncanakan').length;
+
+  const filteredAktivitasList =
+    filterAktivitasStatus === 'semua'
+      ? aktivitasList
+      : aktivitasList.filter((a) => a.status === filterAktivitasStatus);
 
   useEffect(() => {
     if (story.pengajuanIds.length === 0) {
@@ -119,14 +128,47 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
       }
     : null;
 
-  function handleDeleteAktivitas(id: string) {
+  async function handleDeleteAktivitas(id: string) {
     if (!window.confirm('Yakin ingin menghapus aktivitas ini?')) return;
-    setAktivitasList((prev) => prev.filter((a) => a.id !== id));
+
+    const numericId = Number(id);
+    if (Number.isNaN(numericId)) {
+      // Belum sempat tersimpan ke server (id lokal sementara), cukup buang dari state.
+      setAktivitasList((prev) => prev.filter((a) => a.id !== id));
+      return;
+    }
+
+    try {
+      await deleteAktivitasApi(numericId);
+      setAktivitasList((prev) => prev.filter((a) => a.id !== id));
+    } catch (error) {
+      alert(error instanceof Error && error.message ? error.message : 'Gagal menghapus aktivitas di server.');
+    }
   }
 
-  function handleTambahAktivitas(data: Aktivitas) {
-    setAktivitasList((prev) => [data, ...prev]);
-    setShowTambah(false);
+  async function handleTambahAktivitas(data: Aktivitas, jenisAktivitas: string) {
+    const kerjasamaId = story.pengajuanId ?? story.pengajuanIds[0];
+    if (!kerjasamaId) {
+      alert('Aktivitas tidak bisa disimpan karena kerja sama ini tidak terhubung ke pengajuan manapun.');
+      return;
+    }
+
+    try {
+      const created = await createAktivitasApi(kerjasamaId, {
+        judul: data.judul,
+        jenisAktivitas,
+        tanggal: data.tanggal,
+        peserta: data.peserta,
+        deskripsi: data.deskripsi,
+        picPolibatam: data.picPolibatam,
+        picMitra: data.picMitra,
+        status: data.status,
+      });
+      setAktivitasList((prev) => [{ ...data, id: String(created.id) }, ...prev]);
+      setShowTambah(false);
+    } catch (error) {
+      alert(error instanceof Error && error.message ? error.message : 'Gagal menyimpan aktivitas ke server.');
+    }
   }
 
   return (
@@ -246,10 +288,38 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <MiniStat icon={<ClipboardList size={18} className="text-gray-500" />} iconBg="bg-gray-100" label="Total Aktivitas" value={totalAktivitas} />
-        <MiniStat icon={<CheckCircle2 size={18} className="text-green-500" />} iconBg="bg-green-100" label="Selesai" value={selesai} />
-        <MiniStat icon={<Clock size={18} className="text-blue-500" />} iconBg="bg-blue-100" label="Berlangsung" value={berlangsung} />
-        <MiniStat icon={<Calendar size={18} className="text-purple-500" />} iconBg="bg-purple-100" label="Direncanakan" value={direncanakan} />
+        <MiniStat
+          icon={<ClipboardList size={18} className="text-gray-500" />}
+          iconBg="bg-gray-100"
+          label="Total Aktivitas"
+          value={totalAktivitas}
+          active={filterAktivitasStatus === 'semua'}
+          onClick={() => setFilterAktivitasStatus('semua')}
+        />
+        <MiniStat
+          icon={<CheckCircle2 size={18} className="text-green-500" />}
+          iconBg="bg-green-100"
+          label="Selesai"
+          value={selesai}
+          active={filterAktivitasStatus === 'selesai'}
+          onClick={() => setFilterAktivitasStatus('selesai')}
+        />
+        <MiniStat
+          icon={<Clock size={18} className="text-blue-500" />}
+          iconBg="bg-blue-100"
+          label="Berlangsung"
+          value={berlangsung}
+          active={filterAktivitasStatus === 'berlangsung'}
+          onClick={() => setFilterAktivitasStatus('berlangsung')}
+        />
+        <MiniStat
+          icon={<Calendar size={18} className="text-purple-500" />}
+          iconBg="bg-purple-100"
+          label="Direncanakan"
+          value={direncanakan}
+          active={filterAktivitasStatus === 'direncanakan'}
+          onClick={() => setFilterAktivitasStatus('direncanakan')}
+        />
       </div>
 
       {/* Story Kerjasama & Aktivitas */}
@@ -291,12 +361,14 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
         )}
 
         <div className="mt-4 space-y-4">
-          {aktivitasList.length === 0 ? (
+          {filteredAktivitasList.length === 0 ? (
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-10 text-center text-[12px] text-gray-500">
-              Belum ada aktivitas tercatat.
+              {aktivitasList.length === 0
+                ? 'Belum ada aktivitas tercatat.'
+                : `Belum ada aktivitas dengan status "${filterAktivitasStatus}".`}
             </div>
           ) : (
-            aktivitasList.map((a) => {
+            filteredAktivitasList.map((a) => {
               const badge = aktivitasStatusBadge[a.status];
               return (
                 <div key={a.id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -404,14 +476,24 @@ function MiniStat({
   iconBg,
   label,
   value,
+  active = false,
+  onClick,
 }: {
   icon: React.ReactNode;
   iconBg: string;
   label: string;
   value: number;
+  active?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <div className="stat-card flex items-center gap-3 p-3.5">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`stat-card flex items-center gap-3 p-3.5 text-left transition ${
+        active ? '!border-[#173B82] !shadow-[0_0_0_3px_rgba(23,59,130,0.25)]' : ''
+      }`}
+    >
       <div>
         <p className="text-[10px] text-gray-500">{label}</p>
         <p className="mt-0.5 text-[17px] font-bold text-gray-900">{value}</p>
@@ -419,7 +501,7 @@ function MiniStat({
       <div className={`ml-auto flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${iconBg}`}>
         {icon}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -428,7 +510,7 @@ function TambahAktivitasForm({
   onSave,
 }: {
   onClose: () => void;
-  onSave: (data: Aktivitas) => void;
+  onSave: (data: Aktivitas, jenisAktivitas: string) => void | Promise<void>;
 }) {
   const [judul, setJudul] = useState('');
   const [jenisAktivitas, setJenisAktivitas] = useState('');
@@ -438,8 +520,9 @@ function TambahAktivitasForm({
   const [picPolibatam, setPicPolibatam] = useState('');
   const [picMitra, setPicMitra] = useState('');
   const [deskripsi, setDeskripsi] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!judul.trim()) {
       alert('Judul aktivitas wajib diisi.');
       return;
@@ -456,19 +539,26 @@ function TambahAktivitasForm({
       alert('PIC Polibatam wajib diisi.');
       return;
     }
-    const dateStr = tanggal
-      ? new Date(tanggal).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
-      : '';
-    onSave({
-      id: `a-${Date.now()}`,
-      judul: `${jenisAktivitas} - ${judul}`,
-      tanggal: dateStr,
-      peserta: Number(peserta) || 0,
-      deskripsi,
-      picPolibatam,
-      picMitra,
-      status,
-    });
+    try {
+      setIsSaving(true);
+      await onSave(
+        {
+          id: `a-${Date.now()}`,
+          judul: `${jenisAktivitas} - ${judul}`,
+          // Kirim format ISO (YYYY-MM-DD) apa adanya, sama seperti versi admin —
+          // backend menolak format DD/MM/YYYY dengan error "must be a valid date".
+          tanggal,
+          peserta: Number(peserta) || 0,
+          deskripsi,
+          picPolibatam,
+          picMitra,
+          status,
+        },
+        jenisAktivitas
+      );
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -515,12 +605,7 @@ function TambahAktivitasForm({
           <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">
             Tanggal <span className="text-red-500">*</span>
           </label>
-          <input
-            type="date"
-            value={tanggal}
-            onChange={(e) => setTanggal(e.target.value)}
-            className="input-field h-10 w-full px-3 text-[12px] text-gray-700"
-          />
+          <InlineDatePicker value={tanggal} onChange={setTanggal} />
         </div>
         <div>
           <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">Jumlah Peserta</label>
@@ -591,18 +676,136 @@ function TambahAktivitasForm({
         <button
           type="button"
           onClick={handleSubmit}
-          className="btn-primary px-5 py-2 text-[12px] font-semibold"
+          disabled={isSaving}
+          className="btn-primary px-5 py-2 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Simpan Aktivitas
+          {isSaving ? 'Menyimpan...' : 'Simpan Aktivitas'}
         </button>
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-2 text-[12px] font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+          disabled={isSaving}
+          className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-2 text-[12px] font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Batal
         </button>
       </div>
+    </div>
+  );
+}
+
+// Date-picker custom: sengaja tidak pakai <input type="date"> bawaan browser karena
+// spinner/kalender nativenya sering "mulai" dari tanggal hari ini begitu disentuh,
+// sehingga terasa seperti otomatis terisi tanggal sekarang. Di sini tidak ada tanggal
+// yang terpilih sampai pengguna benar-benar klik salah satu tanggal di kalender.
+function InlineDatePicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [viewDate, setViewDate] = useState(() => (value ? new Date(`${value}T00:00:00`) : new Date()));
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedDate = value ? new Date(`${value}T00:00:00`) : null;
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const startOffset = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthLabel = viewDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+  const dayLabels = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+  function formatIso(day: number): string {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  function isSelectedDay(day: number): boolean {
+    return (
+      !!selectedDate &&
+      selectedDate.getFullYear() === year &&
+      selectedDate.getMonth() === month &&
+      selectedDate.getDate() === day
+    );
+  }
+
+  const displayText = selectedDate
+    ? selectedDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+    : 'Pilih tanggal';
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className={`input-field flex h-10 w-full items-center justify-between gap-2 px-3 text-left text-[12px] ${
+          selectedDate ? 'text-gray-700' : 'text-gray-400'
+        }`}
+      >
+        {displayText}
+        <Calendar size={14} className="flex-shrink-0 text-gray-400" />
+      </button>
+
+      {open && (
+        <div className="absolute z-20 mt-1.5 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+          <div className="mb-2 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setViewDate(new Date(year, month - 1, 1))}
+              className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <p className="text-[11px] font-semibold capitalize text-gray-800">{monthLabel}</p>
+            <button
+              type="button"
+              onClick={() => setViewDate(new Date(year, month + 1, 1))}
+              className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-gray-400">
+            {dayLabels.map((label) => (
+              <span key={label}>{label}</span>
+            ))}
+          </div>
+
+          <div className="mt-1 grid grid-cols-7 gap-1">
+            {Array.from({ length: startOffset }).map((_, index) => (
+              <span key={`empty-${index}`} />
+            ))}
+            {Array.from({ length: daysInMonth }, (_, index) => index + 1).map((day) => (
+              <button
+                key={day}
+                type="button"
+                onClick={() => {
+                  onChange(formatIso(day));
+                  setOpen(false);
+                }}
+                className={`h-7 w-7 rounded-md text-[11px] transition-colors ${
+                  isSelectedDay(day) ? 'bg-[#173B82] font-semibold text-white' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                {day}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -221,6 +221,7 @@ export default function DetailStoryAktivitasPage() {
   const [laporanDiterima, setLaporanDiterima] = useState<LaporanPelaksanaanRecord[]>([]);
   const [laporanLoading, setLaporanLoading] = useState(false);
   const [deletingLaporanId, setDeletingLaporanId] = useState<number | null>(null);
+  const [filterAktivitasStatus, setFilterAktivitasStatus] = useState<'semua' | 'selesai' | 'berlangsung' | 'direncanakan'>('semua');
 
   const storyGroup = useMemo(
     () => findStoryAktivitasGroupByRouteParam(sourceData, routeId, hiddenStoryIds),
@@ -332,6 +333,14 @@ export default function DetailStoryAktivitasPage() {
 
     return { total, selesai, berlangsung, direncanakan };
   }, [timelineItems]);
+
+  const filteredTimelineItems = useMemo(() => {
+    if (filterAktivitasStatus === 'semua') {
+      return timelineItems;
+    }
+
+    return timelineItems.filter((item) => item.status === filterAktivitasStatus);
+  }, [timelineItems, filterAktivitasStatus]);
 
   const laporanData = useMemo(() => {
     if (!storyGroup) {
@@ -513,22 +522,54 @@ export default function DetailStoryAktivitasPage() {
       </section>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setFilterAktivitasStatus('semua')}
+          className={`rounded-lg border p-4 text-left shadow-sm transition ${
+            filterAktivitasStatus === 'semua'
+              ? 'border-slate-400 bg-slate-50 ring-2 ring-slate-200'
+              : 'border-slate-100 bg-white hover:border-slate-300'
+          }`}
+        >
           <p className="text-[12px] text-slate-500">Total Aktivitas</p>
           <p className="mt-0.5 text-[17px] font-bold text-slate-900">{stats.total}</p>
-        </div>
-        <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterAktivitasStatus('selesai')}
+          className={`rounded-lg border p-4 text-left shadow-sm transition ${
+            filterAktivitasStatus === 'selesai'
+              ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200'
+              : 'border-slate-100 bg-white hover:border-emerald-200'
+          }`}
+        >
           <p className="text-[12px] text-slate-500">Selesai</p>
           <p className="mt-0.5 text-[17px] font-bold text-emerald-700">{stats.selesai}</p>
-        </div>
-        <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterAktivitasStatus('berlangsung')}
+          className={`rounded-lg border p-4 text-left shadow-sm transition ${
+            filterAktivitasStatus === 'berlangsung'
+              ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-200'
+              : 'border-slate-100 bg-white hover:border-blue-200'
+          }`}
+        >
           <p className="text-[12px] text-slate-500">Berlangsung</p>
           <p className="mt-0.5 text-[17px] font-bold text-blue-700">{stats.berlangsung}</p>
-        </div>
-        <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterAktivitasStatus('direncanakan')}
+          className={`rounded-lg border p-4 text-left shadow-sm transition ${
+            filterAktivitasStatus === 'direncanakan'
+              ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-200'
+              : 'border-slate-100 bg-white hover:border-amber-200'
+          }`}
+        >
           <p className="text-[12px] text-slate-500">Direncanakan</p>
           <p className="mt-0.5 text-[17px] font-bold text-amber-700">{stats.direncanakan}</p>
-        </div>
+        </button>
       </section>
 
       <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
@@ -659,14 +700,23 @@ export default function DetailStoryAktivitasPage() {
       <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-[15px] font-bold text-slate-900">Timeline Aktivitas Gabungan</h2>
-          <button
-            onClick={handleCreate}
-            disabled={isSubmitting}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1d34] px-3 py-2 text-[12px] font-medium text-white hover:bg-[#183053]"
-          >
-            <Plus size={14} />
-            Tambah Aktivitas
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowLaporanModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#0e1d34] px-3 py-2 text-[12px] font-medium text-[#0e1d34] hover:bg-[#0e1d34]/5"
+            >
+              <FileText size={14} />
+              Laporan Pelaksanaan
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1d34] px-3 py-2 text-[12px] font-medium text-white hover:bg-[#183053]"
+            >
+              <Plus size={14} />
+              Tambah Aktivitas
+            </button>
+          </div>
         </div>
 
         {showForm && (
@@ -675,13 +725,6 @@ export default function DetailStoryAktivitasPage() {
               <h3 className="text-[12px] font-bold text-slate-900">
                 {editingRef ? 'Edit Aktivitas' : 'Tambah Aktivitas Baru'}
               </h3>
-              <button
-                onClick={() => setShowLaporanModal(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1d34] px-3 py-2 text-[12px] font-medium text-white hover:bg-[#183053]"
-              >
-                <FileText size={14} />
-                Laporan Pelaksanaan
-              </button>
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -834,13 +877,15 @@ export default function DetailStoryAktivitasPage() {
           </div>
         )}
 
-        {timelineItems.length === 0 ? (
+        {filteredTimelineItems.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-[12px] text-slate-500">
-            Belum ada aktivitas. Tambahkan aktivitas pertama untuk mitra ini.
+            {timelineItems.length === 0
+              ? 'Belum ada aktivitas. Tambahkan aktivitas pertama untuk mitra ini.'
+              : `Belum ada aktivitas dengan status "${filterAktivitasStatus}".`}
           </div>
         ) : (
           <ol className="relative ml-3 border-l border-slate-200">
-            {timelineItems.map((item, index) => (
+            {filteredTimelineItems.map((item, index) => (
               <li key={`${item.sourcePengajuanId}-${item.id}-${index}`} className="mb-5 ml-6">
                 <span className="absolute -left-[0.45rem] mt-1 h-3.5 w-3.5 rounded-full border-2 border-white shadow-sm">
                   <span className={`block h-full w-full rounded-full ${statusDot(item.status)}`} />

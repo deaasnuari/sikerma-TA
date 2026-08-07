@@ -12,20 +12,32 @@ class PengajuanAktivitasTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function user(): User
+    private function user(string $role = 'internal'): User
     {
-        return User::factory()->create(['role' => 'internal']);
+        return User::factory()->create(['role' => $role]);
     }
 
-    private function buatPengajuan(): Pengajuan
+    /**
+     * @param int|null $ownerId  user_pengusul_id pemilik pengajuan (null = tanpa pemilik)
+     * @param int[] $distribusiUserIds  daftar user id yang di-CC admin
+     */
+    private function buatPengajuan(?int $ownerId = null, array $distribusiUserIds = []): Pengajuan
     {
-        return Pengajuan::create([
+        $pengajuan = Pengajuan::create([
             'nama_pengusul'    => 'Dr. Test',
             'judul_pengajuan'  => 'Kerja Sama Test',
             'jenis_dokumen'    => 'MOU',
             'status_pengajuan' => 'menunggu',
             'ruang_lingkup_ids' => [],
+            'user_pengusul_id' => $ownerId,
         ]);
+
+        if ($distribusiUserIds !== []) {
+            // distribusi_user_ids sengaja tidak masuk $fillable model, jadi di-set langsung.
+            $pengajuan->forceFill(['distribusi_user_ids' => $distribusiUserIds])->save();
+        }
+
+        return $pengajuan;
     }
 
     private function dataAktivitas(int $pengajuanId, array $override = []): array
@@ -46,7 +58,7 @@ class PengajuanAktivitasTest extends TestCase
     public function test_daftar_aktivitas_berhasil(): void
     {
         $user      = $this->user();
-        $pengajuan = $this->buatPengajuan();
+        $pengajuan = $this->buatPengajuan(ownerId: $user->id);
 
         PengajuanAktivitas::create($this->dataAktivitas($pengajuan->id, ['judul' => 'Aktivitas 1']));
         PengajuanAktivitas::create($this->dataAktivitas($pengajuan->id, ['judul' => 'Aktivitas 2']));
@@ -60,8 +72,8 @@ class PengajuanAktivitasTest extends TestCase
     public function test_filter_aktivitas_by_pengajuan_id(): void
     {
         $user       = $this->user();
-        $pengajuan1 = $this->buatPengajuan();
-        $pengajuan2 = $this->buatPengajuan();
+        $pengajuan1 = $this->buatPengajuan(ownerId: $user->id);
+        $pengajuan2 = $this->buatPengajuan(ownerId: $user->id);
 
         PengajuanAktivitas::create($this->dataAktivitas($pengajuan1->id, ['judul' => 'Akt P1']));
         PengajuanAktivitas::create($this->dataAktivitas($pengajuan2->id, ['judul' => 'Akt P2']));
@@ -77,6 +89,52 @@ class PengajuanAktivitasTest extends TestCase
         $this->getJson('/api/pengajuan-aktivitas')->assertUnauthorized();
     }
 
+    public function test_daftar_aktivitas_tidak_termasuk_punya_user_lain(): void
+    {
+        $user      = $this->user();
+        $userLain  = $this->user();
+        $pengajuanSendiri = $this->buatPengajuan(ownerId: $user->id);
+        $pengajuanOrang   = $this->buatPengajuan(ownerId: $userLain->id);
+
+        PengajuanAktivitas::create($this->dataAktivitas($pengajuanSendiri->id, ['judul' => 'Punya Sendiri']));
+        PengajuanAktivitas::create($this->dataAktivitas($pengajuanOrang->id, ['judul' => 'Punya Orang Lain']));
+
+        $response = $this->actingAs($user)->getJson('/api/pengajuan-aktivitas');
+
+        $response->assertOk();
+        $judulList = collect($response->json('data'))->pluck('judul');
+        $this->assertContains('Punya Sendiri', $judulList);
+        $this->assertNotContains('Punya Orang Lain', $judulList);
+    }
+
+    public function test_daftar_aktivitas_terlihat_untuk_user_yang_di_cc(): void
+    {
+        $pemilik = $this->user();
+        $userCc  = $this->user();
+        $pengajuan = $this->buatPengajuan(ownerId: $pemilik->id, distribusiUserIds: [$userCc->id]);
+
+        PengajuanAktivitas::create($this->dataAktivitas($pengajuan->id, ['judul' => 'Aktivitas CC']));
+
+        $response = $this->actingAs($userCc)->getJson('/api/pengajuan-aktivitas');
+
+        $response->assertOk();
+        $this->assertContains('Aktivitas CC', collect($response->json('data'))->pluck('judul'));
+    }
+
+    public function test_admin_bisa_lihat_semua_aktivitas(): void
+    {
+        $admin    = $this->user('admin');
+        $userLain = $this->user();
+        $pengajuan = $this->buatPengajuan(ownerId: $userLain->id);
+
+        PengajuanAktivitas::create($this->dataAktivitas($pengajuan->id, ['judul' => 'Aktivitas Siapapun']));
+
+        $response = $this->actingAs($admin)->getJson('/api/pengajuan-aktivitas');
+
+        $response->assertOk();
+        $this->assertContains('Aktivitas Siapapun', collect($response->json('data'))->pluck('judul'));
+    }
+
     // ------------------------------------------------------------------
     // store
     // ------------------------------------------------------------------
@@ -84,7 +142,7 @@ class PengajuanAktivitasTest extends TestCase
     public function test_buat_aktivitas_berhasil(): void
     {
         $user      = $this->user();
-        $pengajuan = $this->buatPengajuan();
+        $pengajuan = $this->buatPengajuan(ownerId: $user->id);
 
         $response = $this->actingAs($user)->postJson('/api/pengajuan-aktivitas', $this->dataAktivitas($pengajuan->id));
 
@@ -101,7 +159,7 @@ class PengajuanAktivitasTest extends TestCase
     public function test_buat_aktivitas_dengan_semua_field(): void
     {
         $user      = $this->user();
-        $pengajuan = $this->buatPengajuan();
+        $pengajuan = $this->buatPengajuan(ownerId: $user->id);
 
         $response = $this->actingAs($user)->postJson('/api/pengajuan-aktivitas', $this->dataAktivitas($pengajuan->id, [
             'jumlah_peserta' => 50,
@@ -128,7 +186,7 @@ class PengajuanAktivitasTest extends TestCase
     public function test_buat_aktivitas_gagal_judul_kosong(): void
     {
         $user      = $this->user();
-        $pengajuan = $this->buatPengajuan();
+        $pengajuan = $this->buatPengajuan(ownerId: $user->id);
 
         $this->actingAs($user)->postJson('/api/pengajuan-aktivitas', $this->dataAktivitas($pengajuan->id, ['judul' => '']))
             ->assertUnprocessable()
@@ -138,7 +196,7 @@ class PengajuanAktivitasTest extends TestCase
     public function test_buat_aktivitas_gagal_status_tidak_valid(): void
     {
         $user      = $this->user();
-        $pengajuan = $this->buatPengajuan();
+        $pengajuan = $this->buatPengajuan(ownerId: $user->id);
 
         $this->actingAs($user)->postJson('/api/pengajuan-aktivitas', $this->dataAktivitas($pengajuan->id, ['status' => 'batal']))
             ->assertUnprocessable()
@@ -148,11 +206,45 @@ class PengajuanAktivitasTest extends TestCase
     public function test_buat_aktivitas_gagal_tanggal_tidak_valid(): void
     {
         $user      = $this->user();
-        $pengajuan = $this->buatPengajuan();
+        $pengajuan = $this->buatPengajuan(ownerId: $user->id);
 
         $this->actingAs($user)->postJson('/api/pengajuan-aktivitas', $this->dataAktivitas($pengajuan->id, ['tanggal' => 'bukan-tanggal']))
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['tanggal']);
+    }
+
+    public function test_buat_aktivitas_ditolak_untuk_bukan_pemilik(): void
+    {
+        $pemilik    = $this->user();
+        $bukanPemilik = $this->user();
+        $pengajuan  = $this->buatPengajuan(ownerId: $pemilik->id);
+
+        $this->actingAs($bukanPemilik)->postJson('/api/pengajuan-aktivitas', $this->dataAktivitas($pengajuan->id))
+            ->assertForbidden();
+
+        $this->assertDatabaseMissing('pengajuan_aktivitas', ['pengajuan_id' => $pengajuan->id]);
+    }
+
+    public function test_buat_aktivitas_ditolak_untuk_user_yang_cuma_di_cc(): void
+    {
+        $pemilik = $this->user();
+        $userCc  = $this->user();
+        $pengajuan = $this->buatPengajuan(ownerId: $pemilik->id, distribusiUserIds: [$userCc->id]);
+
+        // User yang di-CC boleh LIHAT (dites di test_daftar_aktivitas_terlihat_untuk_user_yang_di_cc)
+        // tapi tidak boleh menambah aktivitas.
+        $this->actingAs($userCc)->postJson('/api/pengajuan-aktivitas', $this->dataAktivitas($pengajuan->id))
+            ->assertForbidden();
+    }
+
+    public function test_admin_bisa_buat_aktivitas_untuk_pengajuan_siapapun(): void
+    {
+        $admin     = $this->user('admin');
+        $userLain  = $this->user();
+        $pengajuan = $this->buatPengajuan(ownerId: $userLain->id);
+
+        $this->actingAs($admin)->postJson('/api/pengajuan-aktivitas', $this->dataAktivitas($pengajuan->id))
+            ->assertCreated();
     }
 
     // ------------------------------------------------------------------
@@ -162,7 +254,7 @@ class PengajuanAktivitasTest extends TestCase
     public function test_update_aktivitas_berhasil(): void
     {
         $user      = $this->user();
-        $pengajuan = $this->buatPengajuan();
+        $pengajuan = $this->buatPengajuan(ownerId: $user->id);
         $aktivitas = PengajuanAktivitas::create($this->dataAktivitas($pengajuan->id));
 
         $response = $this->actingAs($user)->putJson("/api/pengajuan-aktivitas/{$aktivitas->id}", $this->dataAktivitas($pengajuan->id, [
@@ -184,6 +276,32 @@ class PengajuanAktivitasTest extends TestCase
             ->assertUnauthorized();
     }
 
+    public function test_update_aktivitas_ditolak_untuk_bukan_pemilik(): void
+    {
+        $pemilik      = $this->user();
+        $bukanPemilik = $this->user();
+        $pengajuan    = $this->buatPengajuan(ownerId: $pemilik->id);
+        $aktivitas    = PengajuanAktivitas::create($this->dataAktivitas($pengajuan->id));
+
+        $this->actingAs($bukanPemilik)->putJson("/api/pengajuan-aktivitas/{$aktivitas->id}", $this->dataAktivitas($pengajuan->id, [
+            'judul' => 'Coba Ubah Punya Orang',
+        ]))->assertForbidden();
+
+        $this->assertDatabaseHas('pengajuan_aktivitas', ['id' => $aktivitas->id, 'judul' => 'Workshop Kolaborasi']);
+    }
+
+    public function test_update_aktivitas_ditolak_untuk_user_yang_cuma_di_cc(): void
+    {
+        $pemilik = $this->user();
+        $userCc  = $this->user();
+        $pengajuan = $this->buatPengajuan(ownerId: $pemilik->id, distribusiUserIds: [$userCc->id]);
+        $aktivitas = PengajuanAktivitas::create($this->dataAktivitas($pengajuan->id));
+
+        $this->actingAs($userCc)->putJson("/api/pengajuan-aktivitas/{$aktivitas->id}", $this->dataAktivitas($pengajuan->id, [
+            'judul' => 'Coba Ubah Walau Cuma CC',
+        ]))->assertForbidden();
+    }
+
     // ------------------------------------------------------------------
     // destroy
     // ------------------------------------------------------------------
@@ -191,7 +309,7 @@ class PengajuanAktivitasTest extends TestCase
     public function test_hapus_aktivitas_berhasil(): void
     {
         $user      = $this->user();
-        $pengajuan = $this->buatPengajuan();
+        $pengajuan = $this->buatPengajuan(ownerId: $user->id);
         $aktivitas = PengajuanAktivitas::create($this->dataAktivitas($pengajuan->id));
 
         $this->actingAs($user)->deleteJson("/api/pengajuan-aktivitas/{$aktivitas->id}")
@@ -206,5 +324,18 @@ class PengajuanAktivitasTest extends TestCase
 
         $this->actingAs($user)->deleteJson('/api/pengajuan-aktivitas/9999')
             ->assertNotFound();
+    }
+
+    public function test_hapus_aktivitas_ditolak_untuk_bukan_pemilik(): void
+    {
+        $pemilik      = $this->user();
+        $bukanPemilik = $this->user();
+        $pengajuan    = $this->buatPengajuan(ownerId: $pemilik->id);
+        $aktivitas    = PengajuanAktivitas::create($this->dataAktivitas($pengajuan->id));
+
+        $this->actingAs($bukanPemilik)->deleteJson("/api/pengajuan-aktivitas/{$aktivitas->id}")
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('pengajuan_aktivitas', ['id' => $aktivitas->id]);
     }
 }

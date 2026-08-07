@@ -155,6 +155,7 @@ export default function InternalStoryAktivitasPage() {
   const [filterJenis, setFilterJenis] = useState('Semua Jenis');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [selectedStory, setSelectedStory] = useState<KerjasamaStory | null>(null);
+  const [filterKartu, setFilterKartu] = useState<'semua' | 'aktif' | 'bulanIni' | 'atasRata'>('semua');
 
   useEffect(() => {
     let isMounted = true;
@@ -198,13 +199,16 @@ export default function InternalStoryAktivitasPage() {
   const totalAktivitas = allAktivitas.length;
   const kerjasamaAktif = kerjasamaData.filter((k) => k.status === 'Aktif').length;
   const now = new Date();
-  const bulanIni = allAktivitas.filter((a) => {
-    const normalized = a.tanggal.includes('/') ? a.tanggal : new Date(a.tanggal).toLocaleDateString('en-GB');
+
+  function isTanggalBulanIni(tanggal: string): boolean {
+    const normalized = tanggal.includes('/') ? tanggal : new Date(tanggal).toLocaleDateString('en-GB');
     const parts = normalized.split('/');
     const month = Number(parts[1]);
     const year = Number(parts[2]);
     return month === now.getMonth() + 1 && year === now.getFullYear();
-  }).length;
+  }
+
+  const bulanIni = allAktivitas.filter((a) => isTanggalBulanIni(a.tanggal)).length;
   const rataRata = kerjasamaData.length > 0 ? Math.round(totalAktivitas / kerjasamaData.length) : 0;
 
   const filtered = useMemo(() => {
@@ -213,9 +217,14 @@ export default function InternalStoryAktivitasPage() {
       const matchSearch = keyword === '' || k.namaMitra.toLowerCase().includes(keyword) || k.noDokumen.toLowerCase().includes(keyword);
       const matchJenis = filterJenis === 'Semua Jenis' || k.jenis === filterJenis;
       const matchStatus = filterStatus === 'Semua Status' || k.status === filterStatus;
-      return matchSearch && matchJenis && matchStatus;
+      const matchKartu =
+        filterKartu === 'semua' ||
+        (filterKartu === 'aktif' && k.status === 'Aktif') ||
+        (filterKartu === 'bulanIni' && k.aktivitas.some((a) => isTanggalBulanIni(a.tanggal))) ||
+        (filterKartu === 'atasRata' && k.aktivitas.length >= rataRata && k.aktivitas.length > 0);
+      return matchSearch && matchJenis && matchStatus && matchKartu;
     });
-  }, [kerjasamaData, search, filterJenis, filterStatus]);
+  }, [kerjasamaData, search, filterJenis, filterStatus, filterKartu, rataRata]);
 
   if (selectedStory) {
     return <DetailStoryModal story={selectedStory} onBack={() => setSelectedStory(null)} />;
@@ -231,10 +240,42 @@ export default function InternalStoryAktivitasPage() {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard icon={<Activity size={20} className="text-blue-500" />} iconBg="bg-blue-100" title="Total Aktivitas" value={totalAktivitas} caption="Semua aktivitas tercatat" />
-        <StatCard icon={<CalendarCheck size={20} className="text-green-500" />} iconBg="bg-green-100" title="Kerjasama Aktif" value={kerjasamaAktif} caption="Memiliki aktivitas" />
-        <StatCard icon={<Calendar size={20} className="text-purple-500" />} iconBg="bg-purple-100" title="Bulan Ini" value={bulanIni} caption="Aktivitas di bulan ini" />
-        <StatCard icon={<BookOpen size={20} className="text-orange-500" />} iconBg="bg-orange-100" title="Rata-rata" value={rataRata} caption="Aktivitas per kerjasama" />
+        <StatCard
+          icon={<Activity size={20} className="text-blue-500" />}
+          iconBg="bg-blue-100"
+          title="Total Aktivitas"
+          value={totalAktivitas}
+          caption="Semua aktivitas tercatat"
+          active={filterKartu === 'semua'}
+          onClick={() => setFilterKartu('semua')}
+        />
+        <StatCard
+          icon={<CalendarCheck size={20} className="text-green-500" />}
+          iconBg="bg-green-100"
+          title="Kerjasama Aktif"
+          value={kerjasamaAktif}
+          caption="Memiliki aktivitas"
+          active={filterKartu === 'aktif'}
+          onClick={() => setFilterKartu('aktif')}
+        />
+        <StatCard
+          icon={<Calendar size={20} className="text-purple-500" />}
+          iconBg="bg-purple-100"
+          title="Bulan Ini"
+          value={bulanIni}
+          caption="Aktivitas di bulan ini"
+          active={filterKartu === 'bulanIni'}
+          onClick={() => setFilterKartu('bulanIni')}
+        />
+        <StatCard
+          icon={<BookOpen size={20} className="text-orange-500" />}
+          iconBg="bg-orange-100"
+          title="Rata-rata"
+          value={rataRata}
+          caption="Aktivitas per kerjasama"
+          active={filterKartu === 'atasRata'}
+          onClick={() => setFilterKartu('atasRata')}
+        />
       </div>
 
       {/* Filters */}
@@ -353,15 +394,25 @@ function StatCard({
   title,
   value,
   caption,
+  active = false,
+  onClick,
 }: {
   icon: React.ReactNode;
   iconBg: string;
   title: string;
   value: number;
   caption: string;
+  active?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <div className="stat-card flex items-start gap-3 p-3.5">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`stat-card flex items-start gap-3 p-3.5 text-left transition ${
+        active ? '!border-[#173B82] !shadow-[0_0_0_3px_rgba(23,59,130,0.25)]' : ''
+      }`}
+    >
       <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${iconBg}`}>
         {icon}
       </div>
@@ -370,6 +421,6 @@ function StatCard({
         <p className="mt-0.5 text-[17px] font-bold text-gray-900">{value}</p>
         <p className="text-[10.5px] text-gray-400">{caption}</p>
       </div>
-    </div>
+    </button>
   );
 }

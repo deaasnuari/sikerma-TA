@@ -267,6 +267,9 @@ class PengajuanWorkflowTest extends TestCase
             'jenis_dokumen'    => 'MOA',
             'status_pengajuan' => 'diproses',
             'ruang_lingkup_ids' => [],
+            // Pemilik pengajuan harus sama dengan user yang menambah/mengubah
+            // aktivitas di bawah, sesuai aturan kepemilikan pada endpoint ini.
+            'user_pengusul_id' => $internal->id,
         ]);
 
         // Tambah aktivitas

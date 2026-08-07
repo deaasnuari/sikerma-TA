@@ -109,6 +109,76 @@ class PengajuanTest extends TestCase
         $this->getJson('/api/pengajuan')->assertUnauthorized();
     }
 
+    public function test_daftar_pengajuan_internal_tidak_termasuk_punya_user_lain(): void
+    {
+        $user     = $this->internal();
+        $userLain = $this->internal();
+        $this->buatPengajuan(['judul_pengajuan' => 'Punya Sendiri', 'user_pengusul_id' => $user->id]);
+        $this->buatPengajuan(['judul_pengajuan' => 'Punya Orang Lain', 'user_pengusul_id' => $userLain->id]);
+
+        $response = $this->actingAs($user)->getJson('/api/pengajuan');
+
+        $response->assertOk();
+        $judulList = collect($response->json('data.data'))->pluck('judul_pengajuan');
+        $this->assertContains('Punya Sendiri', $judulList);
+        $this->assertNotContains('Punya Orang Lain', $judulList);
+    }
+
+    public function test_daftar_pengajuan_external_dibatasi_ke_milik_sendiri(): void
+    {
+        $user     = User::factory()->create(['role' => 'external']);
+        $userLain = User::factory()->create(['role' => 'external']);
+        $this->buatPengajuan([
+            'judul_pengajuan' => 'Punya Mitra Sendiri',
+            'user_pengusul_id' => $user->id,
+            'kategori_pengajuan' => 'eksternal',
+        ]);
+        $this->buatPengajuan([
+            'judul_pengajuan' => 'Punya Mitra Lain',
+            'user_pengusul_id' => $userLain->id,
+            'kategori_pengajuan' => 'eksternal',
+        ]);
+
+        $response = $this->actingAs($user)->getJson('/api/pengajuan');
+
+        $response->assertOk();
+        $judulList = collect($response->json('data.data'))->pluck('judul_pengajuan');
+        $this->assertContains('Punya Mitra Sendiri', $judulList);
+        $this->assertNotContains('Punya Mitra Lain', $judulList);
+    }
+
+    public function test_daftar_pengajuan_external_terlihat_untuk_user_yang_di_cc(): void
+    {
+        $pemilik = User::factory()->create(['role' => 'external']);
+        $userCc  = User::factory()->create(['role' => 'external']);
+        $pengajuan = $this->buatPengajuan([
+            'judul_pengajuan' => 'Kerja Sama Di-CC',
+            'user_pengusul_id' => $pemilik->id,
+        ]);
+        $pengajuan->forceFill(['distribusi_user_ids' => [$userCc->id]])->save();
+
+        $response = $this->actingAs($userCc)->getJson('/api/pengajuan');
+
+        $response->assertOk();
+        $this->assertContains('Kerja Sama Di-CC', collect($response->json('data.data'))->pluck('judul_pengajuan'));
+    }
+
+    public function test_daftar_pengajuan_admin_tetap_lihat_semua(): void
+    {
+        $admin    = $this->admin();
+        $internal = $this->internal();
+        $external = User::factory()->create(['role' => 'external']);
+        $this->buatPengajuan(['judul_pengajuan' => 'Punya Internal', 'user_pengusul_id' => $internal->id]);
+        $this->buatPengajuan(['judul_pengajuan' => 'Punya External', 'user_pengusul_id' => $external->id]);
+
+        $response = $this->actingAs($admin)->getJson('/api/pengajuan');
+
+        $response->assertOk();
+        $judulList = collect($response->json('data.data'))->pluck('judul_pengajuan');
+        $this->assertContains('Punya Internal', $judulList);
+        $this->assertContains('Punya External', $judulList);
+    }
+
     // ------------------------------------------------------------------
     // store
     // ------------------------------------------------------------------
