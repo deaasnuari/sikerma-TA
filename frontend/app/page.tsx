@@ -8,6 +8,7 @@ import AdminFooter from '@/components/admin/AdminFooter';
 import DonutChart from '@/components/DonutChart';
 import { getCarouselImages, type CarouselImageItem } from '@/services/carouselService';
 import { apiRequest } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,8 +53,10 @@ function MenuIcon() {
 
 export default function Home() {
   const router = useRouter();
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedRow, setSelectedRow] = useState<KerjasamaRow | null>(null);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [selectedWilayah, setSelectedWilayah] = useState('Semua Wilayah');
@@ -231,12 +234,19 @@ export default function Home() {
   }, [kerjasamaList]);
 
   const handleLihatDetail = () => {
-    try {
-      const raw = localStorage.getItem('user');
-      const token = raw ? (JSON.parse(raw) as { accessToken?: string }).accessToken : null;
-      router.push(token ? '/admin/rekap_data' : '/login');
-    } catch {
-      router.push('/login');
+    // Dari landing page publik, "Lihat Detail Lengkap" tidak boleh langsung
+    // menembus ke halaman admin walau ada sesi tersimpan — selalu arahkan ke
+    // halaman login supaya akses ke data lengkap selalu lewat login eksplisit.
+    router.push('/login');
+  };
+
+  const handleOpenDetail = (row: KerjasamaRow) => {
+    // Selagi status login masih diverifikasi ke server, anggap belum login (fail-closed)
+    // supaya token basi/tidak valid tidak bisa dipakai untuk menembus modal detail.
+    if (isAuthenticated && !isAuthLoading) {
+      setSelectedRow(row);
+    } else {
+      setShowLoginPrompt(true);
     }
   };
 
@@ -688,7 +698,7 @@ export default function Home() {
                     <td className="px-4 py-3 align-middle text-slate-500">{row.unit}</td>
                     <td className="px-4 py-3 align-middle text-center">
                       <button
-                        onClick={() => setSelectedRow(row)}
+                        onClick={() => handleOpenDetail(row)}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#173B82]/10 text-[#173B82] transition-colors hover:bg-[#173B82] hover:text-white group-hover:bg-[#173B82]/20"
                       >
                         <MenuIcon />
@@ -821,6 +831,45 @@ export default function Home() {
                 className="flex-1 rounded-xl bg-[#173B82] py-2.5 text-[12px] font-semibold text-white transition hover:bg-[#0f2557]"
               >
                 Lihat Detail Lengkap →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLoginPrompt && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm sm:items-center"
+          onClick={() => setShowLoginPrompt(false)}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center gap-3 px-6 pb-2 pt-8 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#173B82]/10 text-[#173B82]">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                </svg>
+              </div>
+              <h2 className="text-[15px] font-bold text-slate-800">Login Diperlukan</h2>
+              <p className="text-[12.5px] leading-relaxed text-slate-500">
+                Anda harus login terlebih dahulu untuk melihat detail kerja sama ini.
+              </p>
+            </div>
+
+            <div className="flex gap-2 bg-slate-50 px-6 py-4">
+              <button
+                onClick={() => setShowLoginPrompt(false)}
+                className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-[12px] font-medium text-slate-600 transition hover:bg-slate-100"
+              >
+                Tutup
+              </button>
+              <button
+                onClick={() => router.push('/login')}
+                className="flex-1 rounded-xl bg-[#173B82] py-2.5 text-[12px] font-semibold text-white transition hover:bg-[#0f2557]"
+              >
+                Login →
               </button>
             </div>
           </div>
