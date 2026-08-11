@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Activity, CalendarDays, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2, Upload, Eye, Building2, FileText, Hash, Phone, User, CheckCircle2, Clock, XCircle, Download, Paperclip, RefreshCw, CheckSquare, Square } from 'lucide-react';
+import { Activity, CalendarDays, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2, Upload, Eye, Building2, FileText, Hash, Phone, User, CheckCircle2, Clock, XCircle, Download, Paperclip, RefreshCw, CheckSquare, Square, Tag } from 'lucide-react';
 import TambahDokumenModal from './TambahDokumenModal';
 import {
   createDokumenFormData,
@@ -842,6 +842,13 @@ export default function RekapDataPage() {
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
+                  <Tag size={15} className="mt-0.5 shrink-0 text-[#1E376C]" />
+                  <div>
+                    <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Kode Perusahaan</p>
+                    <p className="mt-0.5 text-[12px] font-semibold text-gray-800">{detailItem.kodePerusahaan || '-'}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
                   <User size={15} className="mt-0.5 shrink-0 text-[#1E376C]" />
                   <div>
                     <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Jurusan / Unit</p>
@@ -1168,6 +1175,7 @@ export default function RekapDataPage() {
                   namaMitra: data.namaMitra,
                   mitraId: data.mitraId,
                   kodePerusahaan: data.kodePerusahaan,
+                  manfaatKerjasama: data.manfaatKerjasama || undefined,
                   jenis: data.jenisDokumen as 'MoU' | 'MoA' | 'IA',
                   unit: data.unitKerja,
                   tanggalMulai: data.tanggalMulai || r.tanggalMulai,
@@ -1191,6 +1199,7 @@ export default function RekapDataPage() {
                 status_siklus: mapStatusToApi(data.status),
                 // Kode Perusahaan mengikuti master_mitra lewat relasi mitra_id — tidak dikirim manual.
                 mitra_id: typeof data.mitraId === 'number' ? data.mitraId : null,
+                keterangan: data.manfaatKerjasama || null,
               };
               promises.push(updateDokumenKerjasamaById(editingItem.id, apiPayload));
             }

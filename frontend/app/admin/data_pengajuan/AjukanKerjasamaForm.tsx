@@ -861,6 +861,7 @@ export default function AdminAjukanKerjasamaForm({
     for (const jenisKerjasama of selectedJenisKerjasama) {
       const submitPayload: Parameters<typeof submitPengajuanApi>[0] = {
         judulPengajuan: formData.judulKerjasama,
+        deskripsiPengajuan: formData.deskripsi.trim() || undefined,
         namaPengusul: formData.namaKontak || 'Internal Polibatam',
         namaMitra: formData.namaMitra,
         mitraId: resolvedMitraId,

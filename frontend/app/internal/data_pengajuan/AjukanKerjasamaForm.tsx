@@ -848,6 +848,7 @@ export default function InternalAjukanKerjasamaForm({
       for (const jenisKerjasama of selectedJenisKerjasama) {
         await submitInternalPengajuan({
           judulPengajuan: formData.judulKerjasama,
+          deskripsiPengajuan: formData.deskripsi.trim() || undefined,
           namaPengusul: formData.namaKontak || 'Internal Polibatam',
           namaMitra: formData.namaMitra,
           mitraKategori: formData.jenisMitra.trim() || undefined,

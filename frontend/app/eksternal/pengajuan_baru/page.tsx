@@ -102,6 +102,7 @@ export default function PengajuanBaruEksternalPage() {
 
           await submitExternalPengajuan({
             judulPengajuan: formData.judulKerjasama,
+            deskripsiPengajuan: formData.deskripsi.trim() || undefined,
             namaPengusul: formData.namaKontak || 'Mitra Eksternal',
             namaMitra: formData.namaMitra,
             mitraKategori: formData.jenisMitra.trim() || undefined,

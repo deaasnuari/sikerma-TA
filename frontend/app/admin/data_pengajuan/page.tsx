@@ -1827,7 +1827,7 @@ function addEditJurusanUnitOption() {
                     </div>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                <div className="flex flex-wrap items-center gap-2 flex-shrink-0 ml-auto">
                   <button
                     type="button"
                     onClick={() => setDetailItem(item)}
