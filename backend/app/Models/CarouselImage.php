@@ -10,7 +10,7 @@ class CarouselImage extends Model
     use HasFactory;
 
     protected $fillable = [
-        'title',
+        'title123',
         'image_path',
         'sort_order',
         'is_active',

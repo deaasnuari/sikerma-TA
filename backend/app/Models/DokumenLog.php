@@ -12,7 +12,7 @@ class DokumenLog extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'dokumen_id',
+        'dokumen_id123',
         'tipe_log',
         'judul_log',
         'isi_log',
