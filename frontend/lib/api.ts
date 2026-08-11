@@ -57,7 +57,7 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
     try {
       const isFormData = options.body instanceof FormData;
       const candidateResponse = await fetch(`${baseUrl}${normalizedEndpoint}`, {
-        ...options,
+        ...options, cache: options.cache ?? 'no-store',
         headers: {
           Accept: 'application/json',
           ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
