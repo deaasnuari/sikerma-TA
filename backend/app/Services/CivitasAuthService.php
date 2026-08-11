@@ -30,7 +30,7 @@ class CivitasAuthService
         $path = '/api/auth/login-staff';
         $body = ['username' => $username, 'password' => $password];
 
-        $response = Http::withHeaders($this->signedHeaders('POST', $path, $body))
+        $response = Http::withoutVerifying()->withHeaders($this->signedHeaders('POST', $path, $body))
             ->timeout(15)
             ->post($this->baseUrl.$path, $body);
 
