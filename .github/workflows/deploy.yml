@@ -1,0 +1,51 @@
+name: Deploy Sikerma App
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute deployment script over SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            # 1. Pindah ke direktori utama
+            cd /var/www/sikerma-polibatam
+            
+            # Agar git tidak error karena ownership (dubious ownership)
+            git config --global --add safe.directory /var/www/sikerma-polibatam
+            
+            # Bersihkan perubahan lokal jika ada, lalu tarik kode terbaru
+            git reset --hard HEAD
+            git pull origin main
+
+            # 2. Proses Backend (Laravel)
+            cd /var/www/sikerma-polibatam/backend
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+            php artisan optimize:clear
+            php artisan migrate --force
+            php artisan optimize
+            php artisan view:cache
+            
+            # Kembalikan hak akses ke www-data agar web tidak error permission denied
+            echo "${{ secrets.SERVER_PASSWORD }}" | sudo -S chown -R www-data:www-data storage bootstrap/cache
+
+            # 3. Proses Frontend (Next.js)
+            cd /var/www/sikerma-polibatam/frontend
+            npm install
+            npm run build
+            
+            # Restart PM2 untuk menerapkan perubahan Frontend
+            pm2 restart sikerma-frontend
+
+            # 4. Restart Services PHP dan Nginx
+            echo "${{ secrets.SERVER_PASSWORD }}" | sudo -S systemctl restart php8.3-fpm
+            echo "${{ secrets.SERVER_PASSWORD }}" | sudo -S systemctl restart nginx
