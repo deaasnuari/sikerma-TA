@@ -211,9 +211,6 @@ class DokumenKerjasamaController extends Controller
         ]);
     }
 
-    /**
-     * Public landing page – returns non-sensitive kerjasama data without authentication.
-     */
     public function publicIndex(Request $request): Response
     {
         $perPage = min(max((int) $request->integer('per_page', 1000), 1), 1000);

@@ -149,7 +149,21 @@ function toDocJenis(value?: string): 'MoA' | 'MoU' | 'IA' {
 }
 
 function buildGroup(items: PengajuanItem[], key: string): StoryAktivitasGroup {
-  const pengajuan = [...items].sort((left, right) => compareDesc(left.diajukanPada, right.diajukanPada));
+  // Pengajuan "primary" (sumber nomor dokumen, jenis, status & tanggal berakhir yang tampil di
+  // kartu ringkasan) dipilih dari yang tanggal_berakhirnya PALING JAUH ke depan, bukan dari yang
+  // paling baru diajukan. Kalau perpanjangan kerjasama disetujui, backend meng-update
+  // tanggal_berakhir pengajuan sumbernya (lihat DokumenKerjasamaController::decideRenewalRequest)
+  // — tapi kalau primary masih dipilih berdasarkan tanggal pengajuan, mitra yang punya lebih dari
+  // satu pengajuan bisa saja hasil perpanjangannya "kepakai" pada pengajuan yang tidak ditampilkan
+  // sebagai primary, jadi kartu di Story & Aktivitas terlihat seperti belum ter-update meski
+  // datanya sudah benar di database.
+  const pengajuan = [...items].sort((left, right) => {
+    const byBerakhir = compareDesc(left.tanggalBerakhir, right.tanggalBerakhir);
+    if (byBerakhir !== 0) {
+      return byBerakhir;
+    }
+    return compareDesc(left.diajukanPada, right.diajukanPada);
+  });
   const primary = pengajuan[0];
 
   const aktivitas = pengajuan
