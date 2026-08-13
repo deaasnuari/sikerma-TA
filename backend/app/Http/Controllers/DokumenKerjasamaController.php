@@ -69,11 +69,15 @@ class DokumenKerjasamaController extends Controller
         $query = DokumenKerjasama::query()->with([
             'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul,user_pengusul_id',
             'pengajuan.userPengusul:id,role',
-            'unitProdi:id,nama,jenis_node,kategori_unit',
-            'mitra:id,nama_mitra,kode_mitra,kategori_mitra,tingkat_perusahaan,negara,email_mitra,email_kontak_utama',
+            // parent dimuat supaya Jurusan bisa diturunkan saat unitProdi-nya berupa Prodi (anak dari Jurusan).
+            'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
+            'unitProdi.parent:id,nama,jenis_node,kategori_unit',
+            'mitra:id,nama_mitra,kode_mitra,kategori_mitra,bidang_usaha,tingkat_perusahaan,negara,email_mitra,email_kontak_utama,alamat,nama_kontak_utama,jabatan_kontak_utama,telepon_kontak_utama',
             'dokumenFiles' => function ($q) {
                 $q->whereIn('peran_berkas', ['dokumen_final', 'dokumen_perpanjangan']);
             },
+            // Dipakai untuk kolom "Hasil Monitoring Triwulan 1-4" & "Laporan Kegiatan" di Rekap Data.
+            'laporanPelaksanaan:id,dokumen_kerjasama_id,tahun,triwulan,file_path,file_nama',
         ]);
 
         $user = $request->user();
@@ -119,8 +123,9 @@ class DokumenKerjasamaController extends Controller
     {
         $dokumen_kerjasama->load([
             'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul',
-            'unitProdi:id,nama,jenis_node,kategori_unit',
-            'mitra:id,nama_mitra,kode_mitra,kategori_mitra,tingkat_perusahaan,negara,email_mitra,email_kontak_utama',
+            'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
+            'unitProdi.parent:id,nama,jenis_node,kategori_unit',
+            'mitra:id,nama_mitra,kode_mitra,kategori_mitra,bidang_usaha,tingkat_perusahaan,negara,email_mitra,email_kontak_utama,alamat,nama_kontak_utama,jabatan_kontak_utama,telepon_kontak_utama',
         ]);
 
         return response([
@@ -290,6 +295,8 @@ class DokumenKerjasamaController extends Controller
             'nama_dokumen' => ['required', 'string', 'max:255'],
             'jenis_dokumen' => ['required', 'in:MOU,MOA,IA,LAINNYA'],
             'judul_dokumen' => ['nullable', 'string', 'max:255'],
+            'manfaat' => ['nullable', 'string'],
+            'luaran_kerja_sama' => ['nullable', 'string'],
             'ruang_lingkup_ids' => ['nullable', 'array'],
             'ruang_lingkup_ids.*' => ['integer', 'exists:master_ruang_lingkup,id'],
             'tanggal_mulai' => ['nullable', 'date'],
@@ -340,9 +347,12 @@ class DokumenKerjasamaController extends Controller
         $validated = $request->validate([
             'nomor_dokumen' => ['required', 'string', 'max:100', 'unique:dokumen_kerjasama,nomor_dokumen'],
             'nama_dokumen' => ['required', 'string', 'max:255'],
+            'judul_dokumen' => ['nullable', 'string', 'max:255'],
             'jenis_dokumen' => ['required', 'in:MOU,MOA,IA,LAINNYA'],
             'unit_prodi_id' => ['required', 'integer', 'exists:master_unit_prodi,id'],
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
+            'manfaat' => ['nullable', 'string'],
+            'luaran_kerja_sama' => ['nullable', 'string'],
             'tanggal_mulai' => ['nullable', 'date'],
             'tanggal_berakhir' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
             'status_siklus' => ['nullable', 'in:active,expiring,archived'],
@@ -386,6 +396,8 @@ class DokumenKerjasamaController extends Controller
             'nama_dokumen' => ['sometimes', 'required', 'string', 'max:255'],
             'jenis_dokumen' => ['sometimes', 'required', 'in:MOU,MOA,IA,LAINNYA'],
             'judul_dokumen' => ['nullable', 'string', 'max:255'],
+            'manfaat' => ['nullable', 'string'],
+            'luaran_kerja_sama' => ['nullable', 'string'],
             'ruang_lingkup_ids' => ['nullable', 'array'],
             'ruang_lingkup_ids.*' => ['integer', 'exists:master_ruang_lingkup,id'],
             'tanggal_mulai' => ['nullable', 'date'],

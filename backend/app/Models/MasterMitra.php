@@ -12,6 +12,7 @@ class MasterMitra extends Model
         'kode_mitra',
         'nama_mitra',
         'kategori_mitra',
+        'bidang_usaha',
         'tingkat_perusahaan',
         'negara',
         'website',

@@ -11,11 +11,7 @@ use Illuminate\Support\Facades\Schema;
 
 class MasterMitraController extends Controller
 {
-    /**
-     * Pengajuan/dokumen lama yang mitranya diketik manual (mitra_id null) tapi namanya
-     * cocok persis dengan mitra ini, langsung ditautkan supaya Kode Perusahaan otomatis
-     * muncul di Rekap Data tanpa perlu edit ulang tiap dokumen satu-satu.
-     */
+    //
     private function linkOrphanedRecordsToMitra(MasterMitra $mitra): void
     {
         $namaNormalized = strtolower(trim((string) $mitra->nama_mitra));
@@ -114,6 +110,7 @@ class MasterMitraController extends Controller
             'kode_mitra' => 'nullable|string|max:20|unique:master_mitra,kode_mitra',
             'nama_mitra' => 'required|string|max:255',
             'kategori_mitra' => ['nullable', 'string', 'max:150'],
+            'bidang_usaha' => ['nullable', 'string', 'max:150'],
             'tingkat_perusahaan' => ['nullable', 'string', 'in:Lokal,Nasional,Internasional,Multinasional'],
             'negara' => 'nullable|string|max:100',
             'website' => 'nullable|url|max:255',
@@ -165,6 +162,7 @@ class MasterMitraController extends Controller
             'kode_mitra' => ['nullable', 'string', 'max:20', 'unique:master_mitra,kode_mitra,' . $mitra->id],
             'nama_mitra' => 'sometimes|required|string|max:255',
             'kategori_mitra' => ['nullable', 'string', 'max:150'],
+            'bidang_usaha' => ['nullable', 'string', 'max:150'],
             'tingkat_perusahaan' => ['nullable', 'string', 'in:Lokal,Nasional,Internasional,Multinasional'],
             'negara' => 'nullable|string|max:100',
             'website' => 'nullable|url|max:255',

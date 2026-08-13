@@ -17,6 +17,7 @@ type FormState = {
   kode_mitra: string;
   nama_mitra: string;
   kategori_mitra: string;
+  bidang_usaha: string;
   tingkat_perusahaan: string;
   negara: string;
   website: string;
@@ -50,6 +51,7 @@ const emptyForm: FormState = {
   kode_mitra: '',
   nama_mitra: '',
   kategori_mitra: '',
+  bidang_usaha: '',
   tingkat_perusahaan: '',
   negara: 'Indonesia',
   website: '',
@@ -73,6 +75,24 @@ const kategoriOptions = [
 
 const tingkatOptions = ['Lokal', 'Nasional', 'Internasional', 'Multinasional'] as const;
 const tingkatFilterOptions = ['Semua Tingkat', ...tingkatOptions] as const;
+
+const bidangUsahaOptions = [
+  'Manufaktur',
+  'Start Up',
+  'Pendidikan',
+  'Jasa',
+  'Kesehatan',
+  'Keuangan',
+  'Teknologi Informasi',
+  'Organisasi Nirlaba',
+  'Supplayer',
+  'Man Power',
+  'Engineering, Procurement, and Construction (EPC)',
+  'Transportasi Darat',
+  'Transportasi Laut',
+  'Transportasi Udara',
+  'Lainnya',
+] as const;
 
 const DISMISSED_MITRA_ALERTS_KEY = 'admin-mitra-alerts-dismissed';
 
@@ -259,6 +279,7 @@ export default function MasterMitraPage() {
       kode_mitra: item.kode_mitra || '',
       nama_mitra: item.nama_mitra,
       kategori_mitra: item.kategori_mitra || '',
+      bidang_usaha: item.bidang_usaha || '',
       tingkat_perusahaan: item.tingkat_perusahaan || '',
       negara: item.negara || '',
       website: item.website || '',
@@ -298,6 +319,7 @@ export default function MasterMitraPage() {
         ...form,
         kode_mitra: form.kode_mitra.trim() || null,
         kategori_mitra: form.kategori_mitra.trim() || null,
+        bidang_usaha: form.bidang_usaha.trim() || null,
         tingkat_perusahaan: form.tingkat_perusahaan.trim() || null,
         negara: form.negara.trim() || null,
         website: form.website.trim() || null,
@@ -740,6 +762,20 @@ export default function MasterMitraPage() {
                 >
                   <option value="">Pilih kategori mitra</option>
                   {kategoriOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Bidang Usaha">
+                <select
+                  value={form.bidang_usaha}
+                  onChange={(event) => setForm((prev) => ({ ...prev, bidang_usaha: event.target.value }))}
+                  className="input-field w-full px-4 py-2.5 text-[12px]"
+                >
+                  <option value="">Pilih bidang usaha</option>
+                  {bidangUsahaOptions.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>

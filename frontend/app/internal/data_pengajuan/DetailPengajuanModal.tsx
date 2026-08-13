@@ -61,7 +61,17 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
         .filter(Boolean)
         .map((name) => ({ name, url: '', isAcc: false }));
 
-  const finalFileUrl = item.finalFilePath
+  // Dokumen final yang di-ACC admin sebenarnya tersimpan sebagai file attachment
+  // bertanda isAcc (peran_berkas 'dokumen_final'), BUKAN di kolom finalFileName/
+  // finalFilePath — kolom itu legacy dan hampir tidak pernah kepakai oleh alur ACC
+  // yang sekarang. Makanya section ini dulu selalu kosong walau admin sudah upload.
+  // Dedup by name, keep the last (terbaru) — sama seperti tampilan eksternal.
+  const accFilesMap = new Map<string, { name: string; url: string; isAcc?: boolean }>();
+  for (const f of item.fileAttachments ?? []) {
+    if (f.isAcc) accFilesMap.set(f.name, f);
+  }
+  const accFinalFiles = Array.from(accFilesMap.values());
+  const legacyFinalFileUrl = item.finalFilePath
     ? (item.finalFilePath.startsWith('http') ? item.finalFilePath : `http://127.0.0.1:8000/storage/${item.finalFilePath.replace(/^\/+/, '')}`)
     : null;
 
@@ -206,9 +216,26 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
                 <ShieldCheck size={14} />
                 Dokumen Final (Resmi)
               </div>
-              {item.finalFileName && finalFileUrl ? (
+              {accFinalFiles.length > 0 ? (
+                <div className="space-y-2">
+                  {accFinalFiles.map((file, index) => (
+                    <a
+                      key={`${file.name}-${index}`}
+                      href={file.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download={file.name}
+                      className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100"
+                    >
+                      <Paperclip size={13} className="shrink-0 text-emerald-600" />
+                      <span className="truncate">{file.name}</span>
+                      <Download size={13} className="ml-auto shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              ) : item.finalFileName && legacyFinalFileUrl ? (
                 <a
-                  href={finalFileUrl}
+                  href={legacyFinalFileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   download={item.finalFileName}

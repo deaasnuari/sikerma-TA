@@ -112,9 +112,28 @@ const JENIS_MITRA_OPTIONS = [
 
 const TINGKAT_PERUSAHAAN_OPTIONS = ['Lokal', 'Nasional', 'Internasional', 'Multinasional'] as const;
 
+const BIDANG_USAHA_OPTIONS = [
+  'Manufaktur',
+  'Start Up',
+  'Pendidikan',
+  'Jasa',
+  'Kesehatan',
+  'Keuangan',
+  'Teknologi Informasi',
+  'Organisasi Nirlaba',
+  'Supplayer',
+  'Man Power',
+  'Engineering, Procurement, and Construction (EPC)',
+  'Transportasi Darat',
+  'Transportasi Laut',
+  'Transportasi Udara',
+  'Lainnya',
+] as const;
+
 const initialForm = {
   namaMitra: '',
   jenisMitra: '',
+  bidangUsaha: '',
   tingkatPerusahaan: '',
   teleponMitra: '',
   emailMitra: '',
@@ -320,6 +339,7 @@ export default function InternalAjukanKerjasamaForm({
   const [masterMitraRows, setMasterMitraRows] = useState<MasterMitraRow[]>([]);
   const [mitraOpen, setMitraOpen] = useState(false);
   const [mitraSearch, setMitraSearch] = useState('');
+  const [selectedMitraId, setSelectedMitraId] = useState<number | null>(null);
 
   const allJurusanOptions = [...jurusanOptions, ...customJurusanOpts];
   const allUnitOptions = [...unitOptions, ...customUnitOpts];
@@ -848,10 +868,24 @@ export default function InternalAjukanKerjasamaForm({
       for (const jenisKerjasama of selectedJenisKerjasama) {
         await submitInternalPengajuan({
           judulPengajuan: formData.judulKerjasama,
-          deskripsiPengajuan: formData.deskripsi.trim() || undefined,
+          mitraId: selectedMitraId ?? undefined,
+          // Alamat & PIC mitra disinkronkan ke Data Kemitraan oleh BACKEND (lihat
+          // PengajuanController), bukan lewat panggilan langsung ke endpoint
+          // /master/mitra dari sini — endpoint itu admin-only, jadi kalau dipanggil
+          // langsung dari sini akan gagal untuk pengaju internal/eksternal.
+          mitraAlamat: formData.alamatMitra.trim() || undefined,
+          mitraPicNama: formData.namaKontak.trim() || undefined,
+          mitraPicJabatan: formData.jabatanKontak.trim() || undefined,
+          mitraPicEmail: formData.emailKontak.trim() || undefined,
+          mitraPicTelepon: formData.teleponKontak.trim() || undefined,
+          // deskripsiPengajuan dibatasi 100 karakter di backend (kolom lama) — kirim versi
+          // terpotong untuk kompatibilitas, sementara manfaat lengkap masuk ke field manfaat.
+          deskripsiPengajuan: formData.deskripsi.trim().slice(0, 100) || undefined,
+          manfaat: formData.deskripsi.trim() || undefined,
           namaPengusul: formData.namaKontak || 'Internal Polibatam',
           namaMitra: formData.namaMitra,
           mitraKategori: formData.jenisMitra.trim() || undefined,
+          mitraBidangUsaha: formData.bidangUsaha.trim() || undefined,
           mitraTingkatPerusahaan: formData.tingkatPerusahaan.trim() || undefined,
           jenisDokumen: jenisKerjasama,
           namaUnitProdi: formData.unitPelaksana,
@@ -879,6 +913,22 @@ export default function InternalAjukanKerjasamaForm({
         jenis: selectedJenisKerjasama.join(', ') || '—',
       });
       setShowSuccessModal(true);
+
+      // Kosongkan form supaya kalau mau ajukan lagi (mis. modal ini tetap kebuka), tidak
+      // kebawa data pengajuan sebelumnya.
+      setFormData(initialForm);
+      setAsal('Jurusan');
+      setSelectedRuangLingkup([]);
+      setSelectedMitraId(null);
+      setSelectedJurusanId(null);
+      setSelectedProdiId(null);
+      setDokumen([]);
+      setDokumenPendukung([]);
+      setExistingFileAttachments([]);
+      setDokumenError(null);
+      setDokumenPendukungError(null);
+      setMitraSearch('');
+      setRlSearch('');
 
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Gagal mengirim pengajuan ke server.';
@@ -1018,8 +1068,10 @@ export default function InternalAjukanKerjasamaForm({
                           <button
                             type="button"
                             onClick={() => {
+                              setSelectedMitraId(m.id);
                               handleChange('namaMitra', m.nama_mitra);
                               handleChange('jenisMitra', m.kategori_mitra || '');
+                              handleChange('bidangUsaha', m.bidang_usaha || '');
                               handleChange('tingkatPerusahaan', m.tingkat_perusahaan || '');
                               setMitraOpen(false);
                               setMitraSearch('');
@@ -1038,6 +1090,7 @@ export default function InternalAjukanKerjasamaForm({
                           <button
                             type="button"
                             onClick={() => {
+                              setSelectedMitraId(null);
                               handleChange('namaMitra', mitraSearch.trim());
                               setMitraOpen(false);
                               setMitraSearch('');
@@ -1074,6 +1127,25 @@ export default function InternalAjukanKerjasamaForm({
                   className="input-field mt-2 h-10 w-full rounded-lg px-3 text-[12px]"
                   placeholder="Ketik jenis mitra..."
                   required
+                />
+              )}
+            </div>
+            <div>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">Bidang Usaha</label>
+              <select
+                value={(BIDANG_USAHA_OPTIONS.filter(o => o !== 'Lainnya') as string[]).includes(formData.bidangUsaha) || formData.bidangUsaha === '' ? formData.bidangUsaha : 'Lainnya'}
+                onChange={(e) => handleChange('bidangUsaha', e.target.value)}
+                className="input-field h-10 w-full rounded-lg px-3 text-[12px]"
+              >
+                <option value="">Pilih bidang usaha</option>
+                {BIDANG_USAHA_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+              {!(BIDANG_USAHA_OPTIONS.filter(o => o !== 'Lainnya') as string[]).includes(formData.bidangUsaha) && formData.bidangUsaha !== '' && (
+                <input
+                  value={formData.bidangUsaha === 'Lainnya' ? '' : formData.bidangUsaha}
+                  onChange={(e) => handleChange('bidangUsaha', e.target.value || 'Lainnya')}
+                  className="input-field mt-2 h-10 w-full rounded-lg px-3 text-[12px]"
+                  placeholder="Ketik bidang usaha..."
                 />
               )}
             </div>
@@ -1343,8 +1415,8 @@ export default function InternalAjukanKerjasamaForm({
             </div>
             <div className="md:col-span-2">
               <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelDeskripsi}</label>
-              <textarea value={formData.deskripsi} onChange={(e) => handleChange('deskripsi', e.target.value)} maxLength={100} className="input-field min-h-[90px] w-full rounded-lg px-3 py-2 text-[12px]" placeholder="Jelaskan manfaat kerja sama yang diajukan" />
-              <p className={`mt-1 text-right text-[10px] ${formData.deskripsi.length >= 100 ? 'text-red-500' : 'text-gray-400'}`}>{formData.deskripsi.length}/100</p>
+              <textarea value={formData.deskripsi} onChange={(e) => handleChange('deskripsi', e.target.value)} maxLength={2000} className="input-field min-h-[90px] w-full rounded-lg px-3 py-2 text-[12px]" placeholder="Jelaskan manfaat kerja sama yang diajukan" />
+              <p className={`mt-1 text-right text-[10px] ${formData.deskripsi.length >= 2000 ? 'text-red-500' : 'text-gray-400'}`}>{formData.deskripsi.length}/2000</p>
             </div>
             <div className="md:col-span-2">
               <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelRuangLingkup}</label>

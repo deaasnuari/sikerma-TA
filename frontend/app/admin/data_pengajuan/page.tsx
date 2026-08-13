@@ -792,6 +792,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
       asal: (pengajuanUnitOptions.includes(editingItem.namaUnitProdi) ? 'Unit' : 'Jurusan') as 'Jurusan' | 'Unit',
       namaMitra: editingItem.namaMitra,
       jenisMitra: editingItem.mitraKategori || '',
+      bidangUsaha: editingItem.mitraBidangUsaha || '',
       tingkatPerusahaan: editingItem.mitraTingkatPerusahaan || '',
       teleponMitra: editingItem.mitraTelepon || editingItem.whatsappPengusul || '',
       emailMitra: editingItem.mitraEmail || editingItem.emailPengusul || '',
@@ -1248,6 +1249,7 @@ function addEditJurusanUnitOption() {
     formData: {
       namaMitra: string;
       jenisMitra: string;
+      bidangUsaha: string;
       tingkatPerusahaan: string;
       teleponMitra: string;
       emailMitra: string;
@@ -1299,30 +1301,50 @@ function addEditJurusanUnitOption() {
     const existingFilesRemoved = keptExistingFiles.length < initialFileCount;
     const filesWereModified = hasNewFiles || existingFilesRemoved;
 
-    // Upsert master_mitra agar kategori & tingkat tersimpan dan terhubung via mitra_id
+    // Upsert master_mitra agar kategori, bidang usaha & tingkat tersimpan dan terhubung via mitra_id
     let resolvedMitraId: number | undefined = editingItem.mitraId;
     const jenisMitra = payload.formData.jenisMitra?.trim() || null;
+    const bidangUsaha = payload.formData.bidangUsaha?.trim() || null;
     const tingkatPerusahaan = payload.formData.tingkatPerusahaan?.trim() || null;
     const namaMitraTrimmed = payload.formData.namaMitra.trim();
     const mitraNameChanged = namaMitraTrimmed.toLowerCase() !== (editingItem.namaMitra || '').trim().toLowerCase();
 
+    // Alamat & PIC mitra juga ikut disinkronkan — sebelumnya cuma kategori/bidang usaha/tingkat
+    // yang tersimpan di sini, jadi Alamat Mitra dan PIC di Rekap Data selalu kosong walau
+    // sudah diisi di form.
+    const mitraExtra = {
+      alamat: payload.formData.alamatMitra?.trim() || undefined,
+      telepon_mitra: payload.formData.teleponMitra?.trim() || undefined,
+      email_mitra: payload.formData.emailMitra?.trim() || undefined,
+      negara: payload.formData.negara?.trim() || undefined,
+      nama_kontak_utama: payload.formData.namaKontak?.trim() || undefined,
+      jabatan_kontak_utama: payload.formData.jabatanKontak?.trim() || undefined,
+      email_kontak_utama: payload.formData.emailKontak?.trim() || undefined,
+      telepon_kontak_utama: payload.formData.teleponKontak?.trim() || undefined,
+    };
+
     try {
       if (resolvedMitraId && !mitraNameChanged) {
-        // Nama mitra sama — cukup update kategori & tingkat pada mitra yang sudah tertaut
+        // Nama mitra sama — cukup update kategori, bidang usaha & tingkat pada mitra yang sudah tertaut
         await updateMasterMitra(resolvedMitraId, {
           kategori_mitra: jenisMitra,
+          bidang_usaha: bidangUsaha,
           tingkat_perusahaan: tingkatPerusahaan,
+          ...mitraExtra,
         });
       } else if (namaMitraTrimmed) {
         // Nama mitra berubah atau belum ada mitra_id — cari/buat mitra berdasarkan nama baru
         const mitra = await upsertMasterMitraByName(namaMitraTrimmed, {
           kategoriMitra: jenisMitra,
+          bidangUsaha: bidangUsaha,
           tingkatPerusahaan: tingkatPerusahaan,
+          extra: mitraExtra,
         });
         resolvedMitraId = mitra.id;
       }
-    } catch {
+    } catch (err) {
       // Jika upsert gagal (misal permission), lanjutkan tanpa update mitra_id
+      console.error('Gagal sinkron data mitra ke Data Kemitraan:', err);
     }
 
     const editPayload = {
@@ -1330,6 +1352,7 @@ function addEditJurusanUnitOption() {
       namaMitra: namaMitraTrimmed,
       mitraId: resolvedMitraId,
       mitraKategori: jenisMitra ?? '',
+      mitraBidangUsaha: bidangUsaha ?? '',
       mitraTingkatPerusahaan: tingkatPerusahaan ?? '',
       namaUnitProdi: payload.formData.unitPelaksana.trim(),
       unitProdiId: (() => {

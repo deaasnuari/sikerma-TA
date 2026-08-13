@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Activity, CalendarDays, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2, Upload, Eye, Building2, FileText, Hash, Phone, User, CheckCircle2, Clock, XCircle, Download, Paperclip, RefreshCw, CheckSquare, Square, Tag } from 'lucide-react';
+import { Activity, CalendarDays, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2, Upload, Eye, Building2, FileText, Hash, Phone, User, CheckCircle2, Clock, XCircle, Download, Paperclip, RefreshCw, CheckSquare, Square, Tag, MapPin, Globe2, Target, Timer, ListChecks } from 'lucide-react';
 import TambahDokumenModal from './TambahDokumenModal';
 import {
   createDokumenFormData,
@@ -23,7 +23,7 @@ import {
 import { createDokumenKerjasama, dataUrlToBlob, deleteDokumenKerjasamaById, fetchRekapDokumenFromApi, mapJenisToApi, mapStatusToApi, updateDokumenKerjasamaById, updatePengajuanNamaMitra, uploadDokumenFile } from '@/services/dokumenKerjasamaApiService';
 import { exportToExcel } from '@/lib/exportExcel';
 import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
-import { upsertMasterMitraByName } from '@/services/masterMitraService';
+import { updateMasterMitra, upsertMasterMitraByName } from '@/services/masterMitraService';
 import { generateNoDokumen } from '@/services/adminMonitoringService';
 import { getRenewalRequests, type RenewalRequestItem } from '@/services/adminRenewalRequestService';
 import { getPageNumbers } from '@/lib/pagination';
@@ -42,7 +42,30 @@ async function resolveUnitProdiId(unitName: string): Promise<number | null> {
 // Jika mitra sudah dipilih dari autocomplete, pakai id-nya langsung. Jika nama diketik manual
 // dan belum terdaftar, daftarkan/pakai record master_mitra yang cocok agar tetap konsisten.
 async function resolveMitraId(data: DokumenData): Promise<number | undefined> {
+  // Alamat & PIC ikut disinkronkan juga — sebelumnya cuma kategori/bidang usaha/tingkat
+  // yang tersimpan dari modal ini, jadi Alamat Mitra dan PIC di Rekap Data selalu kosong.
+  const mitraExtra = {
+    alamat: data.alamatMitra?.trim() || undefined,
+    telepon_mitra: data.whatsappMitra?.trim() || undefined,
+    email_mitra: data.emailMitra?.trim() || undefined,
+    nama_kontak_utama: data.namaPIC?.trim() || undefined,
+    jabatan_kontak_utama: data.jabatanMitra?.trim() || undefined,
+  };
+
   if (typeof data.mitraId === 'number') {
+    // Mitra sudah dipilih dari daftar — tetap sinkronkan kategori/bidang usaha/tingkat
+    // yang mungkin diubah admin di modal ini ke record master_mitra-nya.
+    try {
+      await updateMasterMitra(data.mitraId, {
+        kategori_mitra: data.kategoriMitra || null,
+        bidang_usaha: data.bidangUsaha || null,
+        tingkat_perusahaan: data.tingkatPerusahaan || null,
+        ...mitraExtra,
+      });
+    } catch (err) {
+      // Abaikan kalau gagal sinkron — mitra_id tetap dipakai apa adanya.
+      console.error('Gagal sinkron data mitra ke Data Kemitraan:', err);
+    }
     return data.mitraId;
   }
 
@@ -52,9 +75,15 @@ async function resolveMitraId(data: DokumenData): Promise<number | undefined> {
   }
 
   try {
-    const mitra = await upsertMasterMitraByName(namaMitra, { kategoriMitra: data.kategoriMitra || null });
+    const mitra = await upsertMasterMitraByName(namaMitra, {
+      kategoriMitra: data.kategoriMitra || null,
+      bidangUsaha: data.bidangUsaha || null,
+      tingkatPerusahaan: data.tingkatPerusahaan || null,
+      extra: mitraExtra,
+    });
     return mitra.id;
-  } catch {
+  } catch (err) {
+    console.error('Gagal sinkron data mitra ke Data Kemitraan:', err);
     return undefined;
   }
 }
@@ -88,6 +117,9 @@ export default function RekapDataPage() {
   const [isEditingFollowUp, setIsEditingFollowUp] = useState(false);
   const [followUpDraft, setFollowUpDraft] = useState('');
   const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [isEditingLuaran, setIsEditingLuaran] = useState(false);
+  const [luaranDraft, setLuaranDraft] = useState('');
+  const [savingLuaran, setSavingLuaran] = useState(false);
   const detailItemRef = useRef<RekapDokumen | null>(null);
   useEffect(() => {
     detailItemRef.current = detailItem;
@@ -241,20 +273,72 @@ export default function RekapDataPage() {
   const { totalKerjasama, totalAktif, totalAkanBerakhir, totalKadaluarsa } = getRekapStats(rekapData);
 
   const handleExportExcel = () => {
-    const headers = ['No', 'No Dokumen', 'Nama Mitra', 'Kode Perusahaan', 'Jenis', 'Jenis Mitra', 'Tingkat Perusahaan', 'Jurusan / Unit', 'Tanggal Mulai', 'Berlaku Hingga', 'Status', 'Manfaat Kerja Sama'];
+    const headers = [
+      'No',
+      // Lembaga Mitra
+      'Nama Mitra',
+      'Bidang Usaha',
+      'Alamat Mitra',
+      'PIC Mitra',
+      // Tingkat
+      'Internasional',
+      'Nasional',
+      'Lokal/Wilayah',
+      'Judul Kegiatan Kerja Sama',
+      'Manfaat bagi Polibatam/Prodi',
+      'Luaran Kerja Sama',
+      'Tanggal Awal Kerja Sama',
+      'Tanggal Akhir Kerja Sama',
+      'Durasi (dalam tahun)',
+      // Jurusan / Unit
+      'Jurusan',
+      'Prodi',
+      'Unit',
+      'PIC Jurusan/Unit',
+      // Hasil Monitoring
+      'Triwulan 1 (Jan-Mar)',
+      'Triwulan 2 (Apr-Jun)',
+      'Triwulan 3 (Jul-Sep)',
+      'Triwulan 4 (Okt-Des)',
+      'Status Kerjasama',
+      // Bukti Kerjasama
+      'MoU',
+      'MoA/PKS',
+      'IA',
+      'Laporan Kegiatan',
+      
+      'Link Bukti Kerjasama',
+    ];
     const rows = filteredRows.map((row, index) => [
       index + 1,
-      row.noDokumen,
       row.namaMitra,
-      row.kodePerusahaan || '',
-      row.jenis,
-      row.jenisMitra || '',
-      row.tingkatPerusahaan || '',
-      row.unit,
+      row.bidangUsaha || '',
+      row.alamatMitra || '',
+      row.picMitra || '',
+      row.tingkatInternasional ? 'Ya' : '',
+      row.tingkatNasional ? 'Ya' : '',
+      row.tingkatLokal ? 'Ya' : '',
+      row.judulKegiatan || row.noDokumen,
+      row.manfaatSebenarnya || row.manfaatKerjasama || '',
+      row.luaranKerjaSama || '',
       row.tanggalMulai,
       row.berlakuHingga,
+      row.durasiTahun ?? '',
+      row.jurusanNama || '',
+      row.prodiNama || '',
+      row.unitKerjaNama || '',
+      row.picJurusanUnit || '',
+      row.triwulan1 ? 'Ya' : '',
+      row.triwulan2 ? 'Ya' : '',
+      row.triwulan3 ? 'Ya' : '',
+      row.triwulan4 ? 'Ya' : '',
       row.status,
-      row.manfaatKerjasama || '',
+      row.buktiMou || '',
+      row.buktiMoaPks || '',
+      row.buktiIa || '',
+      (row.laporanKegiatanLinks && row.laporanKegiatanLinks.length > 0) ? row.laporanKegiatanLinks.join('; ') : '',
+      row.keteranganAsli || '',
+      (row.dokumenTerkait && row.dokumenTerkait.length > 0) ? row.dokumenTerkait[0].url : '',
     ]);
     const dateStamp = new Date().toISOString().slice(0, 10);
     exportToExcel(headers, rows, `rekap-data-${dateStamp}.xlsx`, 'Rekap Data dan Monitoring');
@@ -370,6 +454,20 @@ export default function RekapDataPage() {
       setIsEditingFollowUp(false);
     } finally {
       setSavingFollowUp(false);
+    }
+  };
+
+  const handleSaveLuaran = async () => {
+    if (!detailItem?.id) return;
+    setSavingLuaran(true);
+    try {
+      await updateDokumenKerjasamaById(detailItem.id, { luaran_kerja_sama: luaranDraft.trim() || null });
+      const updated = { ...detailItem, luaranKerjaSama: luaranDraft.trim() || undefined };
+      setDetailItem(updated);
+      setRekapData((prev) => prev.map((r) => r.id === detailItem.id ? updated : r));
+      setIsEditingLuaran(false);
+    } finally {
+      setSavingLuaran(false);
     }
   };
 
@@ -621,40 +719,59 @@ export default function RekapDataPage() {
 
       <section className="table-shell">
         <div className="overflow-x-auto">
-          <table className="min-w-[1340px] w-full border-collapse">
+          <table className="min-w-[2400px] w-full border-collapse">
             <thead>
-              <tr className="table-head border-b border-gray-200 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-700">
-                <th className="px-4 py-3">
+              <tr className="table-head border-b border-gray-200 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-700">
+                <th rowSpan={2} className="px-4 py-3 align-middle">
                   <button type="button" onClick={toggleSelectAll} className="text-gray-500 hover:text-[#1E376C]">
                     {selectedIds.size > 0 && selectedIds.size === filteredRows.filter((r) => typeof r.id === 'number').length
                       ? <CheckSquare size={16} className="text-[#1E376C]" />
                       : <Square size={16} />}
                   </button>
                 </th>
-                <th className="px-4 py-3">No.Dokumen</th>
-                <th className="px-4 py-3">Nama Mitra</th>
-                <th className="px-4 py-3">Kode Perusahaan</th>
-                <th className="px-4 py-3">Jenis</th>
-                <th className="px-4 py-3">Jenis Mitra</th>
-                <th className="px-4 py-3">Tingkat Perusahaan</th>
-                <th className="px-4 py-3">Jurusan / Unit</th>
-                <th className="px-4 py-3">Tanggal mulai</th>
-                <th className="px-4 py-3">Berlaku Hingga</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Manfaat Kerja Sama</th>
-                <th className="px-4 py-3 text-center">Aksi</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">No. Dokumen</th>
+                <th colSpan={5} className="px-4 py-2 border-b border-gray-200">Lembaga Mitra</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Tingkat Perusahaan</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Judul Kegiatan Kerja Sama</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Manfaat bagi Polibatam/Prodi</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Luaran Kerja Sama</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Tanggal Awal Kerja Sama</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Tanggal Akhir Kerja Sama</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Durasi (tahun)</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Jurusan/Unit</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Status Kerjasama</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Jenis</th>
+                
+                <th rowSpan={2} className="px-4 py-3 align-middle">Aksi</th>
+              </tr>
+              <tr className="table-head border-b border-gray-200 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-700">
+                {/* Lembaga Mitra */}
+                <th className="px-4 py-2">Nama Mitra</th>
+                <th className="px-4 py-2">Bidang Usaha</th>
+                <th className="px-4 py-2">Alamat Mitra</th>
+                <th className="px-4 py-2">PIC</th>
+                <th className="px-4 py-2">Kode Perusahaan</th>
               </tr>
             </thead>
             <tbody>
               {filteredRows.length === 0 ? (
                 <tr key="empty">
-                  <td colSpan={12} className="px-4 py-10 text-center text-[12px] text-gray-500">
+                  <td colSpan={18} className="px-4 py-10 text-center text-[12px] text-gray-500">
                     Data tidak ditemukan berdasarkan filter saat ini.
                   </td>
                 </tr>
               ) : (
                 paginatedRows.map((row, index) => {
                   const isSelected = typeof row.id === 'number' && selectedIds.has(row.id);
+                  // Jenis dokumen ditautkan ke file bukti kerja sama YANG BENAR-BENAR sudah diupload
+                  // pada dokumen ini (dokumen_final/dokumen_perpanjangan) — bukan file acak, karena
+                  // tiap dokumen_kerjasama cuma punya satu jenis_dokumen jadi filenya pasti sejenis.
+                  const linkBukti = row.dokumenTerkait && row.dokumenTerkait.length > 0 ? row.dokumenTerkait[0].url : null;
+                  // Jurusan/Unit digabung jadi satu kolom: pilihan Jurusan -> "Jurusan / Prodi",
+                  // pilihan Unit -> "Unit" saja. Detail PIC-nya ada di modal Lihat Detail.
+                  const jurusanUnitDisplay = row.jurusanNama
+                    ? `${row.jurusanNama}${row.prodiNama ? ` / ${row.prodiNama}` : ''}`
+                    : (row.unitKerjaNama || row.unit || '-');
                   return (
                   <tr
                     key={`${row.noDokumen}-${row.namaMitra}-${row.tanggalMulai}-${index}`}
@@ -667,23 +784,37 @@ export default function RekapDataPage() {
                         </button>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-[10px] text-gray-600">{row.noDokumen}</td>
+                    <td className="px-4 py-3 text-[10px] text-gray-600 whitespace-nowrap">{row.noDokumen}</td>
+                    {/* Lembaga Mitra */}
                     <td className="px-4 py-3 font-medium text-gray-800">{row.namaMitra}</td>
+                    <td className="px-4 py-3">{row.bidangUsaha || '-'}</td>
+                    <td className="px-4 py-3 max-w-[160px]"><p className="line-clamp-2">{row.alamatMitra || '-'}</p></td>
+                    <td className="px-4 py-3">{row.picMitra || '-'}</td>
                     <td className="px-4 py-3 text-[10px] text-gray-600">{row.kodePerusahaan || '-'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${rekapJenisBadgeMap[row.jenis]}`}>{row.jenis}</span>
-                    </td>
-                    <td className="px-4 py-3">{row.jenisMitra || '-'}</td>
                     <td className="px-4 py-3">{row.tingkatPerusahaan || '-'}</td>
-                    <td className="px-4 py-3">{row.unit}</td>
+                    <td className="px-4 py-3 max-w-[180px]"><p className="line-clamp-2">{row.judulKegiatan || row.noDokumen}</p></td>
+                    <td className="px-4 py-3 max-w-[180px]"><p className="text-[10px] text-gray-600 line-clamp-2">{row.manfaatSebenarnya || row.manfaatKerjasama || '-'}</p></td>
+                    <td className="px-4 py-3 max-w-[180px]"><p className="text-[10px] text-gray-600 line-clamp-2">{row.luaranKerjaSama || '-'}</p></td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.tanggalMulai}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.berlakuHingga}</td>
+                    <td className="px-4 py-3 text-center">{row.durasiTahun ?? '-'}</td>
+                    {/* Jurusan/Unit — satu kolom, isinya menyesuaikan pilihan Jurusan (+Prodi) atau Unit saat pengajuan */}
+                    <td className="px-4 py-3">{jurusanUnitDisplay}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-3 py-1 text-[10px] font-semibold ${rekapStatusBadgeMap[row.status]}`}>{row.status}</span>
                     </td>
-                    <td className="px-4 py-3 max-w-[180px]">
-                      <p className="text-[10px] text-gray-600 line-clamp-2">{row.manfaatKerjasama || '-'}</p>
+                    {/* Jenis — sekaligus jadi akses bukti kerja sama: jadi link ke file dokumen_final
+                        kalau sudah ada yang diupload untuk dokumen ini, kalau belum tampil biasa saja. */}
+                    <td className="px-4 py-3">
+                      {linkBukti ? (
+                        <a href={linkBukti} target="_blank" rel="noreferrer" title="Lihat bukti kerja sama">
+                          <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2 ${rekapJenisBadgeMap[row.jenis]}`}>{row.jenis}</span>
+                        </a>
+                      ) : (
+                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${rekapJenisBadgeMap[row.jenis]}`} title="Belum ada file bukti kerja sama yang diupload">{row.jenis}</span>
+                      )}
                     </td>
+                    
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-3">
                         <button
@@ -785,6 +916,9 @@ export default function RekapDataPage() {
           IA: 'bg-teal-600 text-white',
         };
         const sb = statusBadge[detailItem.status] || statusBadge['Aktif'];
+        // Dokumen final yang sudah diupload untuk kerjasama ini (kalau ada) — dipakai supaya
+        // badge Jenis Dokumen bisa langsung dibuka untuk lihat filenya.
+        const detailLinkBukti = detailItem.dokumenTerkait && detailItem.dokumenTerkait.length > 0 ? detailItem.dokumenTerkait[0].url : null;
         return (
         <div className="fixed inset-0 z-[70] bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center px-4 py-6">
           <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh]">
@@ -829,9 +963,24 @@ export default function RekapDataPage() {
                   <FileText size={15} className="mt-0.5 shrink-0 text-[#1E376C]" />
                   <div>
                     <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Jenis Dokumen</p>
-                    <span className={`mt-1 inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${jenisBadge[detailItem.jenis] || 'bg-gray-200 text-gray-700'}`}>
-                      {detailItem.jenis}
-                    </span>
+                    {detailLinkBukti ? (
+                      <a
+                        href={detailLinkBukti}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Lihat dokumen bukti kerja sama"
+                        className={`mt-1 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2 ${jenisBadge[detailItem.jenis] || 'bg-gray-200 text-gray-700'}`}
+                      >
+                        {detailItem.jenis}
+                      </a>
+                    ) : (
+                      <span className={`mt-1 inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${jenisBadge[detailItem.jenis] || 'bg-gray-200 text-gray-700'}`}>
+                        {detailItem.jenis}
+                      </span>
+                    )}
+                    {!detailLinkBukti && (
+                      <p className="mt-1 text-[10px] italic text-gray-400">Belum ada file bukti kerja sama yang diupload</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
@@ -849,12 +998,51 @@ export default function RekapDataPage() {
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
+                  <Building2 size={15} className="mt-0.5 shrink-0 text-[#1E376C]" />
+                  <div>
+                    <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Bidang Usaha</p>
+                    <p className="mt-0.5 text-[12px] font-semibold text-gray-800">{detailItem.bidangUsaha || '-'}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
+                  <MapPin size={15} className="mt-0.5 shrink-0 text-[#1E376C]" />
+                  <div>
+                    <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Alamat Mitra</p>
+                    <p className="mt-0.5 text-[12px] font-semibold text-gray-800">{detailItem.alamatMitra || '-'}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
+                  <User size={15} className="mt-0.5 shrink-0 text-[#1E376C]" />
+                  <div>
+                    <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">PIC Mitra</p>
+                    <p className="mt-0.5 text-[12px] font-semibold text-gray-800">{detailItem.picMitra || '-'}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
+                  <Globe2 size={15} className="mt-0.5 shrink-0 text-[#1E376C]" />
+                  <div>
+                    <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Tingkat Perusahaan</p>
+                    <p className="mt-0.5 text-[12px] font-semibold text-gray-800">{detailItem.tingkatPerusahaan || '-'}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
+                  <FileText size={15} className="mt-0.5 shrink-0 text-[#1E376C]" />
+                  <div>
+                    <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Judul Kegiatan Kerja Sama</p>
+                    <p className="mt-0.5 text-[12px] font-semibold text-gray-800">{detailItem.judulKegiatan || detailItem.noDokumen}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
                   <User size={15} className="mt-0.5 shrink-0 text-[#1E376C]" />
                   <div>
                     <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Jurusan / Unit</p>
-                    <p className="mt-0.5 text-[12px] font-semibold text-gray-800">{detailItem.unit}</p>
-                    {detailItem.kategoriUnit && (
-                      <p className="text-[10.5px] text-gray-500">{detailItem.kategoriUnit}</p>
+                    <p className="mt-0.5 text-[12px] font-semibold text-gray-800">
+                      {detailItem.jurusanNama
+                        ? `${detailItem.jurusanNama}${detailItem.prodiNama ? ` / ${detailItem.prodiNama}` : ''}`
+                        : (detailItem.unitKerjaNama || detailItem.unit || '-')}
+                    </p>
+                    {detailItem.picJurusanUnit && (
+                      <p className="text-[10.5px] text-gray-500">PIC: {detailItem.picJurusanUnit}</p>
                     )}
                   </div>
                 </div>
@@ -866,7 +1054,7 @@ export default function RekapDataPage() {
                   <CalendarDays size={14} className="text-[#1E376C]" />
                   <p className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide">Periode Kerjasama</p>
                 </div>
-                <div className="grid grid-cols-3 gap-3 text-[12px]">
+                <div className="grid grid-cols-2 gap-3 text-[12px] sm:grid-cols-4">
                   <div>
                     <p className="text-[10.5px] text-gray-500">Tanggal Mulai</p>
                     <p className="font-semibold text-gray-800">{detailItem.tanggalMulai || '-'}</p>
@@ -874,6 +1062,10 @@ export default function RekapDataPage() {
                   <div>
                     <p className="text-[10.5px] text-gray-500">Berlaku Hingga</p>
                     <p className="font-semibold text-gray-800">{detailItem.berlakuHingga || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10.5px] text-gray-500">Durasi</p>
+                    <p className="font-semibold text-gray-800">{detailItem.durasiTahun !== undefined ? `${detailItem.durasiTahun} tahun` : '-'}</p>
                   </div>
                   <div>
                     <p className="text-[10.5px] text-gray-500">Tahun</p>
@@ -946,7 +1138,86 @@ export default function RekapDataPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[12px] text-gray-700">{detailItem.manfaatKerjasama || <span className="italic text-gray-400">Belum diisi</span>}</p>
+                  <p className="text-[12px] text-gray-700">{detailItem.manfaatSebenarnya || detailItem.manfaatKerjasama || <span className="italic text-gray-400">Belum diisi</span>}</p>
+                )}
+              </div>
+
+              {/* Luaran Kerja Sama — sengaja tidak diisi pengaju saat pengajuan, admin yang
+                  melengkapi di sini setelah kerja samanya berjalan/selesai. */}
+              <div className="rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Target size={14} className="text-[#1E376C]" />
+                    <p className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide">Luaran Kerja Sama</p>
+                  </div>
+                  {!isEditingLuaran && detailItem.id && (
+                    <button
+                      type="button"
+                      onClick={() => { setLuaranDraft(detailItem.luaranKerjaSama || ''); setIsEditingLuaran(true); }}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-[#1E376C] hover:bg-[#1E376C]/10 transition-colors"
+                    >
+                      <Pencil size={11} />
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {isEditingLuaran ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={luaranDraft}
+                      onChange={(e) => setLuaranDraft(e.target.value)}
+                      maxLength={2000}
+                      rows={3}
+                      className="input-field w-full rounded-lg px-3 py-2 text-[12px]"
+                      placeholder="Jelaskan luaran/output yang dihasilkan dari kerja sama ini"
+                    />
+                    <p className={`text-right text-[10px] ${luaranDraft.length >= 2000 ? 'text-red-500' : 'text-gray-400'}`}>{luaranDraft.length}/2000</p>
+                    <div className="flex gap-2 justify-end">
+                      <button type="button" onClick={() => setIsEditingLuaran(false)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50">Batal</button>
+                      <button type="button" onClick={handleSaveLuaran} disabled={savingLuaran} className="rounded-lg bg-[#1E376C] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#2B4A93] disabled:opacity-60">
+                        {savingLuaran ? 'Menyimpan...' : 'Simpan'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-gray-700">{detailItem.luaranKerjaSama || <span className="italic text-gray-400">Belum diisi</span>}</p>
+                )}
+              </div>
+
+              {/* Hasil Monitoring Triwulan */}
+              <div className="rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <ListChecks size={14} className="text-[#1E376C]" />
+                  <p className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide">Hasil Monitoring</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[
+                    { label: 'Triwulan 1 (Jan-Mar)', done: detailItem.triwulan1 },
+                    { label: 'Triwulan 2 (Apr-Jun)', done: detailItem.triwulan2 },
+                    { label: 'Triwulan 3 (Jul-Sep)', done: detailItem.triwulan3 },
+                    { label: 'Triwulan 4 (Okt-Des)', done: detailItem.triwulan4 },
+                  ].map((t) => (
+                    <div key={t.label} className={`rounded-lg border px-2.5 py-2 text-center ${t.done ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-white'}`}>
+                      <p className="text-[9.5px] text-gray-500">{t.label}</p>
+                      <p className={`mt-0.5 text-[11px] font-semibold ${t.done ? 'text-emerald-700' : 'text-gray-400'}`}>{t.done ? 'Sudah lapor' : 'Belum lapor'}</p>
+                    </div>
+                  ))}
+                </div>
+                {detailItem.laporanKegiatanLinks && detailItem.laporanKegiatanLinks.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-200 pt-3">
+                    {detailItem.laporanKegiatanLinks.map((url, idx) => (
+                      <a
+                        key={url + idx}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E376C] px-3 py-1.5 text-[10px] font-semibold text-white hover:bg-[#2B4A93] transition-colors"
+                      >
+                        <FileText size={12} />
+                        Lihat Laporan Kegiatan {detailItem.laporanKegiatanLinks!.length > 1 ? `#${idx + 1}` : ''}
+                      </a>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -1007,14 +1278,25 @@ export default function RekapDataPage() {
                             <p className="text-[10.5px] text-gray-400">{doc.ukuran} · {doc.tanggal}</p>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => { void downloadDokumen(doc.url, doc.nama); }}
-                          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#1E376C] px-3 py-1.5 text-[10px] font-semibold text-white hover:bg-[#2B4A93] transition-colors"
-                        >
-                          <Download size={12} />
-                          Unduh
-                        </button>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <a
+                            href={doc.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-[#1E376C] px-3 py-1.5 text-[10px] font-semibold text-[#1E376C] hover:bg-[#1E376C]/10 transition-colors"
+                          >
+                            <Eye size={12} />
+                            Lihat
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => { void downloadDokumen(doc.url, doc.nama); }}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E376C] px-3 py-1.5 text-[10px] font-semibold text-white hover:bg-[#2B4A93] transition-colors"
+                          >
+                            <Download size={12} />
+                            Unduh
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1121,14 +1403,17 @@ export default function RekapDataPage() {
 
             const created = await createDokumenKerjasama({
               nomor_dokumen: nomorDokumen,
-              nama_dokumen: `Dokumen ${nomorDokumen}`,
+              nama_dokumen: data.judulKegiatan?.trim() || `Dokumen ${nomorDokumen}`,
+              judul_dokumen: data.judulKegiatan?.trim() || null,
               jenis_dokumen: mapJenisToApi(data.jenisDokumen),
               unit_prodi_id: unitProdiId,
               mitra_id: mitraId ?? null,
               tanggal_mulai: data.tanggalMulai || null,
               tanggal_berakhir: data.tanggalBerakhir || null,
               status_siklus: mapStatusToApi(data.status),
-              keterangan: data.manfaatKerjasama || null,
+              keterangan: data.keterangan?.trim() || null,
+              manfaat: data.manfaatKerjasama?.trim() || null,
+              luaran_kerja_sama: data.luaranKerjaSama?.trim() || null,
             });
 
             const newDoc = data.dokumenTerkait?.[0];
@@ -1175,7 +1460,15 @@ export default function RekapDataPage() {
                   namaMitra: data.namaMitra,
                   mitraId: data.mitraId,
                   kodePerusahaan: data.kodePerusahaan,
+                  bidangUsaha: data.bidangUsaha || undefined,
+                  tingkatPerusahaan: data.tingkatPerusahaan || undefined,
+                  alamatMitra: data.alamatMitra || undefined,
+                  picMitra: data.namaPIC || undefined,
+                  judulKegiatan: data.judulKegiatan || undefined,
                   manfaatKerjasama: data.manfaatKerjasama || undefined,
+                  manfaatSebenarnya: data.manfaatKerjasama || undefined,
+                  luaranKerjaSama: data.luaranKerjaSama || undefined,
+                  keteranganAsli: data.keterangan || undefined,
                   jenis: data.jenisDokumen as 'MoU' | 'MoA' | 'IA',
                   unit: data.unitKerja,
                   tanggalMulai: data.tanggalMulai || r.tanggalMulai,
@@ -1191,15 +1484,21 @@ export default function RekapDataPage() {
             const promises: Promise<void>[] = [];
 
             if (typeof editingItem.id === 'number') {
+              // Sinkronkan kategori/bidang usaha/tingkat ke master_mitra juga (bukan cuma mitra_id).
+              const resolvedMitraId = await resolveMitraId(data);
+
               const apiPayload: Parameters<typeof updateDokumenKerjasamaById>[1] = {
                 nomor_dokumen: data.nomorDokumen || undefined,
+                judul_dokumen: data.judulKegiatan?.trim() || null,
                 jenis_dokumen: mapJenisToApi(data.jenisDokumen),
                 tanggal_mulai: data.tanggalMulai || null,
                 tanggal_berakhir: data.tanggalBerakhir || null,
                 status_siklus: mapStatusToApi(data.status),
                 // Kode Perusahaan mengikuti master_mitra lewat relasi mitra_id — tidak dikirim manual.
-                mitra_id: typeof data.mitraId === 'number' ? data.mitraId : null,
-                keterangan: data.manfaatKerjasama || null,
+                mitra_id: resolvedMitraId ?? null,
+                keterangan: data.keterangan?.trim() || null,
+                manfaat: data.manfaatKerjasama?.trim() || null,
+                luaran_kerja_sama: data.luaranKerjaSama?.trim() || null,
               };
               promises.push(updateDokumenKerjasamaById(editingItem.id, apiPayload));
             }

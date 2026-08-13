@@ -23,6 +23,9 @@ export interface RekapDokumen {
   kategoriUnit?: 'Jurusan' | 'Unit';
   tanggalMulai: string;
   berlakuHingga: string;
+
+  tanggalMulaiRaw?: string;
+  berlakuHinggaRaw?: string;
   tahun: string;
   status: RekapStatus;
   whatsappNumber?: string;
@@ -35,6 +38,34 @@ export interface RekapDokumen {
   followUp?: string;
   // Role user yang membuat pengajuan sumber dokumen ini ('admin'/'internal'/'external'), null jika belum tercatat.
   dibuatOlehRole?: string | null;
+
+  // --- Field tambahan untuk melengkapi kolom rekap Excel dosen (lihat handleExportExcel) ---
+  bidangUsaha?: string;
+  alamatMitra?: string;
+  picMitra?: string;
+  jabatanPicMitra?: string;
+  picJurusanUnit?: string;
+  tingkatInternasional?: boolean;
+  tingkatNasional?: boolean;
+  tingkatLokal?: boolean;
+  judulKegiatan?: string;
+  luaranKerjaSama?: string;
+  // Manfaat yang sesungguhnya (kolom `manfaat`), beda dari `manfaatKerjasama` di atas yang selama ini
+  // masih bersumber dari `keterangan` untuk menjaga tampilan lama tetap jalan.
+  manfaatSebenarnya?: string;
+  keteranganAsli?: string;
+  durasiTahun?: number;
+  jurusanNama?: string;
+  prodiNama?: string;
+  unitKerjaNama?: string;
+  triwulan1?: boolean;
+  triwulan2?: boolean;
+  triwulan3?: boolean;
+  triwulan4?: boolean;
+  buktiMou?: string | null;
+  buktiMoaPks?: string | null;
+  buktiIa?: string | null;
+  laporanKegiatanLinks?: string[];
 }
 
 // Data mentah dari modal tambah dokumen sebelum dikonversi ke format rekap.
@@ -43,6 +74,8 @@ export interface DokumenData {
   jenisDokumen: string;
   namaPIC: string;
   kategoriMitra: string;
+  bidangUsaha?: string;
+  tingkatPerusahaan?: string;
   namaMitra: string;
   // Terisi otomatis saat Nama Mitra dipilih dari Data Kemitraan (master_mitra). Jangan diisi manual.
   mitraId?: number;
@@ -57,7 +90,10 @@ export interface DokumenData {
   asalKategori: 'Jurusan' | 'Unit';
   unitKerja: string;
   dokumenTerkait?: DokumenTerkait[];
+  judulKegiatan?: string;
   manfaatKerjasama?: string;
+  luaranKerjaSama?: string;
+  keterangan?: string;
 }
 
 export interface RekapFilterOptions {
@@ -514,22 +550,29 @@ if (item.sourcePengajuanId) {
   return {
     nomorDokumen: item.noDokumen,
     jenisDokumen: item.jenis,
-    namaPIC: pengajuanData?.namaPengusul || '',
-    kategoriMitra: pengajuanData?.mitraKategori || '',
+    namaPIC: pengajuanData?.namaPengusul || item.picMitra || '',
+    kategoriMitra: item.jenisMitra || pengajuanData?.mitraKategori || '',
+    bidangUsaha: item.bidangUsaha || '',
+    tingkatPerusahaan: item.tingkatPerusahaan || '',
     namaMitra: item.namaMitra,
     mitraId: item.mitraId,
     kodePerusahaan: item.kodePerusahaan,
     status: item.status,
-    jabatanMitra: pengajuanData?.jabatanPengusul || '',
+    jabatanMitra: pengajuanData?.jabatanPengusul || item.jabatanPicMitra || '',
     emailMitra: pengajuanData?.emailPengusul || '',
-    tanggalMulai: toDateInputValue(item.tanggalMulai),
-    tanggalBerakhir: toDateInputValue(item.berlakuHingga),
-    alamatMitra: pengajuanData?.mitraAlamat || '',
+    // Pakai versi ISO mentah (bukan item.tanggalMulai/berlakuHingga yang sudah diformat
+    // DD/MM/YYYY untuk tampilan tabel) supaya tidak salah tafsir jadi tanggal lain.
+    tanggalMulai: toDateInputValue(item.tanggalMulaiRaw || item.tanggalMulai),
+    tanggalBerakhir: toDateInputValue(item.berlakuHinggaRaw || item.berlakuHingga),
+    alamatMitra: item.alamatMitra || pengajuanData?.mitraAlamat || '',
     whatsappMitra: pengajuanData?.whatsappPengusul || item.whatsappNumber || '',
     asalKategori,
     unitKerja: item.unit,
     dokumenTerkait: item.dokumenTerkait,
-    manfaatKerjasama: item.manfaatKerjasama || '',
+    judulKegiatan: item.judulKegiatan || '',
+    manfaatKerjasama: item.manfaatSebenarnya || item.manfaatKerjasama || '',
+    luaranKerjaSama: item.luaranKerjaSama || '',
+    keterangan: item.keteranganAsli || '',
   };
 }
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DokumenFile;
 use App\Models\DokumenLog;
 use App\Models\DokumenKerjasama;
+use App\Models\MasterMitra;
 use App\Models\MasterRuangLingkup;
 use App\Models\MasterUnitProdi;
 use App\Models\Pengajuan;
@@ -23,6 +24,65 @@ class PengajuanController extends Controller
     private static ?bool $dokumenKerjasamaTableExists = null;
     private static ?bool $dokumenFileTableExists = null;
     private static ?bool $dokumenLogTableExists = null;
+
+    /**
+     * Sinkronkan kategori/bidang usaha/tingkat/alamat/kontak PIC mitra ke master_mitra
+     * langsung dari input pengajuan. Dijalankan di server (bukan lewat endpoint
+     * /master/mitra yang admin-only) supaya internal & eksternal juga bisa melengkapi
+     * data mitranya sendiri lewat pengajuan yang mereka ajukan.
+     *
+     * Field mitra_alamat/mitra_nama_kontak_utama/dst di $input adalah field transien —
+     * tidak disimpan ke pengajuan_v2, cuma dipakai di sini lalu dibuang oleh caller.
+     */
+    private function syncMasterMitraFromPengajuanInput(array $input): ?int
+    {
+        $namaMitra = trim((string) ($input['nama_mitra'] ?? ''));
+        $mitraId = $input['mitra_id'] ?? null;
+
+        $payload = array_filter([
+            'kategori_mitra' => trim((string) ($input['jenis_mitra'] ?? '')) ?: null,
+            'bidang_usaha' => trim((string) ($input['bidang_usaha'] ?? '')) ?: null,
+            'tingkat_perusahaan' => trim((string) ($input['tingkat_perusahaan'] ?? '')) ?: null,
+            'telepon_mitra' => trim((string) ($input['telepon_mitra'] ?? '')) ?: null,
+            'alamat' => trim((string) ($input['mitra_alamat'] ?? '')) ?: null,
+            'nama_kontak_utama' => trim((string) ($input['mitra_nama_kontak_utama'] ?? '')) ?: null,
+            'jabatan_kontak_utama' => trim((string) ($input['mitra_jabatan_kontak_utama'] ?? '')) ?: null,
+            'email_kontak_utama' => trim((string) ($input['mitra_email_kontak_utama'] ?? '')) ?: null,
+            'telepon_kontak_utama' => trim((string) ($input['mitra_telepon_kontak_utama'] ?? '')) ?: null,
+        ], static fn ($value) => $value !== null);
+
+        // Mitra sudah dipilih dari daftar (mitra_id ada) — update record itu langsung.
+        if ($mitraId) {
+            $mitra = MasterMitra::find($mitraId);
+            if ($mitra) {
+                if (!empty($payload)) {
+                    $mitra->update($payload);
+                }
+                return $mitra->id;
+            }
+        }
+
+        if ($namaMitra === '') {
+            return $mitraId;
+        }
+
+        // Nama mitra diketik manual — cari yang namanya persis sama (case-insensitive),
+        // kalau ada pakai itu, kalau tidak buat baru. Sama seperti perilaku upsert lama.
+        $mitra = MasterMitra::query()
+            ->whereRaw('LOWER(TRIM(nama_mitra)) = ?', [strtolower($namaMitra)])
+            ->first();
+
+        if ($mitra) {
+            if (!empty($payload)) {
+                $mitra->update($payload);
+            }
+            return $mitra->id;
+        }
+
+        $mitra = MasterMitra::create(array_merge(['nama_mitra' => $namaMitra, 'aktif' => true], $payload));
+
+        return $mitra->id;
+    }
 
     private function generateNomorPMH(): string
     {
@@ -387,6 +447,10 @@ class PengajuanController extends Controller
         if ($snapJenisMitra === '' && $masterMitraRow) {
             $snapJenisMitra = (string) ($masterMitraRow->kategori_mitra ?? '');
         }
+        $snapBidangUsaha = trim((string) ($pengajuan->bidang_usaha ?? ''));
+        if ($snapBidangUsaha === '' && $masterMitraRow) {
+            $snapBidangUsaha = (string) ($masterMitraRow->bidang_usaha ?? '');
+        }
         $snapTingkatPerusahaan = trim((string) ($pengajuan->tingkat_perusahaan ?? ''));
         if ($snapTingkatPerusahaan === '' && $masterMitraRow) {
             $snapTingkatPerusahaan = (string) ($masterMitraRow->tingkat_perusahaan ?? '');
@@ -398,6 +462,8 @@ class PengajuanController extends Controller
             'nama_dokumen' => trim((string) ($pengajuan->judul_pengajuan ?? 'Dokumen Kerjasama ' . $nomorPengajuan)),
             'jenis_dokumen' => strtoupper((string) ($pengajuan->jenis_dokumen ?? 'MOU')),
             'judul_dokumen' => trim((string) ($pengajuan->judul_pengajuan ?? '')),
+            'manfaat' => trim((string) ($pengajuan->manfaat ?? '')) ?: null,
+            'luaran_kerja_sama' => trim((string) ($pengajuan->luaran_kerja_sama ?? '')) ?: null,
             'ruang_lingkup_ids' => $pengajuan->ruang_lingkup_ids,
             'tanggal_mulai' => $pengajuan->tanggal_mulai,
             'tanggal_berakhir' => $pengajuan->tanggal_berakhir,
@@ -411,6 +477,7 @@ class PengajuanController extends Controller
             'snap_nama_pengusul' => trim((string) ($pengajuan->nama_pengusul ?? '')) ?: null,
             'snap_email_pengusul' => trim((string) ($pengajuan->email_pengusul ?? '')) ?: null,
             'snap_jenis_mitra' => $snapJenisMitra !== '' ? $snapJenisMitra : null,
+            'snap_bidang_usaha' => $snapBidangUsaha !== '' ? $snapBidangUsaha : null,
             'snap_tingkat_perusahaan' => $snapTingkatPerusahaan !== '' ? $snapTingkatPerusahaan : null,
             'dibuat_oleh_user_id' => $request->user()?->id,
             'file' => $primaryPath,
@@ -1064,10 +1131,22 @@ class PengajuanController extends Controller
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
             'nama_mitra' => ['nullable', 'string', 'max:255'],
             'jenis_mitra' => ['nullable', 'string', 'max:150'],
+            'bidang_usaha' => ['nullable', 'string', 'max:150'],
             'tingkat_perusahaan' => ['nullable', 'string', 'max:50'],
             'telepon_mitra' => ['nullable', 'string', 'max:50'],
+            // Field transien (bukan kolom pengajuan_v2) — cuma dipakai untuk sinkron ke
+            // master_mitra di bawah, supaya internal/eksternal (yang tidak boleh akses
+            // endpoint /master/mitra langsung) tetap bisa melengkapi data mitra lewat
+            // pengajuan mereka sendiri.
+            'mitra_alamat' => ['nullable', 'string'],
+            'mitra_nama_kontak_utama' => ['nullable', 'string', 'max:200'],
+            'mitra_jabatan_kontak_utama' => ['nullable', 'string', 'max:120'],
+            'mitra_email_kontak_utama' => ['nullable', 'email', 'max:255'],
+            'mitra_telepon_kontak_utama' => ['nullable', 'string', 'max:50'],
             'judul_pengajuan' => ['required', 'string', 'max:255'],
             'deskripsi_pengajuan' => ['nullable', 'string', 'max:100'],
+            'manfaat' => ['nullable', 'string'],
+            'luaran_kerja_sama' => ['nullable', 'string'],
             'jenis_dokumen' => ['required', 'in:MOU,MOA,IA,LAINNYA'],
             'kategori_pengajuan' => ['nullable', 'in:internal,eksternal'],
             'tanggal_mulai' => ['nullable', 'date'],
@@ -1098,6 +1177,15 @@ class PengajuanController extends Controller
         if ($this->hasPengajuanColumn('file_attachments') && $request->has('file_attachments')) {
             $validated['file_attachments'] = $request->input('file_attachments');
         }
+
+        $validated['mitra_id'] = $this->syncMasterMitraFromPengajuanInput($validated);
+        unset(
+            $validated['mitra_alamat'],
+            $validated['mitra_nama_kontak_utama'],
+            $validated['mitra_jabatan_kontak_utama'],
+            $validated['mitra_email_kontak_utama'],
+            $validated['mitra_telepon_kontak_utama'],
+        );
 
         try {
             $pengajuan = Pengajuan::create($validated);
@@ -1225,10 +1313,22 @@ class PengajuanController extends Controller
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
             'nama_mitra' => ['nullable', 'string', 'max:255'],
             'jenis_mitra' => ['nullable', 'string', 'max:150'],
+            'bidang_usaha' => ['nullable', 'string', 'max:150'],
             'tingkat_perusahaan' => ['nullable', 'string', 'max:50'],
             'telepon_mitra' => ['nullable', 'string', 'max:50'],
+            // Field transien (bukan kolom pengajuan_v2) — cuma dipakai untuk sinkron ke
+            // master_mitra di bawah, supaya internal/eksternal (yang tidak boleh akses
+            // endpoint /master/mitra langsung) tetap bisa melengkapi data mitra lewat
+            // pengajuan mereka sendiri.
+            'mitra_alamat' => ['nullable', 'string'],
+            'mitra_nama_kontak_utama' => ['nullable', 'string', 'max:200'],
+            'mitra_jabatan_kontak_utama' => ['nullable', 'string', 'max:120'],
+            'mitra_email_kontak_utama' => ['nullable', 'email', 'max:255'],
+            'mitra_telepon_kontak_utama' => ['nullable', 'string', 'max:50'],
             'judul_pengajuan' => ['sometimes', 'required', 'string', 'max:255'],
             'deskripsi_pengajuan' => ['nullable', 'string', 'max:100'],
+            'manfaat' => ['nullable', 'string'],
+            'luaran_kerja_sama' => ['nullable', 'string'],
             'jenis_dokumen' => ['sometimes', 'required', 'in:MOU,MOA,IA,LAINNYA'],
             'kategori_pengajuan' => ['nullable', 'in:internal,eksternal'],
             'tanggal_mulai' => ['nullable', 'date'],
@@ -1261,6 +1361,17 @@ class PengajuanController extends Controller
         if ($this->hasPengajuanColumn('file_attachments') && $request->has('file_attachments')) {
             $validated['file_attachments'] = $request->input('file_attachments');
         }
+
+        if (array_key_exists('nama_mitra', $validated) || array_key_exists('mitra_id', $validated) || array_key_exists('mitra_alamat', $validated)) {
+            $validated['mitra_id'] = $this->syncMasterMitraFromPengajuanInput($validated + ['nama_mitra' => $validated['nama_mitra'] ?? $pengajuan->nama_mitra]);
+        }
+        unset(
+            $validated['mitra_alamat'],
+            $validated['mitra_nama_kontak_utama'],
+            $validated['mitra_jabatan_kontak_utama'],
+            $validated['mitra_email_kontak_utama'],
+            $validated['mitra_telepon_kontak_utama'],
+        );
 
         $statusColumn = $this->hasPengajuanColumn('status_pengajuan') ? 'status_pengajuan' : 'status';
         $statusLama = (string) ($pengajuan->{$statusColumn} ?? 'menunggu');

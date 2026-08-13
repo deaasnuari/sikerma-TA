@@ -40,6 +40,10 @@ export default function PengajuanBaruEksternalPage() {
     jenisDokumen: string;
     judulKerjasama: string;
   } | null>(null);
+  // Berubah tiap kali pengajuan berhasil dikirim -> dipakai sebagai key supaya form
+  // di-remount total (state internalnya kereset) alih-alih tetap kebawa data lama saat
+  // user mau ajukan pengajuan baru lagi tanpa pindah halaman.
+  const [formResetKey, setFormResetKey] = useState(0);
   const [masterUnitProdiTree, setMasterUnitProdiTree] = useState<MasterUnitProdi[]>(() => getCachedMasterUnitProdiTree());
   const [masterRuangLingkupRows, setMasterRuangLingkupRows] = useState<MasterRuangLingkup[]>(() => getCachedMasterRuangLingkup());
   const [masterNegaraRows, setMasterNegaraRows] = useState<MasterNegara[]>(() => getCachedMasterNegara());
@@ -88,6 +92,7 @@ export default function PengajuanBaruEksternalPage() {
       </div>
 
       <InternalAjukanKerjasamaForm
+        key={formResetKey}
         disableDraftPersistence
         nomorPengajuanSource="eksternal"
         initialMasterUnitProdiTree={masterUnitProdiTreeForForm}
@@ -102,10 +107,23 @@ export default function PengajuanBaruEksternalPage() {
 
           await submitExternalPengajuan({
             judulPengajuan: formData.judulKerjasama,
-            deskripsiPengajuan: formData.deskripsi.trim() || undefined,
+            // deskripsi pengajuan dibatasi 100 karakter, manfaat lengkap tidak dibatasi.
+            // Luaran Kerja Sama sengaja tidak diambil dari pengajuan — diisi admin sendiri
+            // lewat Rekap Data setelah dokumen final ada.
+            deskripsiPengajuan: formData.deskripsi.trim().slice(0, 100) || undefined,
+            manfaat: formData.deskripsi.trim() || undefined,
             namaPengusul: formData.namaKontak || 'Mitra Eksternal',
             namaMitra: formData.namaMitra,
+            // Alamat & PIC mitra disinkronkan ke Data Kemitraan oleh BACKEND (lihat
+            // PengajuanController) — endpoint /master/mitra sendiri admin-only, jadi tidak
+            // dipanggil langsung dari sini.
+            mitraAlamat: formData.alamatMitra.trim() || undefined,
+            mitraPicNama: formData.namaKontak.trim() || undefined,
+            mitraPicJabatan: formData.jabatanKontak.trim() || undefined,
+            mitraPicEmail: formData.emailKontak.trim() || undefined,
+            mitraPicTelepon: formData.teleponKontak.trim() || undefined,
             mitraKategori: formData.jenisMitra.trim() || undefined,
+            mitraBidangUsaha: formData.bidangUsaha.trim() || undefined,
             mitraTingkatPerusahaan: formData.tingkatPerusahaan.trim() || undefined,
             mitraTelepon: formData.teleponMitra.trim() || undefined,
             jenisDokumen: formData.jenisKerjasama,
@@ -133,6 +151,9 @@ export default function PengajuanBaruEksternalPage() {
             judulKerjasama: formData.judulKerjasama,
           });
           setIsSuccessModalOpen(true);
+          // Remount form-nya (lewat perubahan key) supaya kosong lagi kalau mau ajukan
+          // pengajuan baru, tidak kebawa data dari pengajuan yang barusan dikirim.
+          setFormResetKey((prev) => prev + 1);
           return false;
         }}
       />

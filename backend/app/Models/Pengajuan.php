@@ -46,6 +46,8 @@ class Pengajuan extends Model
         'mitra_id',
         'judul_pengajuan',
         'deskripsi_pengajuan',
+        'manfaat',
+        'luaran_kerja_sama',
         'jenis_dokumen',
         'kategori_pengajuan',
         'ruang_lingkup_ids',
@@ -56,6 +58,7 @@ class Pengajuan extends Model
         'email_terverifikasi_pada',
         'nama_mitra',
         'jenis_mitra',
+        'bidang_usaha',
         'tingkat_perusahaan',
         'telepon_mitra',
         'catatan',
@@ -82,6 +85,7 @@ class Pengajuan extends Model
         'is_from_admin' => 'boolean',
 
         // New schema casts
+        // 'ruang_lingkup_ids' => PgArrayCast::class,
         'ruang_lingkup_ids' => 'array',
         'tanggal_mulai' => 'date',
         'tanggal_berakhir' => 'date',

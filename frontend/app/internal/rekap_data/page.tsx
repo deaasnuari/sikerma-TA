@@ -13,6 +13,7 @@ import {
   rekapJenisMitraOptions,
   rekapJurusanOptions,
   rekapTingkatPerusahaanOptions,
+  type DokumenTerkait,
   type RekapDokumen,
 } from '@/services/adminRekapDataService';
 import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
@@ -39,6 +40,19 @@ interface KerjasamaItem {
   jenisMitra?: string;
   tingkatPerusahaan?: string;
   manfaatKerjasama?: string;
+  // --- Field tambahan supaya kolom tabel disamakan dengan Rekap Data admin ---
+  bidangUsaha?: string;
+  alamatMitra?: string;
+  picMitra?: string;
+  kodePerusahaan?: string;
+  judulKegiatan?: string;
+  manfaatSebenarnya?: string;
+  luaranKerjaSama?: string;
+  durasiTahun?: number;
+  jurusanNama?: string;
+  prodiNama?: string;
+  unitKerjaNama?: string;
+  dokumenTerkait?: DokumenTerkait[];
 }
 
 function mapRekapToItem(d: RekapDokumen): KerjasamaItem {
@@ -63,6 +77,18 @@ function mapRekapToItem(d: RekapDokumen): KerjasamaItem {
     jenisMitra: d.jenisMitra,
     tingkatPerusahaan: d.tingkatPerusahaan,
     manfaatKerjasama: d.manfaatKerjasama,
+    bidangUsaha: d.bidangUsaha,
+    alamatMitra: d.alamatMitra,
+    picMitra: d.picMitra,
+    kodePerusahaan: d.kodePerusahaan,
+    judulKegiatan: d.judulKegiatan,
+    manfaatSebenarnya: d.manfaatSebenarnya,
+    luaranKerjaSama: d.luaranKerjaSama,
+    durasiTahun: d.durasiTahun,
+    jurusanNama: d.jurusanNama,
+    prodiNama: d.prodiNama,
+    unitKerjaNama: d.unitKerjaNama,
+    dokumenTerkait: d.dokumenTerkait,
   };
 }
 
@@ -108,9 +134,7 @@ const statusOptions: Array<'Semua Status' | ApprovalStatus> = [
 
 const ITEMS_PER_PAGE = 10;
 
-// Sementara: seluruh dokumen kerjasama yang sudah ada sebelum fitur pemisahan data
-// internal ini dibuat (id <= cutoff) dianggap "data admin" dan disembunyikan dari
-// rekap internal. Dokumen baru (id > cutoff) akan tetap tampil seperti biasa.
+// Admin legacy data cutoff: dokumen dengan ID <= 1181 dibuat oleh admin lama, dan tidak boleh ditampilkan di halaman internal rekap data.
 const ADMIN_LEGACY_DOKUMEN_CUTOFF_ID = 1181;
 
 export default function InternalRekapDataPage() {
@@ -129,6 +153,10 @@ export default function InternalRekapDataPage() {
   const [detailItem, setDetailItem] = useState<KerjasamaItem | null>(null);
   const [editItem, setEditItem] = useState<KerjasamaItem | null>(null);
   const [laporanItem, setLaporanItem] = useState<LaporanPelaksanaanData | null>(null);
+
+  // Dipakai untuk mengisi tab Kontak & Histori di modal Detail Kerjasama dengan data pengajuan
+  // asli yang sudah di-ACC admin (mitraPicNama, accInternalAt, tahapanRiwayat, dst), bukan dummy.
+  const [allPengajuan, setAllPengajuan] = useState<PengajuanItem[]>([]);
 
   const [masterJurusanOptions, setMasterJurusanOptions] = useState<string[]>([]);
 
@@ -190,8 +218,15 @@ export default function InternalRekapDataPage() {
 
     const sync = async () => {
       try {
-        const rekapData = await fetchRekapDokumenFromApi();
+        // Data pengajuan lengkap selalu diambil (bukan cuma saat fallback) supaya modal Detail
+        // Kerjasama bisa menampilkan Kontak & Histori asli dari pengajuan yang sudah di-ACC admin.
+        const [rekapData, allPengajuanData] = await Promise.all([
+          fetchRekapDokumenFromApi(),
+          fetchPengajuanDataFromApi({ perPage: 500 }),
+        ]);
         if (!mounted) return;
+
+        setAllPengajuan(allPengajuanData);
 
         if (rekapData.length > 0) {
           setData(rekapData.map(mapRekapToItem));
@@ -199,9 +234,7 @@ export default function InternalRekapDataPage() {
         }
 
         // Fallback: tampilkan dari pengajuan yang sudah di-ACC jika monitoring belum terisi
-        const allPengajuan = await fetchPengajuanDataFromApi({ perPage: 500 });
-        if (!mounted) return;
-        const approvedInternal = allPengajuan.filter(
+        const approvedInternal = allPengajuanData.filter(
           (item) => APPROVED_STATUSES.has(item.statusPengajuan) && item.kategoriPengajuan !== 'Eksternal',
         );
         setData(approvedInternal.map(mapApprovedPengajuanToItem));
@@ -260,16 +293,49 @@ export default function InternalRekapDataPage() {
   );
 
   function handleExport() {
-    const headers = ['No. Dokumen', 'Nama Mitra', 'Jenis', 'Unit', 'Tanggal Mulai', 'Berlaku Hingga', 'Status'];
-    const rows = filteredData.map((item) => [
-      item.noDokumen,
-      item.namaMitra,
-      item.jenis,
-      item.unit,
-      item.tanggalMulai,
-      item.berlakuHingga,
-      item.status,
-    ]);
+    // Kolom export disamakan dengan kolom tabel Rekap Data di layar (lihat header tabel di bawah),
+    // supaya isi Excel tidak berbeda dari apa yang ditampilkan.
+    const headers = [
+      'No. Dokumen',
+      'Nama Mitra',
+      'Bidang Usaha',
+      'Alamat Mitra',
+      'PIC',
+      'Kode Perusahaan',
+      'Tingkat Perusahaan',
+      'Judul Kegiatan Kerja Sama',
+      'Manfaat bagi Polibatam/Prodi',
+      'Luaran Kerja Sama',
+      'Tanggal Awal Kerja Sama',
+      'Tanggal Akhir Kerja Sama',
+      'Durasi (tahun)',
+      'Jurusan/Unit',
+      'Status Kerjasama',
+      'Jenis',
+    ];
+    const rows = filteredData.map((item) => {
+      const jurusanUnitDisplay = item.jurusanNama
+        ? `${item.jurusanNama}${item.prodiNama ? ` / ${item.prodiNama}` : ''}`
+        : (item.unitKerjaNama || item.unit || '-');
+      return [
+        item.noDokumen,
+        item.namaMitra,
+        item.bidangUsaha || '-',
+        item.alamatMitra || '-',
+        item.picMitra || '-',
+        item.kodePerusahaan || '-',
+        item.tingkatPerusahaan || '-',
+        item.judulKegiatan || item.noDokumen,
+        item.manfaatSebenarnya || item.manfaatKerjasama || '-',
+        item.luaranKerjaSama || '-',
+        item.tanggalMulai,
+        item.berlakuHingga,
+        item.durasiTahun ?? '-',
+        jurusanUnitDisplay,
+        item.status,
+        item.jenis,
+      ];
+    });
     const dateStamp = new Date().toISOString().slice(0, 10);
     exportToExcel(headers, rows, `rekap-kerjasama-${dateStamp}.xlsx`, 'Rekap Kerjasama');
   }
@@ -410,60 +476,78 @@ export default function InternalRekapDataPage() {
       {/* Table */}
       <section className="table-shell">
         <div className="overflow-x-auto">
-          <table className="min-w-[1300px] w-full border-collapse">
+          <table className="min-w-[2200px] w-full border-collapse">
             <thead>
               <tr className="table-head border-b border-gray-200 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-700">
                 <th className="px-4 py-3">No. Dokumen</th>
                 <th className="px-4 py-3">Nama Mitra</th>
-                <th className="px-4 py-3">Jenis</th>
-                <th className="px-4 py-3">Jenis Mitra</th>
+                <th className="px-4 py-3">Bidang Usaha</th>
+                <th className="px-4 py-3">Alamat Mitra</th>
+                <th className="px-4 py-3">PIC</th>
+                <th className="px-4 py-3">Kode Perusahaan</th>
                 <th className="px-4 py-3">Tingkat Perusahaan</th>
-                <th className="px-4 py-3">Unit</th>
-                <th className="px-4 py-3">Tanggal mulai</th>
-                <th className="px-4 py-3">Berlaku Hingga</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Manfaat Kerja Sama</th>
+                <th className="px-4 py-3">Judul Kegiatan Kerja Sama</th>
+                <th className="px-4 py-3">Manfaat bagi Polibatam/Prodi</th>
+                <th className="px-4 py-3">Luaran Kerja Sama</th>
+                <th className="px-4 py-3">Tanggal Awal Kerja Sama</th>
+                <th className="px-4 py-3">Tanggal Akhir Kerja Sama</th>
+                <th className="px-4 py-3">Durasi (tahun)</th>
+                <th className="px-4 py-3">Jurusan/Unit</th>
+                <th className="px-4 py-3">Status Kerjasama</th>
+                <th className="px-4 py-3">Jenis</th>
                 <th className="px-4 py-3 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {paginatedData.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center text-[12px] text-gray-500">
+                  <td colSpan={17} className="px-4 py-10 text-center text-[12px] text-gray-500">
                     Data tidak ditemukan berdasarkan filter saat ini.
                   </td>
                 </tr>
               ) : (
-                paginatedData.map((row, index) => (
+                paginatedData.map((row, index) => {
+                  // Jenis dokumen ditautkan ke file bukti kerja sama yang sudah diupload untuk
+                  // dokumen ini — sama seperti perilaku kolom Jenis di Rekap Data admin.
+                  const linkBukti = row.dokumenTerkait && row.dokumenTerkait.length > 0 ? row.dokumenTerkait[0].url : null;
+                  // Jurusan/Unit digabung jadi satu kolom, sama seperti tabel admin.
+                  const jurusanUnitDisplay = row.jurusanNama
+                    ? `${row.jurusanNama}${row.prodiNama ? ` / ${row.prodiNama}` : ''}`
+                    : (row.unitKerjaNama || row.unit || '-');
+                  return (
                   <tr
                     key={`${row.noDokumen}-${index}`}
                     className="border-b border-gray-100 text-[12px] text-gray-700 hover:bg-gray-50/60"
                   >
-                    <td className="px-4 py-3 text-[10px] text-gray-600">
+                    <td className="px-4 py-3 text-[10px] text-gray-600 whitespace-nowrap">
                       {row.noDokumen}
                     </td>
                     <td className="px-4 py-3 font-medium text-gray-800">{row.namaMitra}</td>
-                    <td className="px-4 py-3">
-                      <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${jenisBadgeMap[row.jenis]}`}>
-                        {row.jenis}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{row.jenisMitra || '-'}</td>
+                    <td className="px-4 py-3">{row.bidangUsaha || '-'}</td>
+                    <td className="px-4 py-3 max-w-[160px]"><p className="line-clamp-2">{row.alamatMitra || '-'}</p></td>
+                    <td className="px-4 py-3">{row.picMitra || '-'}</td>
+                    <td className="px-4 py-3 text-[10px] text-gray-600">{row.kodePerusahaan || '-'}</td>
                     <td className="px-4 py-3">{row.tingkatPerusahaan || '-'}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-block rounded-full bg-[#1E376C] px-3 py-1 text-[10px] font-medium text-white">
-                        {row.unit}
-                      </span>
-                    </td>
+                    <td className="px-4 py-3 max-w-[180px]"><p className="line-clamp-2">{row.judulKegiatan || row.noDokumen}</p></td>
+                    <td className="px-4 py-3 max-w-[180px]"><p className="text-[10px] text-gray-600 line-clamp-2">{row.manfaatSebenarnya || row.manfaatKerjasama || '-'}</p></td>
+                    <td className="px-4 py-3 max-w-[180px]"><p className="text-[10px] text-gray-600 line-clamp-2">{row.luaranKerjaSama || '-'}</p></td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.tanggalMulai}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.berlakuHingga}</td>
+                    <td className="px-4 py-3 text-center">{row.durasiTahun ?? '-'}</td>
+                    <td className="px-4 py-3">{jurusanUnitDisplay}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-3 py-1 text-[10px] font-semibold ${statusBadgeMap[row.status]}`}>
                         {row.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 max-w-[180px]">
-                      <p className="text-[10px] text-gray-600 line-clamp-2">{row.manfaatKerjasama || '-'}</p>
+                    <td className="px-4 py-3">
+                      {linkBukti ? (
+                        <a href={linkBukti} target="_blank" rel="noreferrer" title="Lihat bukti kerja sama">
+                          <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2 ${jenisBadgeMap[row.jenis]}`}>{row.jenis}</span>
+                        </a>
+                      ) : (
+                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${jenisBadgeMap[row.jenis]}`} title="Belum ada file bukti kerja sama yang diupload">{row.jenis}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-3">
@@ -494,7 +578,8 @@ export default function InternalRekapDataPage() {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -534,7 +619,11 @@ export default function InternalRekapDataPage() {
       </section>
 
       {detailItem && (
-        <DetailKerjasamaModal item={detailItem} onClose={() => setDetailItem(null)} />
+        <DetailKerjasamaModal
+          item={detailItem}
+          pengajuan={allPengajuan.find((p) => p.id === detailItem.sourcePengajuanId)}
+          onClose={() => setDetailItem(null)}
+        />
       )}
 
       {editItem && (

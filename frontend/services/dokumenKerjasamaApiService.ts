@@ -16,11 +16,13 @@ function getBackendOrigin(): string {
 function buildLegacyFileUrl(filePath: string): string {
   if (filePath.startsWith('http')) return filePath;
   const origin = getBackendOrigin();
-  const clean = filePath.replace(/^\/+/, '');
-  if (clean.startsWith('storage/') || clean.startsWith('uploads/')) {
-    return `${origin}/storage/${clean.replace(/^storage\//, '')}`;
-  }
-  return `${origin}/storage/uploads/${clean}`;
+  // Semua file diunggah lewat Storage::disk('public') dan disimpan langsung di bawah
+  // storage/app/public/<folder>/... (mis. "pengajuan/2026/08/berkas.doc"), diakses lewat
+  // symlink public/storage. Path TIDAK pernah punya prefix "uploads/" di disk sebenarnya —
+  // dulu ada fallback yang nambahin "uploads/" di sini dan itu yang bikin link jadi 403
+  // (folder storage/app/public/uploads memang tidak pernah ada).
+  const clean = filePath.replace(/^\/+/, '').replace(/^storage\//, '');
+  return `${origin}/storage/${clean}`;
 }
 import type { RekapDokumen } from '@/services/adminRekapDataService';
 
@@ -54,19 +56,41 @@ type ApiDokumenRow = {
     nama_mitra: string;
     kode_mitra?: string | null;
     kategori_mitra?: string | null;
+    bidang_usaha?: string | null;
     tingkat_perusahaan?: string | null;
+    alamat?: string | null;
+    nama_kontak_utama?: string | null;
+    jabatan_kontak_utama?: string | null;
+    telepon_kontak_utama?: string | null;
   } | null;
-  unit_prodi?: { id: number; nama: string; kategori_unit?: string | null; jenis_node?: string | null } | null;
+  unit_prodi?: {
+    id: number;
+    nama: string;
+    kategori_unit?: string | null;
+    jenis_node?: string | null;
+    parent?: { id: number; nama: string; jenis_node?: string | null; kategori_unit?: string | null } | null;
+  } | null;
   file?: string | null;
   alasan_arsip?: string | null;
   follow_up?: string | null;
+  judul_dokumen?: string | null;
+  manfaat?: string | null;
+  luaran_kerja_sama?: string | null;
   // Snapshot data pengajuan (tersimpan saat disetujui, aman dari penghapusan pengajuan)
   snap_nama_mitra?: string | null;
   snap_whatsapp_pengusul?: string | null;
   snap_nama_pengusul?: string | null;
   snap_email_pengusul?: string | null;
   snap_jenis_mitra?: string | null;
+  snap_bidang_usaha?: string | null;
   snap_tingkat_perusahaan?: string | null;
+  laporan_pelaksanaan?: Array<{
+    id: number;
+    tahun?: number | null;
+    triwulan?: number | null;
+    file_path?: string | null;
+    file_nama?: string | null;
+  }> | null;
   pengajuan?: {
     id: number;
     nomor_pengajuan: string;
@@ -212,6 +236,54 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
         kategoriUnitRaw === 'jurusan' ? 'Jurusan' :
         kategoriUnitRaw ? 'Unit' : undefined;
 
+      //jurusanNama, prodiNama, unitKerjaNama diambil dari unit_prodi (jika ada) sesuai jenis_node dan kategori_unit  
+      const jenisNode = row.unit_prodi?.jenis_node?.toLowerCase();
+      let jurusanNama: string | undefined;
+      let prodiNama: string | undefined;
+      let unitKerjaNama: string | undefined;
+      if (jenisNode === 'prodi') {
+        prodiNama = row.unit_prodi?.nama || undefined;
+        jurusanNama = row.unit_prodi?.parent?.nama || undefined;
+      } else if (jenisNode === 'unit' && kategoriUnitRaw === 'jurusan') {
+        jurusanNama = row.unit_prodi?.nama || undefined;
+      } else if (row.unit_prodi?.nama) {
+        unitKerjaNama = row.unit_prodi.nama;
+      }
+
+      // Durasi kerja sama dalam tahun (desimal 1 angka di belakang koma), dihitung dari selisih tanggal.
+      let durasiTahun: number | undefined;
+      if (row.tanggal_mulai && row.tanggal_berakhir) {
+        const startMs = new Date(row.tanggal_mulai).getTime();
+        const endMs = new Date(row.tanggal_berakhir).getTime();
+        if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs >= startMs) {
+          const years = (endMs - startMs) / (1000 * 60 * 60 * 24 * 365.25);
+          durasiTahun = Math.round(years * 10) / 10;
+        }
+      }
+
+      // Tingkat perusahaan dipecah jadi 3 kolom Ya/Tidak sesuai struktur rekap Excel.
+      // "Multinasional" dianggap masuk kelompok Internasional.
+      const tingkatRaw = (row.mitra?.tingkat_perusahaan || row.snap_tingkat_perusahaan || '').toLowerCase();
+      const tingkatInternasional = tingkatRaw === 'internasional' || tingkatRaw === 'multinasional';
+      const tingkatNasional = tingkatRaw === 'nasional';
+      const tingkatLokal = tingkatRaw === 'lokal';
+
+      // Hasil Monitoring Triwulan 1-4: ditandai terisi kalau pernah ada laporan pelaksanaan
+      // dengan nomor triwulan tsb (lintas tahun — belum discope ke tahun tertentu).
+      const laporanList = row.laporan_pelaksanaan ?? [];
+      const triwulanSet = new Set(
+        laporanList.map((l) => l.triwulan).filter((t): t is number => typeof t === 'number'),
+      );
+      const laporanKegiatanLinks = laporanList
+        .filter((l) => !!l.file_path)
+        .map((l) => buildLegacyFileUrl(l.file_path as string));
+      // Prioritas bukti dokumen: dokumen_final (dokumen_files) → file (legacy) → laporan pelaksanaan (PDF)
+      const jenisUpper = (row.jenis_dokumen || '').toUpperCase();
+      const primaryLink = dokumenTerkait.length > 0 ? dokumenTerkait[0].url : null;
+      const buktiMou = jenisUpper === 'MOU' ? primaryLink : null;
+      const buktiMoaPks = jenisUpper === 'MOA' ? primaryLink : null;
+      const buktiIa = jenisUpper === 'IA' ? primaryLink : null;
+
       return {
       id: row.id,
       sourcePengajuanId: row.sumber_pengajuan_id || undefined,
@@ -222,6 +294,8 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       kategoriUnit,
       tanggalMulai: toDisplayDate(tanggalMulaiRaw),
       berlakuHingga: toDisplayDate(row.tanggal_berakhir),
+      tanggalMulaiRaw: tanggalMulaiRaw || undefined,
+      berlakuHinggaRaw: row.tanggal_berakhir || undefined,
       tahun: (tanggalMulaiRaw || new Date().toISOString()).slice(0, 4),
       status: mapStatus(row.status_siklus),
       whatsappNumber: row.pengajuan?.whatsapp_pengusul || row.snap_whatsapp_pengusul || undefined,
@@ -236,6 +310,31 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       tingkatPerusahaan: row.mitra?.tingkat_perusahaan || row.snap_tingkat_perusahaan || undefined,
       followUp: row.follow_up || undefined,
       dibuatOlehRole: row.pengajuan?.user_pengusul?.role || null,
+
+      bidangUsaha: row.mitra?.bidang_usaha || row.snap_bidang_usaha || undefined,
+      alamatMitra: row.mitra?.alamat || undefined,
+      picMitra: row.mitra?.nama_kontak_utama || undefined,
+      jabatanPicMitra: row.mitra?.jabatan_kontak_utama || undefined,
+      picJurusanUnit: row.pengajuan?.nama_pengusul || row.snap_nama_pengusul || undefined,
+      tingkatInternasional,
+      tingkatNasional,
+      tingkatLokal,
+      judulKegiatan: row.judul_dokumen || row.nama_dokumen || undefined,
+      luaranKerjaSama: row.luaran_kerja_sama || undefined,
+      manfaatSebenarnya: row.manfaat || undefined,
+      keteranganAsli: row.keterangan || undefined,
+      durasiTahun,
+      jurusanNama,
+      prodiNama,
+      unitKerjaNama,
+      triwulan1: triwulanSet.has(1),
+      triwulan2: triwulanSet.has(2),
+      triwulan3: triwulanSet.has(3),
+      triwulan4: triwulanSet.has(4),
+      buktiMou,
+      buktiMoaPks,
+      buktiIa,
+      laporanKegiatanLinks,
     };
   });
 
@@ -272,12 +371,15 @@ export async function updateDokumenKerjasamaById(
   payload: {
     nomor_dokumen?: string;
     nama_dokumen?: string;
+    judul_dokumen?: string | null;
     jenis_dokumen?: string;
     tanggal_mulai?: string | null;
     tanggal_berakhir?: string | null;
     status_siklus?: 'active' | 'expiring' | 'archived';
     keterangan?: string | null;
     follow_up?: string | null;
+    manfaat?: string | null;
+    luaran_kerja_sama?: string | null;
     mitra_id?: number | null;
   }
 ): Promise<void> {
@@ -291,6 +393,7 @@ export async function updateDokumenKerjasamaById(
 export async function createDokumenKerjasama(payload: {
   nomor_dokumen: string;
   nama_dokumen: string;
+  judul_dokumen?: string | null;
   jenis_dokumen: string;
   unit_prodi_id: number;
   mitra_id?: number | null;
@@ -298,6 +401,8 @@ export async function createDokumenKerjasama(payload: {
   tanggal_berakhir?: string | null;
   status_siklus?: 'active' | 'expiring' | 'archived';
   keterangan?: string | null;
+  manfaat?: string | null;
+  luaran_kerja_sama?: string | null;
 }): Promise<{ id: number }> {
   const response = await apiRequest<{ success: boolean; data: { id: number }; message: string }>('/dokumen-kerjasama/manual', {
     method: 'POST',

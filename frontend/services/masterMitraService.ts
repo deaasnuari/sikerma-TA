@@ -5,6 +5,7 @@ export interface MasterMitra {
   kode_mitra: string | null;
   nama_mitra: string;
   kategori_mitra: string | null;
+  bidang_usaha: string | null;
   tingkat_perusahaan: string | null;
   negara: string | null;
   website: string | null;
@@ -24,6 +25,7 @@ export interface MasterMitraPayload {
   kode_mitra?: string | null;
   nama_mitra: string;
   kategori_mitra?: string | null;
+  bidang_usaha?: string | null;
   tingkat_perusahaan?: string | null;
   negara?: string | null;
   website?: string | null;
@@ -105,7 +107,7 @@ export async function updateMasterMitra(id: number, payload: Partial<MasterMitra
  */
 export async function upsertMasterMitraByName(
   namaMitra: string,
-  fields: { kategoriMitra?: string | null; tingkatPerusahaan?: string | null; extra?: Partial<MasterMitraPayload> }
+  fields: { kategoriMitra?: string | null; bidangUsaha?: string | null; tingkatPerusahaan?: string | null; extra?: Partial<MasterMitraPayload> }
 ): Promise<MasterMitra> {
   const trimmed = namaMitra.trim();
   const list = await getMasterMitra({ search: trimmed });
@@ -114,6 +116,7 @@ export async function upsertMasterMitraByName(
   if (exact) {
     return updateMasterMitra(exact.id, {
       kategori_mitra: fields.kategoriMitra !== undefined ? fields.kategoriMitra : exact.kategori_mitra,
+      bidang_usaha: fields.bidangUsaha !== undefined ? fields.bidangUsaha : exact.bidang_usaha,
       tingkat_perusahaan: fields.tingkatPerusahaan !== undefined ? fields.tingkatPerusahaan : exact.tingkat_perusahaan,
       ...fields.extra,
     });
@@ -122,6 +125,7 @@ export async function upsertMasterMitraByName(
   return createMasterMitra({
     nama_mitra: trimmed,
     kategori_mitra: fields.kategoriMitra || null,
+    bidang_usaha: fields.bidangUsaha || null,
     tingkat_perusahaan: fields.tingkatPerusahaan || null,
     aktif: true,
     ...fields.extra,

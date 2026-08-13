@@ -17,6 +17,8 @@ class DokumenKerjasama extends Model
         'nama_dokumen',
         'jenis_dokumen',
         'judul_dokumen',
+        'manfaat',
+        'luaran_kerja_sama',
         'ruang_lingkup_ids',
         'tanggal_mulai',
         'tanggal_berakhir',
@@ -32,6 +34,7 @@ class DokumenKerjasama extends Model
         'snap_nama_pengusul',
         'snap_email_pengusul',
         'snap_jenis_mitra',
+        'snap_bidang_usaha',
         'snap_tingkat_perusahaan',
         'dibuat_oleh_user_id',
         'file',
@@ -72,5 +75,10 @@ class DokumenKerjasama extends Model
     public function dokumenLogs(): HasMany
     {
         return $this->hasMany(DokumenLog::class, 'dokumen_id');
+    }
+
+    public function laporanPelaksanaan(): HasMany
+    {
+        return $this->hasMany(LaporanPelaksanaan::class, 'dokumen_kerjasama_id');
     }
 }

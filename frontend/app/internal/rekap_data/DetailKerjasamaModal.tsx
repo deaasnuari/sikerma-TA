@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ArrowLeft, Calendar, CheckCircle2, Clock, Download, FileText, Mail, Phone, User } from 'lucide-react';
 import { generateNoDokumen } from '@/services/adminMonitoringService';
+import type { PengajuanItem } from '@/services/adminPengajuanService';
 
 type ApprovalStatus = 'Menunggu' | 'Disetujui' | 'Ditolak';
 type Jenis = 'MoU' | 'MoA' | 'IA';
@@ -16,11 +17,48 @@ interface KerjasamaItem {
   tanggalMulai: string;
   berlakuHingga: string;
   status: ApprovalStatus;
+  // --- Field tambahan (sama seperti kolom Rekap Data) supaya tab detail berisi data asli,
+  // bukan data contoh/dummy lagi.
+  ruangLingkup?: string[];
+  bidangUsaha?: string;
+  alamatMitra?: string;
+  picMitra?: string;
+  kodePerusahaan?: string;
+  judulKegiatan?: string;
+  manfaatSebenarnya?: string;
+  manfaatKerjasama?: string;
+  luaranKerjaSama?: string;
+  durasiTahun?: number;
+  jurusanNama?: string;
+  prodiNama?: string;
+  unitKerjaNama?: string;
+  sourcePengajuanId?: number;
 }
 
 interface DetailKerjasamaModalProps {
   item: KerjasamaItem;
+  // Data pengajuan asli (sumber dokumen ini) yang sudah di-ACC admin — dipakai untuk mengisi
+  // tab Kontak dan Histori dengan data sebenarnya (bukan contoh).
+  pengajuan?: PengajuanItem;
   onClose: () => void;
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return '-';
+  try {
+    return new Intl.DateTimeFormat('id-ID', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+function initialsOf(name?: string): string {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return '-';
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '-';
 }
 
 const jenisBadgeMap: Record<Jenis, string> = {
@@ -64,13 +102,26 @@ interface KontakMitra {
   telepon: string;
 }
 
-const dummyKontak: KontakMitra = {
-  nama: 'Budi Santoso',
-  inisial: 'BS',
-  jabatan: 'Direktur Operasional',
-  email: 'budi.santoso@teknologimaju.com',
-  telepon: '+62 812-3456-7890',
-};
+// Kontak PIC diambil dari pengajuan asli (mitraPicNama dkk, disinkron server-side saat submit),
+// dengan fallback ke field PIC yang tersimpan di dokumen kerjasama kalau pengajuannya tidak ditemukan.
+function buildKontakFromSumber(pengajuan?: PengajuanItem, item?: KerjasamaItem): KontakMitra | null {
+  const nama = pengajuan?.mitraPicNama || item?.picMitra || '';
+  const jabatan = pengajuan?.mitraPicJabatan || '';
+  const email = pengajuan?.mitraPicEmail || pengajuan?.mitraEmail || '';
+  const telepon = pengajuan?.mitraPicTelepon || pengajuan?.mitraTelepon || '';
+
+  if (!nama && !jabatan && !email && !telepon) {
+    return null;
+  }
+
+  return {
+    nama: nama || '-',
+    inisial: initialsOf(nama),
+    jabatan: jabatan || '-',
+    email: email || '-',
+    telepon: telepon || '-',
+  };
+}
 
 interface HistoriItem {
   judul: string;
@@ -79,12 +130,42 @@ interface HistoriItem {
   ikon: 'dibuat' | 'review';
 }
 
-const dummyHistori: HistoriItem[] = [
-  { judul: 'Pengajuan dibuat', oleh: 'oleh Admin-mod Ti', tanggal: '28 Feb 2026', ikon: 'dibuat' },
-  { judul: 'Menunggu review Jurusan', oleh: 'oleh System', tanggal: '28 Feb 2026', ikon: 'review' },
-];
+// Histori dibangun dari riwayat tahapan pengajuan (kalau ada) atau dari timestamp ACC asli
+// (diajukan, ACC internal, ACC mitra, final approved) — bukan lagi data contoh.
+function buildHistoriFromSumber(pengajuan?: PengajuanItem): HistoriItem[] {
+  if (!pengajuan) return [];
 
-export default function DetailKerjasamaModal({ item, onClose }: DetailKerjasamaModalProps) {
+  if (pengajuan.tahapanRiwayat && pengajuan.tahapanRiwayat.length > 0) {
+    return pengajuan.tahapanRiwayat.map((r) => ({
+      judul: r.stage,
+      oleh: r.changedBy ? `oleh ${r.changedBy}` : 'oleh System',
+      tanggal: formatDateTime(r.changedAt),
+      ikon: r.group === 'complete' ? 'dibuat' : 'review',
+    }));
+  }
+
+  const events: HistoriItem[] = [];
+  if (pengajuan.diajukanPada) {
+    events.push({
+      judul: 'Pengajuan dibuat',
+      oleh: `oleh ${pengajuan.akunPengaju || pengajuan.namaPengusul || 'Pengusul'}`,
+      tanggal: formatDateTime(pengajuan.diajukanPada),
+      ikon: 'dibuat',
+    });
+  }
+  if (pengajuan.accInternalAt) {
+    events.push({ judul: 'Disetujui Internal', oleh: 'oleh Admin', tanggal: formatDateTime(pengajuan.accInternalAt), ikon: 'review' });
+  }
+  if (pengajuan.accMitraAt) {
+    events.push({ judul: 'Disetujui Mitra', oleh: 'oleh Mitra', tanggal: formatDateTime(pengajuan.accMitraAt), ikon: 'review' });
+  }
+  if (pengajuan.finalApprovedAt) {
+    events.push({ judul: 'Dokumen Final Disetujui (ACC Admin)', oleh: 'oleh Admin', tanggal: formatDateTime(pengajuan.finalApprovedAt), ikon: 'dibuat' });
+  }
+  return events;
+}
+
+export default function DetailKerjasamaModal({ item, pengajuan, onClose }: DetailKerjasamaModalProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('informasi');
 
   // Modal internal rekap_data tidak punya tipe proper untuk dokumen pendukung,
@@ -94,6 +175,8 @@ export default function DetailKerjasamaModal({ item, onClose }: DetailKerjasamaM
     | undefined;
 
   const statusInfo = statusLabelMap[item.status];
+  const kontak = buildKontakFromSumber(pengajuan, item);
+  const histori = buildHistoriFromSumber(pengajuan);
 
 
   return (
@@ -195,9 +278,9 @@ export default function DetailKerjasamaModal({ item, onClose }: DetailKerjasamaM
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {activeTab === 'informasi' && <TabInformasi item={item} />}
-          {activeTab === 'dokumen' && <TabDokumen dokumenTerkait={(item as any).dokumenTerkait} />}
-          {activeTab === 'kontak' && <TabKontak />}
-          {activeTab === 'histori' && <TabHistori />}
+          {activeTab === 'dokumen' && <TabDokumen dokumenTerkait={dokumenTerkait} />}
+          {activeTab === 'kontak' && <TabKontak kontak={kontak} />}
+          {activeTab === 'histori' && <TabHistori histori={histori} />}
         </div>
 
         {/* Bottom Action Bar */}
@@ -229,6 +312,12 @@ export default function DetailKerjasamaModal({ item, onClose }: DetailKerjasamaM
 }
 
 function TabInformasi({ item }: { item: KerjasamaItem }) {
+  const jurusanUnitDisplay = item.jurusanNama
+    ? `${item.jurusanNama}${item.prodiNama ? ` / ${item.prodiNama}` : ''}`
+    : (item.unitKerjaNama || item.unit || '-');
+  const manfaat = item.manfaatSebenarnya || item.manfaatKerjasama;
+  const ruangLingkup = (item.ruangLingkup ?? []).filter(Boolean);
+
   return (
     <div className="space-y-5">
       <div>
@@ -243,7 +332,7 @@ function TabInformasi({ item }: { item: KerjasamaItem }) {
           </div>
           <div>
             <p className="text-[10px] text-gray-500">Jenis Kerjasama</p>
-            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{item.jenis}</p>
+            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{jenisFullName[item.jenis]}</p>
           </div>
         </div>
 
@@ -266,34 +355,57 @@ function TabInformasi({ item }: { item: KerjasamaItem }) {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-[10px] text-gray-500">Unit Pelaksana</p>
-            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{item.unit}</p>
+            <p className="text-[10px] text-gray-500">Jurusan/Unit</p>
+            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{jurusanUnitDisplay}</p>
           </div>
           <div>
-            <p className="text-[10px] text-gray-500">Nilai Kerjasama</p>
-            <p className="mt-0.5 text-[12px] font-semibold text-blue-600">Rp. 500.000.000</p>
+            <p className="text-[10px] text-gray-500">Durasi</p>
+            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{item.durasiTahun ? `${item.durasiTahun} tahun` : '-'}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-[10px] text-gray-500">Bidang Usaha Mitra</p>
+            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{item.bidangUsaha || '-'}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-gray-500">Kode Perusahaan</p>
+            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{item.kodePerusahaan || '-'}</p>
           </div>
         </div>
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-4 space-y-3">
         <div>
-          <p className="text-[10px] text-gray-500">Deskripsi</p>
-          <p className="mt-1 text-[12px] text-gray-700 leading-relaxed">
-            Kerjasama dalam bentuk {jenisFullName[item.jenis]} untuk pengembangan teknologi informasi dan pelatihan mahasiswa di bidang software development.
-          </p>
+          <p className="text-[10px] text-gray-500">Judul Kegiatan Kerja Sama</p>
+          <p className="mt-1 text-[12px] text-gray-700 leading-relaxed">{item.judulKegiatan || item.noDokumen}</p>
+        </div>
+
+        <div>
+          <p className="text-[10px] text-gray-500">Manfaat bagi Polibatam/Prodi</p>
+          <p className="mt-1 text-[12px] text-gray-700 leading-relaxed">{manfaat || 'Belum diisi.'}</p>
+        </div>
+
+        <div>
+          <p className="text-[10px] text-gray-500">Luaran Kerja Sama</p>
+          <p className="mt-1 text-[12px] text-gray-700 leading-relaxed">{item.luaranKerjaSama || 'Belum diisi.'}</p>
         </div>
 
         <div>
           <p className="text-[10px] text-gray-500">Ruang Lingkup</p>
-          <ul className="mt-1 space-y-1">
-            {['Program magang mahasiswa', 'Pelatihan dan sertifikasi', 'Penelitian bersama', 'Sharing dan knowledge teknologi'].map((scope) => (
-              <li key={scope} className="flex items-center gap-2 text-[12px] text-gray-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
-                {scope}
-              </li>
-            ))}
-          </ul>
+          {ruangLingkup.length > 0 ? (
+            <ul className="mt-1 space-y-1">
+              {ruangLingkup.map((scope) => (
+                <li key={scope} className="flex items-center gap-2 text-[12px] text-gray-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+                  {scope}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-[12px] text-gray-500">Belum diisi.</p>
+          )}
         </div>
       </div>
     </div>
@@ -355,7 +467,16 @@ function TabDokumen({
   );
 }
 
-function TabKontak() {
+function TabKontak({ kontak }: { kontak: KontakMitra | null }) {
+  if (!kontak) {
+    return (
+      <div className="space-y-4">
+        <h3 className="text-[12px] font-bold text-gray-900">Kontak Mitra</h3>
+        <div className="text-gray-500 text-[12px]">Belum ada data kontak PIC mitra untuk dokumen ini.</div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <h3 className="text-[12px] font-bold text-gray-900">Kontak Mitra</h3>
@@ -364,11 +485,11 @@ function TabKontak() {
         {/* Person */}
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-[12px] font-bold text-gray-600">
-            {dummyKontak.inisial}
+            {kontak.inisial}
           </div>
           <div>
-            <p className="text-[12px] font-bold text-gray-900">{dummyKontak.nama}</p>
-            <p className="text-[10px] text-gray-500">{dummyKontak.jabatan}</p>
+            <p className="text-[12px] font-bold text-gray-900">{kontak.nama}</p>
+            <p className="text-[10px] text-gray-500">{kontak.jabatan}</p>
           </div>
         </div>
 
@@ -381,7 +502,7 @@ function TabKontak() {
           </div>
           <div>
             <p className="text-[10px] text-gray-500">Email</p>
-            <p className="text-[12px] font-medium text-gray-900">{dummyKontak.email}</p>
+            <p className="text-[12px] font-medium text-gray-900">{kontak.email}</p>
           </div>
         </div>
 
@@ -392,7 +513,7 @@ function TabKontak() {
           </div>
           <div>
             <p className="text-[10px] text-gray-500">Telepon</p>
-            <p className="text-[12px] font-medium text-gray-900">{dummyKontak.telepon}</p>
+            <p className="text-[12px] font-medium text-gray-900">{kontak.telepon}</p>
           </div>
         </div>
       </div>
@@ -400,16 +521,25 @@ function TabKontak() {
   );
 }
 
-function TabHistori() {
+function TabHistori({ histori }: { histori: HistoriItem[] }) {
+  if (histori.length === 0) {
+    return (
+      <div className="space-y-4">
+        <h3 className="text-[12px] font-bold text-gray-900">Histori Perubahan</h3>
+        <div className="text-gray-500 text-[12px]">Belum ada histori tercatat untuk dokumen ini.</div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <h3 className="text-[12px] font-bold text-gray-900">Histori Perubahan</h3>
 
       <div className="space-y-0">
-        {dummyHistori.map((h, index) => (
-          <div key={h.judul} className="relative flex gap-4 pb-6">
+        {histori.map((h, index) => (
+          <div key={`${h.judul}-${index}`} className="relative flex gap-4 pb-6">
             {/* Vertical line */}
-            {index < dummyHistori.length - 1 && (
+            {index < histori.length - 1 && (
               <div className="absolute left-[17px] top-9 bottom-0 w-px bg-gray-200" />
             )}
 

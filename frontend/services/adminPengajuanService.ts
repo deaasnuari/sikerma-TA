@@ -30,6 +30,9 @@ export interface PengajuanItem {
   nomorPengajuan: string;
   judulPengajuan: string;
   deskripsiPengajuan?: string;
+  // Manfaat bagi Polibatam/Prodi (opsional, bisa kosong).
+  manfaat?: string;
+  luaranKerjaSama?: string;
   namaPengusul: string;
   // Nama akun SIKERMA yang benar-benar login & submit (bisa beda dari namaPengusul yang diketik manual).
   akunPengaju?: string;
@@ -39,11 +42,19 @@ export interface PengajuanItem {
   namaMitra: string;
   jenisDokumen: string;
   mitraKategori?: string;
+  mitraBidangUsaha?: string;
   mitraTingkatPerusahaan?: string;
   mitraNegara?: string;
   mitraAlamat?: string;
   mitraEmail?: string;
   mitraTelepon?: string;
+  // Kontak PIC mitra (dari bagian "Kontak Person Mitra" di form) — disinkronkan server-side
+  // ke master_mitra.nama_kontak_utama dkk saat submit, supaya PIC muncul di Rekap Data
+  // tanpa perlu izin admin (endpoint /master/mitra sendiri admin-only).
+  mitraPicNama?: string;
+  mitraPicJabatan?: string;
+  mitraPicEmail?: string;
+  mitraPicTelepon?: string;
   unitProdiId?: number;
   namaUnitProdi: string;
   kategoriPengajuan?: 'Internal' | 'Eksternal';
@@ -116,7 +127,10 @@ function saveAttachmentCacheEntry(id: number, entry: AttachmentCacheEntry): void
     .filter((item) => item && typeof item.name === 'string' && item.name.trim().length > 0)
     .map((item) => ({
       name: item.name,
-      url: item.url || '',
+      // Data URI base64 (bisa beberapa MB per file) sengaja tidak ikut disimpan — cache ini
+      // dipakai berulang tiap kali ada pengajuan baru dan gampang bikin quota localStorage
+      // penuh. URL asli didapat lagi dari respons API (pengajuan_file) saat data di-refetch.
+      url: item.url && item.url.startsWith('data:') ? '' : (item.url || ''),
       type: item.type,
       size: item.size,
       isAcc: item.isAcc,
@@ -207,9 +221,12 @@ type ApiPengajuanRow = {
   unit_prodi_id?: number | null;
   mitra_id?: number | null;
   jenis_mitra?: string | null;
+  bidang_usaha?: string | null;
   tingkat_perusahaan?: string | null;
   judul_pengajuan: string;
   deskripsi_pengajuan?: string | null;
+  manfaat?: string | null;
+  luaran_kerja_sama?: string | null;
   jenis_dokumen: string;
   kategori_pengajuan?: 'internal' | 'eksternal' | null;
   ruang_lingkup_ids?: number[] | null;
@@ -227,7 +244,7 @@ type ApiPengajuanRow = {
   diajukan_pada?: string | null;
   unit_prodi?: { id: number; nama: string } | null;
   user_pengusul?: { id: number; name: string; username?: string | null } | null;
-  mitra?: { id: number; nama_mitra: string; kategori_mitra?: string | null; tingkat_perusahaan?: string | null; negara?: string | null; alamat?: string | null; email_mitra?: string | null; telepon_mitra?: string | null; } | string | null;
+  mitra?: { id: number; nama_mitra: string; kategori_mitra?: string | null; bidang_usaha?: string | null; tingkat_perusahaan?: string | null; negara?: string | null; alamat?: string | null; email_mitra?: string | null; telepon_mitra?: string | null; } | string | null;
   // Legacy schema keys (from recent pulled backend)
   judul?: string;
   deskripsi?: string | null;
@@ -464,6 +481,8 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
     nomorPengajuan: row.nomor_pengajuan || `PGJ-LEGACY-${row.id}`,
     judulPengajuan: row.judul_pengajuan || row.judul || '-',
     deskripsiPengajuan: (row.deskripsi_pengajuan ?? row.deskripsi) || undefined,
+    manfaat: row.manfaat || undefined,
+    luaranKerjaSama: row.luaran_kerja_sama || undefined,
     namaPengusul: row.nama_pengusul || row.pengusul || '-',
     akunPengaju: row.user_pengusul?.name || undefined,
     jabatanPengusul: row.jabatan_pengusul || undefined,
@@ -471,6 +490,7 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
     mitraId: row.mitra_id ?? undefined,
     namaMitra: mitraNama,
     mitraKategori: row.jenis_mitra || (typeof row.mitra === 'object' && row.mitra !== null && 'kategori_mitra' in row.mitra ? row.mitra.kategori_mitra || undefined : undefined),
+    mitraBidangUsaha: row.bidang_usaha || (typeof row.mitra === 'object' && row.mitra !== null && 'bidang_usaha' in row.mitra ? (row.mitra as { bidang_usaha?: string | null }).bidang_usaha || undefined : undefined),
     mitraTingkatPerusahaan: row.tingkat_perusahaan || (typeof row.mitra === 'object' && row.mitra !== null && 'tingkat_perusahaan' in row.mitra ? (row.mitra as { tingkat_perusahaan?: string | null }).tingkat_perusahaan || undefined : undefined),
     mitraNegara: typeof row.mitra === 'object' && row.mitra !== null && 'negara' in row.mitra ? row.mitra.negara || pickOptionalString((row as Record<string, unknown>).negara) : pickOptionalString((row as Record<string, unknown>).negara),
     mitraAlamat: typeof row.mitra === 'object' && row.mitra !== null && 'alamat' in row.mitra ? row.mitra.alamat || pickOptionalString((row as Record<string, unknown>).alamat_mitra) : pickOptionalString((row as Record<string, unknown>).alamat_mitra),
@@ -644,6 +664,7 @@ export async function updatePengajuanItemApi(
   if (updates.mitraId !== undefined) payload.mitra_id = updates.mitraId;
   if (typeof updates.namaMitra === 'string') payload.nama_mitra = updates.namaMitra;
   if (updates.mitraKategori !== undefined) payload.jenis_mitra = updates.mitraKategori || null;
+  if (updates.mitraBidangUsaha !== undefined) payload.bidang_usaha = updates.mitraBidangUsaha || null;
   if (updates.mitraTingkatPerusahaan !== undefined) payload.tingkat_perusahaan = updates.mitraTingkatPerusahaan || null;
   if (typeof updates.mitraTelepon === 'string') payload.telepon_mitra = updates.mitraTelepon;
   if (typeof updates.jenisDokumen === 'string') payload.jenis_dokumen = mapJenisDokumenToApi(updates.jenisDokumen);
@@ -714,12 +735,22 @@ export async function submitPengajuanApi(
     whatsapp_pengusul: data.whatsappPengusul || null,
     judul_pengajuan: data.judulPengajuan,
     deskripsi_pengajuan: data.deskripsiPengajuan || null,
+    manfaat: data.manfaat || null,
+    luaran_kerja_sama: data.luaranKerjaSama || null,
     jenis_dokumen: mapJenisDokumenToApi(data.jenisDokumen),
     mitra_id: data.mitraId ?? null,
     nama_mitra: data.namaMitra,
     jenis_mitra: data.mitraKategori || null,
+    bidang_usaha: data.mitraBidangUsaha || null,
     tingkat_perusahaan: data.mitraTingkatPerusahaan || null,
     telepon_mitra: data.mitraTelepon || null,
+    // Field transien buat backend sinkron ke master_mitra (lihat PengajuanController) —
+    // tidak tersimpan di pengajuan_v2, cukup dikirim di request ini.
+    mitra_alamat: data.mitraAlamat || null,
+    mitra_nama_kontak_utama: data.mitraPicNama || null,
+    mitra_jabatan_kontak_utama: data.mitraPicJabatan || null,
+    mitra_email_kontak_utama: data.mitraPicEmail || null,
+    mitra_telepon_kontak_utama: data.mitraPicTelepon || null,
     unit_prodi_id: data.unitProdiId ?? null,
     kategori_pengajuan: (data.kategoriPengajuan || (source === 'eksternal' ? 'Eksternal' : 'Internal')).toLowerCase(),
     tanggal_mulai: data.tanggalMulai || null,

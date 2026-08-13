@@ -37,12 +37,57 @@ function emitUpdate(): void {
   window.dispatchEvent(new Event(UPDATE_EVENT));
 }
 
+// File yang baru diupload disimpan sementara sebagai data URI base64 (bisa beberapa MB per
+// file) supaya bisa langsung dipratinjau sebelum server selesai memprosesnya. Data URI itu TIDAK
+// boleh ikut disimpan ke localStorage — riwayat pengajuan lama yang menumpuk gampang bikin quota
+// localStorage (~5-10MB) penuh, dan setItem yang gagal karenanya dulu membatalkan seluruh alur
+// submit walau datanya sudah berhasil tersimpan di backend. URL asli (dari server) akan terisi
+// lagi lewat syncExternalPengajuanWithAdminData().
+function sanitizeAttachmentsForStorage(
+  attachments?: PengajuanItem['fileAttachments'],
+): PengajuanItem['fileAttachments'] {
+  if (!attachments || attachments.length === 0) {
+    return attachments;
+  }
+
+  return attachments.map((file) => ({
+    ...file,
+    url: file.url && file.url.startsWith('data:') ? '' : file.url,
+  }));
+}
+
+function sanitizeItemsForStorage(items: PengajuanItem[]): PengajuanItem[] {
+  return items.map((item) => ({
+    ...item,
+    fileAttachments: sanitizeAttachmentsForStorage(item.fileAttachments),
+  }));
+}
+
 function saveExternalPengajuanData(items: PengajuanItem[]): void {
   if (!canUseStorage()) {
     return;
   }
 
-  window.localStorage.setItem(getExternalStorageKey(), JSON.stringify(items));
+  const key = getExternalStorageKey();
+  const sanitized = sanitizeItemsForStorage(items);
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(sanitized));
+  } catch (e) {
+    if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+      // Cache lokal ini cuma optimisasi tampilan (data asli tetap di server) — buang cache lama
+      // punya scope ini lalu coba lagi sekali. Kalau masih gagal, biarkan saja: submit pengajuan
+      // yang sebenarnya (ke backend) tetap dianggap berhasil, tidak boleh ikut gagal gara-gara ini.
+      try {
+        window.localStorage.removeItem(key);
+        window.localStorage.setItem(key, JSON.stringify(sanitized));
+      } catch {
+        // Ignore — best-effort cache saja.
+      }
+    }
+    // Error lain selain quota juga tidak perlu menggagalkan alur submit.
+  }
+
   emitUpdate();
 }
 

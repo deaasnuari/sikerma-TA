@@ -117,6 +117,9 @@ class LaporanPelaksanaanController extends Controller
             'capaian' => ['nullable', 'string'],
             'hasil' => ['nullable', 'string'],
             'tautan_dokumentasi' => ['nullable', 'string', 'max:255'],
+            // Periode Hasil Monitoring (Triwulan 1: Jan-Mar, ..., 4: Okt-Des) untuk rekap.
+            'tahun' => ['nullable', 'integer', 'min:2000', 'max:2100'],
+            'triwulan' => ['nullable', 'integer', 'min:1', 'max:4'],
             'nama_penanggung_jawab' => ['nullable', 'string', 'max:150'],
             'nip_penanggung_jawab' => ['nullable', 'string', 'max:50'],
             'jabatan_mengetahui' => ['nullable', 'string', 'max:150'],
@@ -174,6 +177,15 @@ class LaporanPelaksanaanController extends Controller
         }
 
         unset($validated['file']);
+
+        // Kalau pengirim tidak menyebut periode secara eksplisit, tentukan dari
+        // tanggal laporan dikirim supaya tetap bisa direkap per triwulan.
+        if (empty($validated['tahun'])) {
+            $validated['tahun'] = (int) now()->format('Y');
+        }
+        if (empty($validated['triwulan'])) {
+            $validated['triwulan'] = (int) ceil(((int) now()->format('n')) / 3);
+        }
 
         $user = $request->user();
         $validated['dikirim_oleh_user_id'] = $user?->id;

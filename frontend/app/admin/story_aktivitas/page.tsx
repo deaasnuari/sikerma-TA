@@ -14,11 +14,12 @@ import {
   Eye,
   ChevronDown,
 } from 'lucide-react';
-import { getHiddenStoryIds, getAktivitasByKerjasamaId } from '@/services/adminStoryAktivitasService';
-import { getPengajuanData, refreshPengajuanDataFromApi, type PengajuanItem } from '../../../services/adminPengajuanService';
+import { getHiddenStoryIds } from '@/services/adminStoryAktivitasService';
+import { getPengajuanData, refreshPengajuanDataFromApi } from '../../../services/adminPengajuanService';
+import { groupStoryAktivitasByMitra, type StoryAktivitasGroup } from '@/services/storyAktivitasGrouping';
 
 interface Kerjasama {
-  id: number;
+  key: string;
   nama: string;
   nomorDokumen: string;
   jenis: 'MoA' | 'MoU' | 'IA';
@@ -26,66 +27,26 @@ interface Kerjasama {
   tahun: number;
   status: 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
   aktivitas: number;
+  totalPengajuan: number;
   jurusanTerlibat: number;
   ruangLingkup: string[];
   jurusan: string[];
 }
 
-function parseDateString(value?: string): Date | null {
-  if (!value) {
-    return null;
-  }
-
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function toDisplayDate(value?: string): string {
-  const parsed = parseDateString(value);
-  if (!parsed) {
-    return '-';
-  }
-
-  return parsed.toLocaleDateString('en-GB');
-}
-
-function getKerjasamaStatus(tanggalBerakhir?: string): Kerjasama['status'] {
-  const endDate = parseDateString(tanggalBerakhir);
-
-  if (!endDate) {
-    return 'Aktif';
-  }
-
-  const now = new Date();
-  const diffDays = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-  if (diffDays < 0) {
-    return 'Kadaluarsa';
-  }
-
-  if (diffDays <= 120) {
-    return 'Akan Berakhir';
-  }
-
-  return 'Aktif';
-}
-
-function mapPengajuanToKerjasama(item: PengajuanItem): Kerjasama {
-  const tahun = Number(item.diajukanPada?.slice(0, 4)) || new Date().getFullYear();
-  const jenis = (['MoA', 'MoU', 'IA'].includes(item.jenisDokumen) ? item.jenisDokumen : 'MoU') as Kerjasama['jenis'];
-
+function mapGroupToKerjasama(group: StoryAktivitasGroup): Kerjasama {
   return {
-    id: item.id,
-    nama: item.namaMitra,
-    nomorDokumen: `${jenis}/${String(item.id).padStart(3, '0')}/${tahun}`,
-    jenis,
-    berakhir: toDisplayDate(item.tanggalBerakhir),
-    tahun,
-    status: getKerjasamaStatus(item.tanggalBerakhir),
-    aktivitas: getAktivitasByKerjasamaId(item.id).length,
-    jurusanTerlibat: item.namaUnitProdi ? 1 : 0,
-    ruangLingkup: [...item.ruangLingkup],
-    jurusan: item.namaUnitProdi ? [item.namaUnitProdi] : [],
+    key: group.key,
+    nama: group.namaMitra,
+    nomorDokumen: group.nomorDokumen,
+    jenis: group.jenis,
+    berakhir: group.berakhir,
+    tahun: group.tahun,
+    status: group.status,
+    aktivitas: group.totalAktivitas,
+    totalPengajuan: group.totalPengajuan,
+    jurusanTerlibat: group.jurusanTerlibat.length,
+    ruangLingkup: [...group.ruangLingkup],
+    jurusan: [...group.jurusanTerlibat],
   };
 }
 
@@ -113,7 +74,6 @@ export default function StoryAktivitasPage() {
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterTahun, setFilterTahun] = useState('Semua Tahun');
   const [search, setSearch] = useState('');
-  const [hiddenStoryIds, setHiddenStoryIds] = useState<number[]>([]);
   const [sourceData, setSourceData] = useState<Kerjasama[]>([]);
 
   useEffect(() => {
@@ -124,38 +84,29 @@ export default function StoryAktivitasPage() {
         return;
       }
 
-      setSourceData(getPengajuanData().map(mapPengajuanToKerjasama));
-    };
-
-    const syncHiddenStoryIds = () => {
-      if (!isMounted) {
-        return;
-      }
-
-      setHiddenStoryIds(getHiddenStoryIds());
+      // Satu kartu per mitra — kalau satu mitra punya beberapa pengajuan/dokumen,
+      // digabung jadi satu (lihat groupStoryAktivitasByMitra), bukan dipecah per pengajuan.
+      const groups = groupStoryAktivitasByMitra(getPengajuanData(), getHiddenStoryIds());
+      setSourceData(groups.map(mapGroupToKerjasama));
     };
 
     void refreshPengajuanDataFromApi(true).finally(syncData);
-    syncHiddenStoryIds();
 
     window.addEventListener('pengajuan-data-updated', syncData);
-    window.addEventListener('story-data-updated', syncHiddenStoryIds);
+    window.addEventListener('story-data-updated', syncData);
 
     return () => {
       isMounted = false;
       window.removeEventListener('pengajuan-data-updated', syncData);
-      window.removeEventListener('story-data-updated', syncHiddenStoryIds);
+      window.removeEventListener('story-data-updated', syncData);
     };
   }, []);
 
-  const visibleData = sourceData.filter((item) => !hiddenStoryIds.includes(item.id));
-
   const tahunOptions = Array.from(
-    new Set(visibleData.map((d) => d.tahun))
+    new Set(sourceData.map((d) => d.tahun))
   ).sort((a, b) => b - a);
 
-  // Filter dan deduplikasi berdasarkan id
-  const filteredRaw = visibleData.filter((item) => {
+  const filtered = sourceData.filter((item) => {
     const matchJenis =
       filterJenis === 'Semua Jenis' || item.jenis === filterJenis;
     const matchStatus =
@@ -167,25 +118,14 @@ export default function StoryAktivitasPage() {
       .includes(search.toLowerCase());
     return matchJenis && matchStatus && matchTahun && matchSearch;
   });
-  const seen = new Set();
-  const filtered = [];
-  for (const item of filteredRaw) {
-    if (!seen.has(item.id)) {
-      filtered.push(item);
-      seen.add(item.id);
-    }
-  }
 
-  const totalAktivitas = visibleData.reduce((s, i) => s + i.aktivitas, 0);
-  const kerjasamaAktif = visibleData.filter((i) => i.status === 'Aktif').length;
+  const totalAktivitas = sourceData.reduce((s, i) => s + i.aktivitas, 0);
+  const kerjasamaAktif = sourceData.filter((i) => i.status === 'Aktif').length;
   const now = new Date();
-  const bulanIni = sourceData.filter((item) => {
-    const year = Number(item.tahun);
-    return year === now.getFullYear();
-  }).length;
+  const bulanIni = sourceData.filter((item) => item.tahun === now.getFullYear()).length;
   const rataRata =
-    visibleData.length > 0
-      ? Math.round(totalAktivitas / visibleData.length)
+    sourceData.length > 0
+      ? Math.round(totalAktivitas / sourceData.length)
       : 0;
 
   return (
@@ -322,7 +262,7 @@ export default function StoryAktivitasPage() {
 
         {filtered.map((item) => (
           <div
-            key={item.id}
+            key={item.key}
             className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex"
           >
             <div
@@ -341,6 +281,11 @@ export default function StoryAktivitasPage() {
                     >
                       {item.jenis}
                     </span>
+                    {item.totalPengajuan > 1 && (
+                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full border border-slate-300 text-slate-600 bg-slate-50">
+                        {item.totalPengajuan} pengajuan digabung
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
                     <span>{item.nomorDokumen}</span>
@@ -379,7 +324,7 @@ export default function StoryAktivitasPage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() =>
-                      router.push(`/admin/story_aktivitas/${item.id}`)
+                      router.push(`/admin/story_aktivitas/${item.key}`)
                     }
                     className="flex items-center gap-1.5 bg-[#0e1d34] hover:bg-[#1a2d4a] text-white text-sm font-medium px-4 py-2 rounded-lg transition"
                   >

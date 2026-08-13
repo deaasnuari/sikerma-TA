@@ -18,6 +18,25 @@ interface TambahDokumenModalProps {
 
 const jenisOptions = ['Pilih Jenis', 'MoU', 'MoA', 'IA'];
 const kategoriOptions = ['Pilih Kategori', 'Pemerintahan', 'Perguruan Tinggi', 'Swasta/Dunia Usaha dan Dunia Industri (DUDI)', 'Sekolah/Institusi Pendidikan Lain', 'Organisasi Non-Profit / LSM', 'Lainnya'];
+const bidangUsahaOptions = [
+  'Pilih Bidang Usaha',
+  'Manufaktur',
+  'Start Up',
+  'Pendidikan',
+  'Jasa',
+  'Kesehatan',
+  'Keuangan',
+  'Teknologi Informasi',
+  'Organisasi Nirlaba',
+  'Supplayer',
+  'Man Power',
+  'Engineering, Procurement, and Construction (EPC)',
+  'Transportasi Darat',
+  'Transportasi Laut',
+  'Transportasi Udara',
+  'Lainnya',
+];
+const tingkatPerusahaanOptions = ['Pilih Tingkat Perusahaan', 'Lokal', 'Nasional', 'Internasional', 'Multinasional'];
 const statusOptions = ['Aktif', 'Akan Berakhir', 'Kadaluarsa'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -64,6 +83,8 @@ const emptyFormData: DokumenData = {
   jenisDokumen: '',
   namaPIC: '',
   kategoriMitra: '',
+  bidangUsaha: '',
+  tingkatPerusahaan: '',
   namaMitra: '',
   status: '',
   jabatanMitra: '',
@@ -74,7 +95,10 @@ const emptyFormData: DokumenData = {
   whatsappMitra: '',
   asalKategori: 'Jurusan',
   unitKerja: '',
+  judulKegiatan: '',
   manfaatKerjasama: '',
+  luaranKerjaSama: '',
+  keterangan: '',
 };
 
 export default function TambahDokumenModal({
@@ -352,6 +376,14 @@ export default function TambahDokumenModal({
               )}
             </Field>
 
+            <Field label="Judul Kegiatan Kerja Sama">
+              <TextInput
+                placeholder="Judul atau nama kegiatan kerja sama"
+                value={formData.judulKegiatan || ''}
+                onChange={(e) => handleInputChange('judulKegiatan', e.target.value)}
+              />
+            </Field>
+
             <Field label="Jenis Dokumen *" error={errors.jenisDokumen}>
               <SelectInput
                 options={jenisOptions}
@@ -553,6 +585,22 @@ export default function TambahDokumenModal({
               />
             </Field>
 
+            <Field label="Bidang Usaha">
+              <SelectInput
+                options={bidangUsahaOptions}
+                value={formData.bidangUsaha || ''}
+                onChange={(e) => handleInputChange('bidangUsaha', e.target.value === 'Pilih Bidang Usaha' ? '' : e.target.value)}
+              />
+            </Field>
+
+            <Field label="Tingkat Perusahaan">
+              <SelectInput
+                options={tingkatPerusahaanOptions}
+                value={formData.tingkatPerusahaan || ''}
+                onChange={(e) => handleInputChange('tingkatPerusahaan', e.target.value === 'Pilih Tingkat Perusahaan' ? '' : e.target.value)}
+              />
+            </Field>
+
             <Field label="Nama Mitra *" error={errors.namaMitra}>
               <div className="relative">
                 <TextInput
@@ -715,15 +763,42 @@ export default function TambahDokumenModal({
 
             <div className="md:col-span-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-gray-900">Manfaat Kerja Sama</span>
+                <span className="mb-2 block text-sm font-semibold text-gray-900">Manfaat bagi Polibatam/Prodi</span>
                 <textarea
                   value={formData.manfaatKerjasama || ''}
                   onChange={(e) => handleInputChange('manfaatKerjasama', e.target.value)}
-                  maxLength={100}
+                  maxLength={2000}
                   placeholder="Jelaskan manfaat kerja sama"
                   className="input-field min-h-[80px] w-full px-4 py-2 text-sm text-gray-700"
                 />
-                <p className={`mt-1 text-right text-xs ${(formData.manfaatKerjasama || '').length >= 100 ? 'text-red-500' : 'text-gray-400'}`}>{(formData.manfaatKerjasama || '').length}/100</p>
+                <p className={`mt-1 text-right text-xs ${(formData.manfaatKerjasama || '').length >= 2000 ? 'text-red-500' : 'text-gray-400'}`}>{(formData.manfaatKerjasama || '').length}/2000</p>
+              </label>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-gray-900">Luaran Kerja Sama</span>
+                <textarea
+                  value={formData.luaranKerjaSama || ''}
+                  onChange={(e) => handleInputChange('luaranKerjaSama', e.target.value)}
+                  maxLength={2000}
+                  placeholder="Jelaskan luaran/output yang dihasilkan dari kerja sama ini"
+                  className="input-field min-h-[80px] w-full px-4 py-2 text-sm text-gray-700"
+                />
+                <p className={`mt-1 text-right text-xs ${(formData.luaranKerjaSama || '').length >= 2000 ? 'text-red-500' : 'text-gray-400'}`}>{(formData.luaranKerjaSama || '').length}/2000</p>
+              </label>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-gray-900">Keterangan</span>
+                <textarea
+                  value={formData.keterangan || ''}
+                  onChange={(e) => handleInputChange('keterangan', e.target.value)}
+                  maxLength={2000}
+                  placeholder="Catatan tambahan (opsional)"
+                  className="input-field min-h-[80px] w-full px-4 py-2 text-sm text-gray-700"
+                />
               </label>
             </div>
           </div>
