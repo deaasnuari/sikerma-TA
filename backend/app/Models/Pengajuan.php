@@ -73,6 +73,8 @@ class Pengajuan extends Model
         'tahapan_group',
         'tahapan_riwayat',
         'distribusi_user_ids',
+        'dihapus_admin_pada',
+        'dihapus_user_pada',
     ];
 
     protected $casts = [
@@ -98,6 +100,8 @@ class Pengajuan extends Model
         'distribusi_user_ids' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'dihapus_admin_pada' => 'datetime',
+        'dihapus_user_pada' => 'datetime',
     ];
 
     public function unitProdi(): BelongsTo

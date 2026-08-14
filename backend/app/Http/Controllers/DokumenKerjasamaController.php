@@ -83,6 +83,31 @@ class DokumenKerjasamaController extends Controller
         $user = $request->user();
         $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
 
+        // "Hapus" oleh admin di Rekap Data cuma menyembunyikan dari daftar kelola admin & dari
+        // pengguna lain — BUKAN hard delete — supaya akun internal/eksternal/kampus-LDAP yang
+        // pengajuan sumbernya masih tetap punya riwayat dokumen kerjasamanya sendiri. Admin sendiri
+        // TIDAK ikut pengecualian ini (kalau tidak, dokumen buatan admin sendiri yang dihapus admin
+        // akan tetap nampak balik ke admin yang sama).
+        if (Schema::hasColumn('dokumen_kerjasama', 'dihapus_admin_pada')) {
+            $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
+            $query->where(function ($builder) use ($user, $isAdmin) {
+                $builder->whereNull('dihapus_admin_pada');
+                if ($user && !$isAdmin) {
+                    $builder->orWhere('dibuat_oleh_user_id', $user->id)
+                        ->orWhereHas('pengajuan', function ($inner) use ($user) {
+                            $inner->where('user_pengusul_id', $user->id);
+                        });
+                }
+            });
+
+            // Pemilik (internal/eksternal/kampus-LDAP) juga bisa hapus dokumen kerjasamanya
+            // sendiri — kebalikan dari dihapus_admin_pada: cuma sembunyi dari akunnya sendiri,
+            // admin tetap melihatnya untuk keperluan audit/rekap institusi.
+            if (Schema::hasColumn('dokumen_kerjasama', 'dihapus_user_pada') && !$isAdmin) {
+                $query->whereNull('dihapus_user_pada');
+            }
+        }
+
         if ($normalizedRole === 'internal') {
             $query->whereHas('pengajuan', function ($builder) use ($user) {
                 $builder->where(function ($inner) use ($user) {
@@ -119,8 +144,32 @@ class DokumenKerjasamaController extends Controller
         ]);
     }
 
-    public function show(DokumenKerjasama $dokumen_kerjasama): Response
+    public function show(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
     {
+        // Cerminan persis dari filter visibilitas di index(): dokumen yang sudah "dihapus" admin
+        // tetap bisa diakses lewat detail HANYA oleh pemiliknya sendiri (bukan admin lain); yang
+        // "dihapus" pemiliknya sendiri cuma bisa diakses lewat admin — selain itu 404.
+        if ($dokumen_kerjasama->dihapus_admin_pada || $dokumen_kerjasama->dihapus_user_pada) {
+            $user = $request->user();
+            $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+            $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
+            $isOwner = $user && (
+                (int) $dokumen_kerjasama->dibuat_oleh_user_id === (int) $user->id
+                || (int) $dokumen_kerjasama->pengajuan?->user_pengusul_id === (int) $user->id
+            );
+
+            $visible = $isAdmin
+                ? !$dokumen_kerjasama->dihapus_admin_pada
+                : (!$dokumen_kerjasama->dihapus_admin_pada || $isOwner) && !$dokumen_kerjasama->dihapus_user_pada;
+
+            if (!$visible) {
+                return response([
+                    'success' => false,
+                    'message' => 'Dokumen kerjasama tidak ditemukan.',
+                ], 404);
+            }
+        }
+
         $dokumen_kerjasama->load([
             'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul',
             'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
@@ -470,11 +519,47 @@ class DokumenKerjasamaController extends Controller
 
     public function destroy(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
     {
-        if ($response = $this->ensureAdmin($request)) {
-            return $response;
+        // Admin boleh hapus dokumen kerjasama siapapun; internal/eksternal/kampus-LDAP boleh
+        // hapus dokumen kerjasama MEREKA SENDIRI (tombol Hapus di Rekap Data mereka masing-masing).
+        $user = $request->user();
+        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+        $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
+        $isOwner = $user && (
+            (int) $dokumen_kerjasama->dibuat_oleh_user_id === (int) $user->id
+            || (int) $dokumen_kerjasama->pengajuan?->user_pengusul_id === (int) $user->id
+        );
+
+        if (!$isAdmin && !$isOwner) {
+            return response([
+                'success' => false,
+                'message' => 'Anda tidak memiliki akses untuk menghapus dokumen kerjasama ini.',
+            ], 403);
         }
 
-        $dokumen_kerjasama->delete();
+        // Soft delete, bukan hapus permanen dari database — akunnya sendiri (login, profil) sama
+        // sekali tidak tersentuh oleh aksi ini, cuma baris dokumennya yang ditandai:
+        // - Dihapus admin -> hilang dari semua orang KECUALI dari pemiliknya sendiri.
+        // - Dihapus pemiliknya sendiri -> hilang dari akunnya sendiri, admin tetap bisa lihat.
+        $flagColumn = null;
+        if ($isAdmin && Schema::hasColumn('dokumen_kerjasama', 'dihapus_admin_pada')) {
+            $flagColumn = 'dihapus_admin_pada';
+            $dokumen_kerjasama->update([$flagColumn => now()]);
+        } elseif (!$isAdmin && Schema::hasColumn('dokumen_kerjasama', 'dihapus_user_pada')) {
+            $flagColumn = 'dihapus_user_pada';
+            $dokumen_kerjasama->update([$flagColumn => now()]);
+        } else {
+            $dokumen_kerjasama->delete();
+        }
+
+        // Ikut tandai pengajuan sumbernya (kalau ada) dengan flag yang sama — tanpa ini, dokumen
+        // di Rekap Data hilang tapi pengajuan asalnya tetap kelihatan di Data Pengajuan, padahal
+        // keduanya merepresentasikan kerjasama yang sama.
+        if ($flagColumn && $dokumen_kerjasama->sumber_pengajuan_id && Schema::hasColumn('pengajuan_v2', $flagColumn)) {
+            Pengajuan::query()
+                ->where('id', $dokumen_kerjasama->sumber_pengajuan_id)
+                ->whereNull($flagColumn)
+                ->update([$flagColumn => now()]);
+        }
 
         return response([
             'success' => true,
@@ -670,10 +755,7 @@ class DokumenKerjasamaController extends Controller
                     ]);
                 }
 
-                // Sinkronkan tanggal mulai/berakhir ke pengajuan sumbernya juga —
-                // Story & Aktivitas dan halaman lain membaca masa berlaku dari data
-                // pengajuan, bukan dari dokumen_kerjasama, jadi tanpa ini tanggalnya
-                // akan tetap menampilkan periode lama meski perpanjangan sudah disetujui.
+                // Update tanggal mulai/berakhir di tabel pengajuan jika dokumen ini terkait dengan pengajuan.
                 if ($dokumen->sumber_pengajuan_id) {
                     Pengajuan::query()->where('id', $dokumen->sumber_pengajuan_id)->update([
                         'tanggal_mulai' => $dokumen_log->tanggal_mulai_perpanjangan,

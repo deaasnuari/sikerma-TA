@@ -40,6 +40,8 @@ class DokumenKerjasama extends Model
         'file',
         'keterangan',
         'follow_up',
+        'dihapus_admin_pada',
+        'dihapus_user_pada',
     ];
 
     protected $casts = [
@@ -50,6 +52,8 @@ class DokumenKerjasama extends Model
         'diarsipkan_pada' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'dihapus_admin_pada' => 'datetime',
+        'dihapus_user_pada' => 'datetime',
     ];
 
     public function pengajuan(): BelongsTo

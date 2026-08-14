@@ -18,7 +18,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import {
-  deletePengajuanItem,
+  deletePengajuanItemApi,
   getFilteredPengajuanData,
   getPengajuanData,
   getPengajuanStats,
@@ -251,12 +251,16 @@ export default function InternalDataPengajuanPage() {
     if (!deleteTarget) return;
     const deletedId = deleteTarget.id;
     try {
-      const next = await deletePengajuanItem(deletedId);
-      setPengajuanData(next.filter((i) => i.kategoriPengajuan === 'Internal'));
+      // Sebelumnya pakai deletePengajuanItem (fungsi lokal, cuma ubah cache localStorage tanpa
+      // pernah memanggil API) — kelihatan seperti berhasil dihapus, tapi begitu halaman
+      // refresh/fetch ulang data dari server, baris itu muncul lagi karena aslinya tidak pernah
+      // benar-benar terhapus di database. Sekarang panggil endpoint API yang sesungguhnya.
+      await deletePengajuanItemApi(deletedId);
       setDeleteTarget(null);
       if (detailItem?.id === deletedId) setDetailItem(null);
       if (reviewItem?.id === deletedId) setReviewItem(null);
       setInfoModalMessage('Data pengajuan berhasil dihapus.');
+      await refreshPengajuanDataFromApi(true);
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : 'Gagal menghapus pengajuan.';
       setInfoModalMessage(message);

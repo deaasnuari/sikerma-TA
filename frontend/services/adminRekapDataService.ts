@@ -23,7 +23,6 @@ export interface RekapDokumen {
   kategoriUnit?: 'Jurusan' | 'Unit';
   tanggalMulai: string;
   berlakuHingga: string;
-
   tanggalMulaiRaw?: string;
   berlakuHinggaRaw?: string;
   tahun: string;

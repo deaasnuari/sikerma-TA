@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Eye, FileText, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Eye, FileText, Search, Trash2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 import DetailKerjasamaModal from './DetailKerjasamaModal';
@@ -9,15 +9,14 @@ import EditDokumenModal from './EditDokumenModal';
 import LaporanPelaksanaanModal, { type LaporanPelaksanaanData } from '@/components/LaporanPelaksanaanModal';
 
 import {
-  deleteRekapDokumen,
   rekapJenisMitraOptions,
   rekapJurusanOptions,
   rekapTingkatPerusahaanOptions,
   type DokumenTerkait,
   type RekapDokumen,
 } from '@/services/adminRekapDataService';
-import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
-import { fetchPengajuanDataFromApi, type PengajuanItem, type PengajuanStatus } from '@/services/adminPengajuanService';
+import { deleteDokumenKerjasamaById, fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
+import { deletePengajuanItemApi, fetchPengajuanDataFromApi, type PengajuanItem, type PengajuanStatus } from '@/services/adminPengajuanService';
 
 import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
 import { exportToExcel } from '@/lib/exportExcel';
@@ -253,9 +252,26 @@ export default function InternalRekapDataPage() {
     };
   }, []);
 
-  function handleDelete(item: KerjasamaItem) {
-    if (!window.confirm(`Yakin ingin menghapus dokumen ${item.noDokumen}?`)) return;
-    deleteRekapDokumen(item.noDokumen);
+  async function handleDelete(item: KerjasamaItem) {
+    if (!window.confirm(`Yakin ingin menghapus dokumen ${item.noDokumen}? Dokumen ini akan hilang dari daftar Anda, tapi tetap bisa dilihat admin.`)) return;
+
+    try {
+      // Sudah ada dokumen kerjasama (Rekap Data) -> hapus lewat situ; kalau belum (masih data
+      // pengajuan mentah dari fallback), hapus pengajuannya langsung. Backend memastikan yang
+      // boleh dihapus cuma milik sendiri — sifatnya cuma sembunyi dari akun sendiri, admin tetap
+      // bisa lihat untuk keperluan audit/rekap institusi (lihat PengajuanController::destroy /
+      // DokumenKerjasamaController::destroy).
+      if (typeof item.id === 'number') {
+        await deleteDokumenKerjasamaById(item.id);
+      } else if (typeof item.sourcePengajuanId === 'number') {
+        await deletePengajuanItemApi(item.sourcePengajuanId);
+      }
+      setData((prev) => prev.filter((row) => row !== item));
+      window.dispatchEvent(new Event('rekap-data-updated'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Gagal menghapus dokumen.';
+      alert(message);
+    }
   }
 
   const filteredData = useMemo(() => {
@@ -574,6 +590,14 @@ export default function InternalRekapDataPage() {
                           className="text-emerald-600 transition-colors hover:text-emerald-800"
                         >
                           <FileText size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          title="Hapus dari daftar saya"
+                          onClick={() => handleDelete(row)}
+                          className="text-red-500 transition-colors hover:text-red-700"
+                        >
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </td>

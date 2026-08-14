@@ -997,6 +997,29 @@ class PengajuanController extends Controller
         $user = $request->user();
         $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
 
+        // "Hapus" oleh admin cuma menyembunyikan dari daftar kelola admin & dari pengguna lain —
+        // BUKAN hard delete — supaya akun internal/eksternal/kampus-LDAP yang mengajukannya sendiri
+        // tetap punya riwayat pengajuan pribadinya (lihat migrasi dihapus_admin_pada). Jadi baris
+        // yang sudah "dihapus" tetap disembunyikan dari semua orang KECUALI dari pemilik aslinya —
+        // dan admin sendiri TIDAK termasuk pengecualian ini (kalau tidak, pengajuan yang dibuat
+        // oleh admin sendiri lalu dihapus admin akan tetap nampak balik ke admin yang sama).
+        if ($this->hasPengajuanColumn('dihapus_admin_pada')) {
+            $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
+            $query->where(function ($builder) use ($user, $isAdmin) {
+                $builder->whereNull('dihapus_admin_pada');
+                if ($user && !$isAdmin) {
+                    $builder->orWhere('user_pengusul_id', $user->id);
+                }
+            });
+
+            // Pemilik (internal/eksternal/kampus-LDAP) juga bisa hapus pengajuannya sendiri —
+            // sifatnya kebalikan dari dihapus_admin_pada: cuma sembunyi dari akun pemiliknya
+            // sendiri, admin tetap melihatnya (untuk keperluan audit/rekap institusi).
+            if ($this->hasPengajuanColumn('dihapus_user_pada') && !$isAdmin) {
+                $query->whereNull('dihapus_user_pada');
+            }
+        }
+
         // Internal & external cuma boleh lihat pengajuan milik sendiri (atau yang di-CC
         // admin lewat distribusi_user_ids). Admin/admin-humas tetap lihat semua.
         // Catatan: role user eksternal tersimpan sebagai 'external' (Inggris) di kolom
@@ -1071,8 +1094,29 @@ class PengajuanController extends Controller
         ]);
     }
 
-    public function show(Pengajuan $pengajuan): Response
+    public function show(Request $request, Pengajuan $pengajuan): Response
     {
+        // Cerminan persis dari filter visibilitas di index(): pengajuan yang sudah "dihapus"
+        // admin tetap bisa diakses lewat detail HANYA oleh pemiliknya sendiri (bukan admin lain);
+        // yang "dihapus" pemiliknya sendiri cuma bisa diakses lewat admin — selain itu 404.
+        if ($pengajuan->dihapus_admin_pada || $pengajuan->dihapus_user_pada) {
+            $user = $request->user();
+            $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+            $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
+            $isOwner = $user && (int) $pengajuan->user_pengusul_id === (int) $user->id;
+
+            $visible = $isAdmin
+                ? !$pengajuan->dihapus_admin_pada
+                : (!$pengajuan->dihapus_admin_pada || $isOwner) && !$pengajuan->dihapus_user_pada;
+
+            if (!$visible) {
+                return response([
+                    'success' => false,
+                    'message' => 'Pengajuan tidak ditemukan.',
+                ], 404);
+            }
+        }
+
         if ($this->shouldLoadPengajuanRelations()) {
             $pengajuan->load([
                 'unitProdi:id,nama,jenis_node,kategori_unit',
@@ -1134,10 +1178,7 @@ class PengajuanController extends Controller
             'bidang_usaha' => ['nullable', 'string', 'max:150'],
             'tingkat_perusahaan' => ['nullable', 'string', 'max:50'],
             'telepon_mitra' => ['nullable', 'string', 'max:50'],
-            // Field transien (bukan kolom pengajuan_v2) — cuma dipakai untuk sinkron ke
-            // master_mitra di bawah, supaya internal/eksternal (yang tidak boleh akses
-            // endpoint /master/mitra langsung) tetap bisa melengkapi data mitra lewat
-            // pengajuan mereka sendiri.
+    
             'mitra_alamat' => ['nullable', 'string'],
             'mitra_nama_kontak_utama' => ['nullable', 'string', 'max:200'],
             'mitra_jabatan_kontak_utama' => ['nullable', 'string', 'max:120'],
@@ -1500,11 +1541,46 @@ class PengajuanController extends Controller
 
     public function destroy(Request $request, Pengajuan $pengajuan): Response
     {
-        if ($response = $this->ensureAdmin($request)) {
-            return $response;
+        // Admin boleh hapus pengajuan siapapun; internal/eksternal/kampus-LDAP boleh hapus
+        // pengajuan MEREKA SENDIRI (tombol Hapus di Rekap Data/Daftar Kerjasama masing-masing).
+        $user = $request->user();
+        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+        $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
+        $isOwner = $user && (int) $pengajuan->user_pengusul_id === (int) $user->id;
+
+        if (!$isAdmin && !$isOwner) {
+            return response([
+                'success' => false,
+                'message' => 'Anda tidak memiliki akses untuk menghapus pengajuan ini.',
+            ], 403);
         }
 
-        $pengajuan->delete();
+        // Soft delete, bukan hapus permanen dari database — akun (login, profil) yang menghapus
+        // maupun pemilik pengajuannya sama sekali tidak tersentuh oleh aksi ini, cuma baris
+        // pengajuannya yang ditandai:
+        // - Dihapus admin -> hilang dari semua orang KECUALI dari pemiliknya sendiri.
+        // - Dihapus pemiliknya sendiri -> hilang dari akunnya sendiri, admin tetap bisa lihat.
+        $flagColumn = null;
+        if ($isAdmin && $this->hasPengajuanColumn('dihapus_admin_pada')) {
+            $flagColumn = 'dihapus_admin_pada';
+            $pengajuan->update([$flagColumn => now()]);
+        } elseif (!$isAdmin && $this->hasPengajuanColumn('dihapus_user_pada')) {
+            $flagColumn = 'dihapus_user_pada';
+            $pengajuan->update([$flagColumn => now()]);
+        } else {
+            $pengajuan->delete();
+        }
+
+        // Kalau pengajuan ini sudah final-approved dan punya dokumen kerjasama sendiri (sudah
+        // masuk Rekap Data), ikut tandai dokumen itu juga dengan flag yang sama — tanpa ini,
+        // pengajuannya hilang dari Data Pengajuan tapi dokumen di Rekap Data tetap kelihatan
+        // seperti belum dihapus, padahal keduanya merepresentasikan kerjasama yang sama.
+        if ($flagColumn && Schema::hasColumn('dokumen_kerjasama', $flagColumn)) {
+            DokumenKerjasama::query()
+                ->where('sumber_pengajuan_id', $pengajuan->id)
+                ->whereNull($flagColumn)
+                ->update([$flagColumn => now()]);
+        }
 
         return response([
             'success' => true,

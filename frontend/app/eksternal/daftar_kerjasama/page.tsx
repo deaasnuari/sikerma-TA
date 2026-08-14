@@ -17,6 +17,7 @@ import {
   Search,
   ShieldCheck,
   Tag,
+  Trash2,
   User,
   X,
   XCircle,
@@ -24,7 +25,7 @@ import {
 import LaporanPelaksanaanModal, { type LaporanPelaksanaanData } from '@/components/LaporanPelaksanaanModal';
 import { exportToExcel } from '@/lib/exportExcel';
 import type { PengajuanItem } from '../../../services/adminPengajuanService';
-import { refreshPengajuanDataFromApi } from '@/services/adminPengajuanService';
+import { deletePengajuanItemApi, fetchPengajuanDataFromApi, refreshPengajuanDataFromApi } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
 import type { StageGroup } from '@/services/tahapanPengajuanService';
 import {
@@ -181,40 +182,40 @@ export default function DaftarKerjasamaEksternalPage() {
     let isMounted = true;
     const updateEventName = getExternalPengajuanUpdateEventName();
 
-    const sync = () => {
+    // Backend sudah membatasi /pengajuan ke milik akun eksternal yang login sendiri (lihat
+    // PengajuanController::index), jadi sumber data utama sekarang fetch langsung dari API —
+    // bukan cache localStorage per-browser (pengajuanKerjasamaDataEksternal:*) seperti sebelumnya.
+    // Cache lokal itu cuma keisi kalau pengajuannya dibuat lewat form di browser yang SAMA, jadi
+    // kalau akun eksternal login dari device/browser lain (atau cache-nya kosong/ke-clear),
+    // daftarnya kelihatan kosong — termasuk baris yang sebetulnya sudah dihapus/masih ada di
+    // server, bikin tombol Hapus seolah "tidak aktif" karena barisnya sendiri tidak pernah muncul.
+    const sync = async () => {
       if (!isMounted) {
         return;
       }
 
-      const eksternalItems = getExternalPengajuanData().map(mapPengajuanToItem);
-      setData(eksternalItems);
-    };
-
-    const syncFromAdmin = async () => {
       try {
-        await refreshPengajuanDataFromApi(true);
+        const allItems = await fetchPengajuanDataFromApi({ perPage: 500 });
+        if (!isMounted) return;
+        const ownItems = allItems.filter((item) => item.kategoriPengajuan === 'Eksternal');
+        setData(ownItems.map(mapPengajuanToItem));
       } catch {
-        // Ignore refresh failures and keep local account-specific data.
+        // Offline/API gagal -> fallback ke cache lokal supaya halaman tidak kosong total.
+        if (isMounted) {
+          syncExternalPengajuanWithAdminData();
+          setData(getExternalPengajuanData().map(mapPengajuanToItem));
+        }
       }
-
-      syncExternalPengajuanWithAdminData();
-      sync();
     };
 
-    const handlePengajuanUpdated = () => {
-      // Avoid recursive refresh loop: refreshPengajuanDataFromApi emits this event.
-      syncExternalPengajuanWithAdminData();
-      sync();
-    };
-
-    void syncFromAdmin();
+    void sync();
     window.addEventListener(updateEventName, sync);
-    window.addEventListener('pengajuan-data-updated', handlePengajuanUpdated);
+    window.addEventListener('pengajuan-data-updated', sync);
 
     return () => {
       isMounted = false;
       window.removeEventListener(updateEventName, sync);
-      window.removeEventListener('pengajuan-data-updated', handlePengajuanUpdated);
+      window.removeEventListener('pengajuan-data-updated', sync);
     };
   }, []);
 
@@ -243,6 +244,24 @@ export default function DaftarKerjasamaEksternalPage() {
 
     return { belumDireview, sudahDireview };
   }, [data]);
+
+  const handleDelete = async (item: KerjasamaItem) => {
+    if (!window.confirm(`Yakin ingin menghapus pengajuan ${item.noDokumen}? Pengajuan ini akan hilang dari daftar Anda, tapi tetap bisa dilihat admin.`)) {
+      return;
+    }
+
+    try {
+      // Backend memastikan yang boleh dihapus cuma milik sendiri — sifatnya cuma sembunyi dari
+      // akun sendiri, admin tetap bisa lihat untuk keperluan audit/rekap institusi (lihat
+      // PengajuanController::destroy).
+      await deletePengajuanItemApi(item.id);
+      // Refresh cache pengajuan dari server & broadcast 'pengajuan-data-updated' — listener yang
+      // sudah ada di halaman ini (lihat useEffect di atas) akan ikut sinkron ulang otomatis.
+      await refreshPengajuanDataFromApi(true);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Gagal menghapus pengajuan.');
+    }
+  };
 
   const handleExport = () => {
     const headers = ['No. Dokumen', 'Nama Mitra', 'Jenis Mitra', 'Tingkat Perusahaan', 'Jenis', 'Jurusan/Unit', 'Tanggal Mulai', 'Berlaku Hingga', 'Tahun', 'Status'];
@@ -488,6 +507,14 @@ export default function DaftarKerjasamaEksternalPage() {
                         >
                           <FileText size={16} />
                           <span className="underline underline-offset-2 text-[12px]">Laporan</span>
+                        </button>
+                        <button
+                          type="button"
+                          title="Hapus dari daftar saya"
+                          onClick={() => handleDelete(item)}
+                          className="inline-flex items-center gap-1.5 text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </td>

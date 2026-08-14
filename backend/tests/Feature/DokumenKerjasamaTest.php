@@ -303,13 +303,40 @@ class DokumenKerjasamaTest extends TestCase
 
     public function test_admin_dapat_hapus_dokumen(): void
     {
+        // "Hapus" oleh admin adalah soft delete: baris tetap ada di database (supaya akun
+        // internal/eksternal/kampus-LDAP pembuatnya tidak kehilangan riwayat dokumennya sendiri),
+        // tapi disembunyikan dari daftar kelola admin & pengguna lain.
         $admin   = $this->admin();
-        $dokumen = $this->buatDokumen(['nomor_dokumen' => 'DEL-001']);
+        $pemilik = $this->internal();
+        $pengajuanPemilik = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
+        $pengajuanPemilik->update(['user_pengusul_id' => $pemilik->id]);
+        $dokumen = $this->buatDokumen([
+            'nomor_dokumen' => 'DEL-001',
+            'no_permohonan' => $pengajuanPemilik->nomor_pengajuan,
+            'sumber_pengajuan_id' => $pengajuanPemilik->id,
+            'dibuat_oleh_user_id' => $pemilik->id,
+        ]);
 
         $this->actingAs($admin)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")
             ->assertOk()->assertJsonPath('success', true);
 
-        $this->assertDatabaseMissing('dokumen_kerjasama', ['id' => $dokumen->id]);
+        // Baris masih ada di database, cuma ditandai dihapus.
+        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
+        $this->assertNotNull($dokumen->fresh()->dihapus_admin_pada);
+
+        // Hilang dari daftar kelola admin.
+        $adminIds = collect($this->actingAs($admin)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
+            ->pluck('id');
+        $this->assertNotContains($dokumen->id, $adminIds);
+
+        // TAPI pembuatnya sendiri tetap bisa melihat dokumennya di daftar & detail.
+        $pemilikIds = collect($this->actingAs($pemilik)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
+            ->pluck('id');
+        $this->assertContains($dokumen->id, $pemilikIds);
+        $this->actingAs($pemilik)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+
+        // Akun pembuatnya sendiri (login/profil) tidak ikut tersentuh sama sekali.
+        $this->assertDatabaseHas('users', ['id' => $pemilik->id, 'email' => $pemilik->email]);
     }
 
     public function test_hapus_dokumen_ditolak_bukan_admin(): void
@@ -318,6 +345,89 @@ class DokumenKerjasamaTest extends TestCase
         $dokumen = $this->buatDokumen(['nomor_dokumen' => 'DEL-002']);
 
         $this->actingAs($user)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")
+            ->assertForbidden();
+    }
+
+    public function test_pemilik_internal_dapat_hapus_dokumen_miliknya_sendiri(): void
+    {
+        // Internal/eksternal/kampus-LDAP sekarang juga punya tombol Hapus sendiri di Rekap Data
+        // mereka — kebalikan dari hapus admin: cuma hilang dari akunnya sendiri, admin tetap bisa
+        // lihat (buat audit/rekap institusi).
+        $admin   = $this->admin();
+        $pemilik = $this->internal();
+        $pengajuanPemilik = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
+        $pengajuanPemilik->update(['user_pengusul_id' => $pemilik->id]);
+        $dokumen = $this->buatDokumen([
+            'nomor_dokumen' => 'DEL-003',
+            'no_permohonan' => $pengajuanPemilik->nomor_pengajuan,
+            'sumber_pengajuan_id' => $pengajuanPemilik->id,
+            'dibuat_oleh_user_id' => $pemilik->id,
+        ]);
+
+        $this->actingAs($pemilik)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")
+            ->assertOk()->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
+        $this->assertNotNull($dokumen->fresh()->dihapus_user_pada);
+        $this->assertNull($dokumen->fresh()->dihapus_admin_pada);
+
+        // Hilang dari daftar & detail milik pemiliknya sendiri.
+        $pemilikIds = collect($this->actingAs($pemilik)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
+            ->pluck('id');
+        $this->assertNotContains($dokumen->id, $pemilikIds);
+        $this->actingAs($pemilik)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertNotFound();
+
+        // TAPI admin tetap bisa melihatnya.
+        $adminIds = collect($this->actingAs($admin)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
+            ->pluck('id');
+        $this->assertContains($dokumen->id, $adminIds);
+        $this->actingAs($admin)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+    }
+
+    public function test_hapus_dokumen_ikut_sembunyikan_pengajuan_sumbernya(): void
+    {
+        // Kebalikan dari cascade di PengajuanTest: hapus dari Rekap Data (dokumen kerjasama)
+        // harus ikut menyembunyikan pengajuan sumbernya juga di Data Pengajuan — kalau tidak,
+        // dokumennya hilang dari Rekap Data tapi pengajuannya tetap kelihatan di Data Pengajuan
+        // seolah belum dihapus, padahal keduanya kerjasama yang sama.
+        $admin   = $this->admin();
+        $pemilik = $this->internal();
+        $pengajuanPemilik = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
+        $pengajuanPemilik->update(['user_pengusul_id' => $pemilik->id]);
+        $dokumen = $this->buatDokumen([
+            'nomor_dokumen' => 'DEL-005',
+            'no_permohonan' => $pengajuanPemilik->nomor_pengajuan,
+            'sumber_pengajuan_id' => $pengajuanPemilik->id,
+            'dibuat_oleh_user_id' => $pemilik->id,
+        ]);
+
+        $this->actingAs($pemilik)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+
+        $this->assertNotNull($pengajuanPemilik->fresh()->dihapus_user_pada);
+
+        $pemilikIds = collect($this->actingAs($pemilik)->getJson('/api/pengajuan?per_page=100')->json('data.data'))
+            ->pluck('id');
+        $this->assertNotContains($pengajuanPemilik->id, $pemilikIds);
+
+        $adminIds = collect($this->actingAs($admin)->getJson('/api/pengajuan?per_page=100')->json('data.data'))
+            ->pluck('id');
+        $this->assertContains($pengajuanPemilik->id, $adminIds);
+    }
+
+    public function test_hapus_dokumen_ditolak_bukan_pemilik_dan_bukan_admin(): void
+    {
+        $penyusup = $this->internal();
+        $pemilik  = $this->internal();
+        $pengajuanPemilik = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
+        $pengajuanPemilik->update(['user_pengusul_id' => $pemilik->id]);
+        $dokumen = $this->buatDokumen([
+            'nomor_dokumen' => 'DEL-004',
+            'no_permohonan' => $pengajuanPemilik->nomor_pengajuan,
+            'sumber_pengajuan_id' => $pengajuanPemilik->id,
+            'dibuat_oleh_user_id' => $pemilik->id,
+        ]);
+
+        $this->actingAs($penyusup)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")
             ->assertForbidden();
     }
 }
