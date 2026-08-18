@@ -290,13 +290,10 @@ export default function InternalRekapDataPage() {
       const matchesTingkatPerusahaan =
         filterTingkatPerusahaan === 'Semua Tingkat Perusahaan' || item.tingkatPerusahaan === filterTingkatPerusahaan;
       const matchesScopedUnit = !scopedUnit || item.unit.trim().toLowerCase() === scopedUnit.toLowerCase();
-      const isLegacyAdminData = typeof item.id === 'number' && item.id <= ADMIN_LEGACY_DOKUMEN_CUTOFF_ID;
-      const isCreatedByAdmin = item.dibuatOlehRole === 'admin';
-
       return (
         matchesSearch && matchesJurusan && matchesJenis && matchesStatus &&
         matchesJenisMitra && matchesTingkatPerusahaan &&
-        matchesScopedUnit && !isLegacyAdminData && !isCreatedByAdmin
+        matchesScopedUnit
       );
     });
     return sortOrder === 'oldest' ? [...filtered].reverse() : filtered;
