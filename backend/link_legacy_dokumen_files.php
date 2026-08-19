@@ -1,14 +1,5 @@
 <?php
-/**
- * One-off maintenance script: links legacy dokumen kerjasama PDF files (already sitting in
- * storage/app/public/dokumen) to the dokumen_kerjasama / dokumen_file rows that reference them.
- *
- * It ONLY rewrites the `file` / `path_file` string columns so they resolve to the file's real
- * location (storage/app/public/dokumen/<name>). It never moves, renames, or deletes any file on
- * disk, never touches any other column, and never deletes/creates dokumen_kerjasama rows.
- *
- * Safe to re-run (idempotent): paths that already resolve correctly are left untouched.
- */
+//ini script untuk membersihkan data internal/eksternal test yang sudah tidak relevan lagi di database dan file storage.
 require __DIR__ . '/vendor/autoload.php';
 $app = require_once __DIR__ . '/bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
@@ -19,10 +10,7 @@ use Illuminate\Support\Facades\DB;
 $dokumenDir = storage_path('app/public/dokumen');
 $publicRoot = storage_path('app/public');
 
-// High-confidence manual matches for the handful of rows whose stored filename doesn't exist
-// verbatim on disk (trailing-space / stray-hash-suffix differences from old re-uploads).
-// Keyed by dokumen_kerjasama.id. Verified by hand against storage/app/public/dokumen before
-// being hardcoded here — see verify_dokumen_links2.php for how they were found.
+//ini daftar dokumen_kerjasama.id yang diketahui memiliki file yang sudah dihapus dari storage, tapi masih tersimpan di database.
 $fuzzyOverrides = [
     371 => "11 MOU Pondok Pesantren Baitul Quran.pdf63bfc0e776b60.pdf",
     480 => "72 MOA SMK  Kal 1 Surabaya.pdf63cf71211404f.pdf",

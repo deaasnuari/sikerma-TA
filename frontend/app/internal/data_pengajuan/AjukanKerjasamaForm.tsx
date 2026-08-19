@@ -283,9 +283,7 @@ const defaultAppearanceSettings: FormAppearanceSettings = {
 
 const DEFAULT_APPEARANCE_STORAGE_KEY = 'internal-pengajuan-appearance-v1';
 
-// Referensi stabil agar default parameter tidak membuat array baru di setiap render
-// (array baru setiap render membuat useEffect di bawah yang bergantung pada prop ini
-// terus-menerus terpicu -> "Maximum update depth exceeded").
+//mengajukan kerjasama internal (dari unit internal ke mitra eksternal) dengan form yang bisa dikustomisasi
 const EMPTY_CUSTOM_NEGARA_OPTIONS: string[] = [];
 
 export default function InternalAjukanKerjasamaForm({
@@ -869,17 +867,13 @@ export default function InternalAjukanKerjasamaForm({
         await submitInternalPengajuan({
           judulPengajuan: formData.judulKerjasama,
           mitraId: selectedMitraId ?? undefined,
-          // Alamat & PIC mitra disinkronkan ke Data Kemitraan oleh BACKEND (lihat
-          // PengajuanController), bukan lewat panggilan langsung ke endpoint
-          // /master/mitra dari sini — endpoint itu admin-only, jadi kalau dipanggil
-          // langsung dari sini akan gagal untuk pengaju internal/eksternal.
+          // Jika nama mitra diisi, kirimkan nama mitra ke backend. Jika tidak, kirimkan undefined agar backend bisa mengisi nama mitra dari master_mitra (jika mitraId ada) atau mengosongkan nama mitra (jika mitraId tidak ada).
           mitraAlamat: formData.alamatMitra.trim() || undefined,
           mitraPicNama: formData.namaKontak.trim() || undefined,
           mitraPicJabatan: formData.jabatanKontak.trim() || undefined,
           mitraPicEmail: formData.emailKontak.trim() || undefined,
           mitraPicTelepon: formData.teleponKontak.trim() || undefined,
-          // deskripsiPengajuan dibatasi 100 karakter di backend (kolom lama) — kirim versi
-          // terpotong untuk kompatibilitas, sementara manfaat lengkap masuk ke field manfaat.
+          // Jika deskripsi diisi, kirimkan deskripsi ke backend. Jika tidak, kirimkan undefined agar backend bisa mengosongkan deskripsi.
           deskripsiPengajuan: formData.deskripsi.trim().slice(0, 100) || undefined,
           manfaat: formData.deskripsi.trim() || undefined,
           namaPengusul: formData.namaKontak || 'Internal Polibatam',

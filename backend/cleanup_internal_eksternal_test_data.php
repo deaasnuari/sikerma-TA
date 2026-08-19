@@ -1,16 +1,5 @@
 <?php
-/**
- * One-off maintenance script: wipes test data created via the "internal" and "external" demo
- * accounts (pengajuan + everything derived from it: lampiran, log, dan dokumen kerjasama yang
- * sudah sempat di-ACC dari pengajuan itu), so the system can start fresh for a real demo.
- *
- * Scope is HARDCODED to the exact row IDs verified by hand beforehand (see conversation) —
- * this is intentionally NOT a generic "delete by role" script, to avoid accidentally sweeping up
- * legacy data that has no user_pengusul_id, or admin's own PMH-009 test submission.
- *
- * Before deleting, every affected row is dumped to a timestamped JSON backup file, and every
- * physical file referenced by those rows is deleted from storage/app/public/ as well.
- */
+//ini script untuk membersihkan data internal/eksternal test yang sudah tidak relevan lagi di database dan file storage.
 require __DIR__ . '/vendor/autoload.php';
 $app = require_once __DIR__ . '/bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);

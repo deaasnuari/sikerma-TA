@@ -28,10 +28,7 @@ import { generateNoDokumen } from '@/services/adminMonitoringService';
 import { getRenewalRequests, type RenewalRequestItem } from '@/services/adminRenewalRequestService';
 import { getPageNumbers } from '@/lib/pagination';
 
-// Cari id master_unit_prodi berdasarkan nama jurusan/unit yang dipilih di form. Kalau Prodi
-// sudah dipilih (asalKategori === 'Jurusan' + prodiId), pakai id Prodi-nya langsung — supaya
-// dokumen tersimpan di level Prodi, bukan cuma di level Jurusan induknya (sama seperti form
-// Pengajuan yang selalu mewajibkan drill-down Jurusan → Prodi).
+//ini helper untuk resolve unit/prodi ID dari nama unit/prodi yang diketik manual di modal Tambah/Edit Dokumen
 async function resolveUnitProdiId(unitName: string, prodiId?: number | null): Promise<number | null> {
   if (prodiId) {
     return prodiId;

@@ -58,10 +58,7 @@ class LaporanPelaksanaanController extends Controller
             ->all();
     }
 
-    /**
-     * Daftar laporan pelaksanaan, difilter berdasarkan pengajuan_id[] atau dokumen_kerjasama_id[].
-     * Dipakai oleh halaman Story Aktivitas untuk menampilkan laporan yang masuk per mitra.
-     */
+    //menampilkan semua laporan pelaksanaan yang bisa dilihat oleh user (pemilik pengajuan atau admin)
     public function index(Request $request): Response
     {
         $query = LaporanPelaksanaan::query()->with(['dikirimOleh:id,name,role']);

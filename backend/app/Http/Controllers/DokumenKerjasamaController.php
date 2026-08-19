@@ -146,9 +146,7 @@ class DokumenKerjasamaController extends Controller
 
     public function show(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
     {
-        // Cerminan persis dari filter visibilitas di index(): dokumen yang sudah "dihapus" admin
-        // tetap bisa diakses lewat detail HANYA oleh pemiliknya sendiri (bukan admin lain); yang
-        // "dihapus" pemiliknya sendiri cuma bisa diakses lewat admin — selain itu 404.
+        //ini guard untuk memastikan dokumen kerjasama yang diakses user memang bisa dilihat oleh user tersebut
         if ($dokumen_kerjasama->dihapus_admin_pada || $dokumen_kerjasama->dihapus_user_pada) {
             $user = $request->user();
             $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
@@ -185,9 +183,7 @@ class DokumenKerjasamaController extends Controller
     }
 
     /**
-     * Daftar dokumen (final/perpanjangan/lampiran) milik satu dokumen kerjasama, lengkap dengan
-     * URL siap pakai untuk tombol "Lihat Dokumen" (buka di tab baru) dan "Download Dokumen".
-     * Dipakai frontend supaya tidak perlu menyusun sendiri path storage dari nama file mentah.
+     //ini guard untuk memastikan dokumen kerjasama yang diakses user memang bisa dilihat oleh user tersebut
      */
     public function documents(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
     {
@@ -690,8 +686,7 @@ class DokumenKerjasamaController extends Controller
 
     public function destroy(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
     {
-        // Admin boleh hapus dokumen kerjasama siapapun; internal/eksternal/kampus-LDAP boleh
-        // hapus dokumen kerjasama MEREKA SENDIRI (tombol Hapus di Rekap Data mereka masing-masing).
+        //ini guard untuk memastikan dokumen kerjasama yang diakses user memang bisa dihapus oleh user tersebut
         $user = $request->user();
         $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
         $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);

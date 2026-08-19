@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
 
 class MasterMitraController extends Controller
 {
-    //
+    //menautkan pengajuan/dokumen yang sudah ada di database tapi belum punya mitra_id (karena sebelumnya mitra belum ada di master_mitra) ke master_mitra yang baru dibuat
     private function linkOrphanedRecordsToMitra(MasterMitra $mitra): void
     {
         $namaNormalized = strtolower(trim((string) $mitra->nama_mitra));
@@ -36,9 +36,7 @@ class MasterMitraController extends Controller
                 ->whereRaw('LOWER(TRIM(snap_nama_mitra)) = ?', [$namaNormalized])
                 ->update(['mitra_id' => $mitra->id]);
 
-            // Dokumen hasil approve pengajuan lama: nama mitra bisa saja hanya tersimpan di
-            // kolom `keterangan` (data migrasi lama), jadi tautkan lewat FK sumber_pengajuan_id
-            // yang barusan berhasil di-link di atas, bukan lewat pencocokan teks lagi.
+           // Dokumen yang berasal dari pengajuan, tapi pengajuan-nya belum punya mitra_id (karena sebelumnya mitra belum ada di master_mitra).
             if ($hasPengajuanMitraId && Schema::hasColumn('dokumen_kerjasama', 'sumber_pengajuan_id')) {
                 DB::table('dokumen_kerjasama as d')
                     ->join('pengajuan_v2 as p', 'p.id', '=', 'd.sumber_pengajuan_id')

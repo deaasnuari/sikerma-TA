@@ -37,8 +37,7 @@ interface KerjasamaItem {
 
 interface DetailKerjasamaModalProps {
   item: KerjasamaItem;
-  // Data pengajuan asli (sumber dokumen ini) yang sudah di-ACC admin — dipakai untuk mengisi
-  // tab Kontak dan Histori dengan data sebenarnya (bukan contoh).
+  // Dipakai untuk mengisi tab Kontak & Histori di modal Detail Kerjasama dengan data pengajuan
   pengajuan?: PengajuanItem;
   onClose: () => void;
 }
@@ -130,8 +129,7 @@ interface HistoriItem {
   ikon: 'dibuat' | 'review';
 }
 
-// Histori dibangun dari riwayat tahapan pengajuan (kalau ada) atau dari timestamp ACC asli
-// (diajukan, ACC internal, ACC mitra, final approved) — bukan lagi data contoh.
+// Histori diambil dari pengajuan asli (tahapanRiwayat dkk, disinkron server-side saat submit),
 function buildHistoriFromSumber(pengajuan?: PengajuanItem): HistoriItem[] {
   if (!pengajuan) return [];
 
