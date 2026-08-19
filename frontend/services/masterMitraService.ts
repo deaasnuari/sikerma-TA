@@ -99,12 +99,7 @@ export async function updateMasterMitra(id: number, payload: Partial<MasterMitra
   return response.data;
 }
 
-/**
- * Temukan mitra berdasarkan nama (exact, case-insensitive).
- * Jika ada → update kategori & tingkat.
- * Jika tidak ada → buat baru.
- * Mengembalikan MasterMitra yang dipakai beserta id-nya.
- */
+
 export async function upsertMasterMitraByName(
   namaMitra: string,
   fields: { kategoriMitra?: string | null; bidangUsaha?: string | null; tingkatPerusahaan?: string | null; extra?: Partial<MasterMitraPayload> }

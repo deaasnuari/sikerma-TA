@@ -19,7 +19,7 @@ interface ArsipDokumen {
   id: number;
   noDokumen: string;
   namaMitra: string;
-  jenis: 'MoA' | 'MoU' | 'IA';
+  jenis: 'MoA' | 'MoU' | 'IA' | 'Lainnya';
   tanggalMulai: string;
   berlakuHingga: string;
   alasanArsip: string | null;

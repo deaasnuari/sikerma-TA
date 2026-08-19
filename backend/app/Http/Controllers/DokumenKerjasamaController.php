@@ -74,7 +74,7 @@ class DokumenKerjasamaController extends Controller
             'unitProdi.parent:id,nama,jenis_node,kategori_unit',
             'mitra:id,nama_mitra,kode_mitra,kategori_mitra,bidang_usaha,tingkat_perusahaan,negara,email_mitra,email_kontak_utama,alamat,nama_kontak_utama,jabatan_kontak_utama,telepon_kontak_utama',
             'dokumenFiles' => function ($q) {
-                $q->whereIn('peran_berkas', ['dokumen_final', 'dokumen_perpanjangan']);
+                $q->whereIn('peran_berkas', ['dokumen_final', 'dokumen_perpanjangan', 'dokumen_pendukung']);
             },
             // Dipakai untuk kolom "Hasil Monitoring Triwulan 1-4" & "Laporan Kegiatan" di Rekap Data.
             'laporanPelaksanaan:id,dokumen_kerjasama_id,tahun,triwulan,file_path,file_nama',
@@ -185,9 +185,178 @@ class DokumenKerjasamaController extends Controller
     }
 
     /**
-     * Public landing page stats — no auth.
-     * Returns total/wilayah counts + hero breakdown by mitra category.
+     * Daftar dokumen (final/perpanjangan/lampiran) milik satu dokumen kerjasama, lengkap dengan
+     * URL siap pakai untuk tombol "Lihat Dokumen" (buka di tab baru) dan "Download Dokumen".
+     * Dipakai frontend supaya tidak perlu menyusun sendiri path storage dari nama file mentah.
      */
+    public function documents(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
+    {
+        if ($response = $this->guardVisibility($request, $dokumen_kerjasama)) {
+            return $response;
+        }
+
+        $files = $dokumen_kerjasama->dokumenFiles()->orderByDesc('diunggah_pada')->get();
+
+        if ($files->isEmpty() && $dokumen_kerjasama->file) {
+            // Record lama yang belum punya baris dokumen_file — jatuhkan ke kolom 'file' legacy.
+            $path = $dokumen_kerjasama->file;
+            $exists = Storage::disk('public')->exists(ltrim($path, '/'));
+            $items = [[
+                'id' => null,
+                'peran_berkas' => 'final',
+                'nama_file' => basename($path),
+                'mime_type' => str_ends_with(strtolower($path), '.pdf') ? 'application/pdf' : null,
+                'ukuran_file_bytes' => null,
+                // 'view_url' hanya diisi kalau filenya beneran ada di disk — kalau tidak, dibiarkan
+                // null (bukan link mentah ke storage) supaya klik "Lihat Dokumen" tidak berujung ke
+                // halaman 404 polos dari webserver; frontend tinggal cek exists/view_url === null.
+                'view_url' => $exists ? route('dokumen-kerjasama.documents.view', [
+                    'dokumen_kerjasama' => $dokumen_kerjasama->id,
+                    'dokumen_file' => 'legacy',
+                ]) : null,
+                'download_url' => route('dokumen-kerjasama.documents.download', [
+                    'dokumen_kerjasama' => $dokumen_kerjasama->id,
+                    'dokumen_file' => 'legacy',
+                ]),
+                'exists' => $exists,
+            ]];
+        } else {
+            $items = $files->map(function (DokumenFile $f) use ($dokumen_kerjasama) {
+                $exists = Storage::disk('public')->exists(ltrim($f->path_file, '/'));
+
+                return [
+                    'id' => $f->id,
+                    'peran_berkas' => $f->peran_berkas,
+                    'nama_file' => $f->nama_file,
+                    'mime_type' => $f->mime_type,
+                    'ukuran_file_bytes' => $f->ukuran_file_bytes,
+                    'view_url' => $exists ? route('dokumen-kerjasama.documents.view', [
+                        'dokumen_kerjasama' => $dokumen_kerjasama->id,
+                        'dokumen_file' => $f->id,
+                    ]) : null,
+                    'download_url' => route('dokumen-kerjasama.documents.download', [
+                        'dokumen_kerjasama' => $dokumen_kerjasama->id,
+                        'dokumen_file' => $f->id,
+                    ]),
+                    'exists' => $exists,
+                ];
+            })->values()->all();
+        }
+
+        return response([
+            'success' => true,
+            'data' => $items,
+            'message' => 'Dokumen retrieved successfully',
+        ]);
+    }
+
+    /**
+     * Paksa unduh salah satu dokumen milik dokumen kerjasama (dipakai tombol "Download Dokumen").
+     * $dokumen_file boleh berupa id baris dokumen_file, atau literal "legacy" untuk record lama
+     * yang hanya punya kolom 'file'.
+     */
+    public function downloadDocument(Request $request, DokumenKerjasama $dokumen_kerjasama, string $dokumen_file): Response|\Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        if ($response = $this->guardVisibility($request, $dokumen_kerjasama)) {
+            return $response;
+        }
+
+        $path = null;
+        $displayName = null;
+
+        if ($dokumen_file === 'legacy') {
+            $path = $dokumen_kerjasama->file;
+            $displayName = $path ? basename($path) : null;
+        } else {
+            $file = DokumenFile::query()
+                ->where('id', $dokumen_file)
+                ->where('dokumen_id', $dokumen_kerjasama->id)
+                ->first();
+            if ($file) {
+                $path = $file->path_file;
+                $displayName = $file->nama_file ?: basename((string) $path);
+            }
+        }
+
+        if (!$path || !Storage::disk('public')->exists(ltrim($path, '/'))) {
+            return response([
+                'success' => false,
+                'message' => 'File dokumen tidak ditemukan.',
+            ], 404);
+        }
+
+        return Storage::disk('public')->download(ltrim($path, '/'), $displayName);
+    }
+
+    /**
+     * Tampilkan salah satu dokumen inline di tab baru (dipakai tombol "Lihat Dokumen"). Sengaja
+     * dibuatkan endpoint terpisah dari raw storage URL supaya kalau filenya sudah hilang dari
+     * disk, yang muncul adalah 404 JSON yang jelas ("File dokumen tidak ditemukan.") — bukan
+     * halaman 404 polos dari webserver atau viewer PDF yang gagal diam-diam.
+     */
+    public function viewDocument(Request $request, DokumenKerjasama $dokumen_kerjasama, string $dokumen_file): Response|\Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        if ($response = $this->guardVisibility($request, $dokumen_kerjasama)) {
+            return $response;
+        }
+
+        $path = null;
+        $displayName = null;
+
+        if ($dokumen_file === 'legacy') {
+            $path = $dokumen_kerjasama->file;
+            $displayName = $path ? basename($path) : null;
+        } else {
+            $file = DokumenFile::query()
+                ->where('id', $dokumen_file)
+                ->where('dokumen_id', $dokumen_kerjasama->id)
+                ->first();
+            if ($file) {
+                $path = $file->path_file;
+                $displayName = $file->nama_file ?: basename((string) $path);
+            }
+        }
+
+        if (!$path || !Storage::disk('public')->exists(ltrim($path, '/'))) {
+            return response([
+                'success' => false,
+                'message' => 'File dokumen tidak ditemukan.',
+            ], 404);
+        }
+
+        return Storage::disk('public')->response(ltrim($path, '/'), $displayName);
+    }
+
+    //fungsi untuk memeriksa apakah dokumen kerjasama sudah dihapus oleh admin atau user, dan apakah user yang mengakses adalah admin atau pemilik dokumen
+    private function guardVisibility(Request $request, DokumenKerjasama $dokumen_kerjasama): ?Response
+    {
+        if (!$dokumen_kerjasama->dihapus_admin_pada && !$dokumen_kerjasama->dihapus_user_pada) {
+            return null;
+        }
+
+        $user = $request->user();
+        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+        $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
+        $isOwner = $user && (
+            (int) $dokumen_kerjasama->dibuat_oleh_user_id === (int) $user->id
+            || (int) $dokumen_kerjasama->pengajuan?->user_pengusul_id === (int) $user->id
+        );
+
+        $visible = $isAdmin
+            ? !$dokumen_kerjasama->dihapus_admin_pada
+            : (!$dokumen_kerjasama->dihapus_admin_pada || $isOwner) && !$dokumen_kerjasama->dihapus_user_pada;
+
+        if ($visible) {
+            return null;
+        }
+
+        return response([
+            'success' => false,
+            'message' => 'Dokumen kerjasama tidak ditemukan.',
+        ], 404);
+    }
+
+    //fungsi untuk menandai dokumen kerjasama sebagai dihapus oleh admin atau user
     public function publicStats(): Response
     {
         $total = DB::table('dokumen_kerjasama')->count();
@@ -224,7 +393,7 @@ class DokumenKerjasamaController extends Controller
             ->where('master_mitra.negara', '!=', '')
             ->count();
 
-        // Instansi = everything that is not DUDI
+        // Instansi = non-Industri / non-Perusahaan category
         $instansiNasional = DB::table('dokumen_kerjasama')
             ->join('master_mitra', 'dokumen_kerjasama.mitra_id', '=', 'master_mitra.id')
             ->where('master_mitra.kategori_mitra', 'NOT LIKE', '%Industri%')
@@ -379,11 +548,7 @@ class DokumenKerjasamaController extends Controller
         ], 201);
     }
 
-    /**
-     * Tambah dokumen kerjasama secara manual oleh admin, tanpa melalui alur pengajuan.
-     * Berbeda dari store(): no_permohonan tidak wajib, unit_prodi_id wajib (kolom NOT NULL di DB),
-     * dan file PDF diunggah terpisah lewat uploadFile() setelah record dibuat.
-     */
+    //fungsi untuk menyimpan dokumen kerjasama secara manual tanpa melalui pengajuan
     public function storeManual(Request $request): Response
     {
         if ($response = $this->ensureAdmin($request)) {
@@ -399,6 +564,8 @@ class DokumenKerjasamaController extends Controller
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
             'manfaat' => ['nullable', 'string'],
             'luaran_kerja_sama' => ['nullable', 'string'],
+            'ruang_lingkup_ids' => ['nullable', 'array'],
+            'ruang_lingkup_ids.*' => ['integer', 'exists:master_ruang_lingkup,id'],
             'tanggal_mulai' => ['nullable', 'date'],
             'tanggal_berakhir' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
             'status_siklus' => ['nullable', 'in:active,expiring,archived'],
@@ -488,21 +655,25 @@ class DokumenKerjasamaController extends Controller
             return $response;
         }
 
-        $request->validate([
+        $validated = $request->validate([
             'file' => ['required', 'file', 'mimes:pdf', 'max:10240'],
+            // 'dokumen_pendukung' dipakai buat TOR/KAK/Proposal (peran terpisah dari dokumen utama
+            // 'dokumen_final') supaya upload keduanya tidak saling timpa — lihat delete-by-peran di bawah.
+            'peran_berkas' => ['nullable', 'in:dokumen_final,dokumen_pendukung'],
         ]);
 
+        $peranBerkas = $validated['peran_berkas'] ?? 'dokumen_final';
         $uploadedFile = $request->file('file');
         $path = $uploadedFile->store('pengajuan/' . now()->format('Y/m'), 'public');
 
         DokumenFile::query()
             ->where('dokumen_id', $dokumen_kerjasama->id)
-            ->where('peran_berkas', 'dokumen_final')
+            ->where('peran_berkas', $peranBerkas)
             ->delete();
 
         $dokumenFile = DokumenFile::create([
             'dokumen_id'           => $dokumen_kerjasama->id,
-            'peran_berkas'         => 'dokumen_final',
+            'peran_berkas'         => $peranBerkas,
             'nama_file'            => $uploadedFile->getClientOriginalName(),
             'path_file'            => $path,
             'mime_type'            => $uploadedFile->getMimeType(),
@@ -536,10 +707,7 @@ class DokumenKerjasamaController extends Controller
             ], 403);
         }
 
-        // Soft delete, bukan hapus permanen dari database — akunnya sendiri (login, profil) sama
-        // sekali tidak tersentuh oleh aksi ini, cuma baris dokumennya yang ditandai:
-        // - Dihapus admin -> hilang dari semua orang KECUALI dari pemiliknya sendiri.
-        // - Dihapus pemiliknya sendiri -> hilang dari akunnya sendiri, admin tetap bisa lihat.
+        // Tandai dokumen kerjasama sebagai dihapus oleh admin atau user, sesuai peran yang menghapus.
         $flagColumn = null;
         if ($isAdmin && Schema::hasColumn('dokumen_kerjasama', 'dihapus_admin_pada')) {
             $flagColumn = 'dihapus_admin_pada';
@@ -551,9 +719,7 @@ class DokumenKerjasamaController extends Controller
             $dokumen_kerjasama->delete();
         }
 
-        // Ikut tandai pengajuan sumbernya (kalau ada) dengan flag yang sama — tanpa ini, dokumen
-        // di Rekap Data hilang tapi pengajuan asalnya tetap kelihatan di Data Pengajuan, padahal
-        // keduanya merepresentasikan kerjasama yang sama.
+        // Jika dokumen kerjasama ini terkait dengan pengajuan, dan kolom flag ada di tabel pengajuan_v2, maka update kolom flag di pengajuan_v2 juga.
         if ($flagColumn && $dokumen_kerjasama->sumber_pengajuan_id && Schema::hasColumn('pengajuan_v2', $flagColumn)) {
             Pengajuan::query()
                 ->where('id', $dokumen_kerjasama->sumber_pengajuan_id)

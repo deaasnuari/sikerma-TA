@@ -1571,10 +1571,7 @@ class PengajuanController extends Controller
             $pengajuan->delete();
         }
 
-        // Kalau pengajuan ini sudah final-approved dan punya dokumen kerjasama sendiri (sudah
-        // masuk Rekap Data), ikut tandai dokumen itu juga dengan flag yang sama — tanpa ini,
-        // pengajuannya hilang dari Data Pengajuan tapi dokumen di Rekap Data tetap kelihatan
-        // seperti belum dihapus, padahal keduanya merepresentasikan kerjasama yang sama.
+        //delete dokumen_kerjasama yang terkait dengan pengajuan ini, jika kolom flag ada
         if ($flagColumn && Schema::hasColumn('dokumen_kerjasama', $flagColumn)) {
             DokumenKerjasama::query()
                 ->where('sumber_pengajuan_id', $pengajuan->id)

@@ -28,8 +28,15 @@ import { generateNoDokumen } from '@/services/adminMonitoringService';
 import { getRenewalRequests, type RenewalRequestItem } from '@/services/adminRenewalRequestService';
 import { getPageNumbers } from '@/lib/pagination';
 
-// Cari id master_unit_prodi berdasarkan nama jurusan/unit yang dipilih di form.
-async function resolveUnitProdiId(unitName: string): Promise<number | null> {
+// Cari id master_unit_prodi berdasarkan nama jurusan/unit yang dipilih di form. Kalau Prodi
+// sudah dipilih (asalKategori === 'Jurusan' + prodiId), pakai id Prodi-nya langsung — supaya
+// dokumen tersimpan di level Prodi, bukan cuma di level Jurusan induknya (sama seperti form
+// Pengajuan yang selalu mewajibkan drill-down Jurusan → Prodi).
+async function resolveUnitProdiId(unitName: string, prodiId?: number | null): Promise<number | null> {
+  if (prodiId) {
+    return prodiId;
+  }
+
   const [jurusanRows, unitRows] = await Promise.all([
     getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
     getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
@@ -50,6 +57,7 @@ async function resolveMitraId(data: DokumenData): Promise<number | undefined> {
     email_mitra: data.emailMitra?.trim() || undefined,
     nama_kontak_utama: data.namaPIC?.trim() || undefined,
     jabatan_kontak_utama: data.jabatanMitra?.trim() || undefined,
+    negara: data.negara?.trim() || undefined,
   };
 
   if (typeof data.mitraId === 'number') {
@@ -1380,11 +1388,13 @@ export default function RekapDataPage() {
         submitLabel="Tambah Dokumen"
         onSubmit={async (data: DokumenData) => {
           try {
-            const unitProdiId = await resolveUnitProdiId(data.unitKerja);
+            const unitProdiId = await resolveUnitProdiId(data.unitKerja, data.prodiId);
             if (!unitProdiId) {
               setFeedbackModal({
                 title: 'Gagal Menambahkan Dokumen',
-                message: 'Jurusan/unit yang dipilih tidak ditemukan di Master Unit/Prodi. Silakan pilih ulang.',
+                message: data.asalKategori === 'Jurusan' && !data.prodiId
+                  ? 'Prodi belum dipilih atau tidak ditemukan di Master Unit/Prodi. Silakan pilih ulang.'
+                  : 'Jurusan/unit yang dipilih tidak ditemukan di Master Unit/Prodi. Silakan pilih ulang.',
               });
               return;
             }
@@ -1414,12 +1424,19 @@ export default function RekapDataPage() {
               keterangan: data.keterangan?.trim() || null,
               manfaat: data.manfaatKerjasama?.trim() || null,
               luaran_kerja_sama: data.luaranKerjaSama?.trim() || null,
+              ruang_lingkup_ids: data.ruangLingkupIds && data.ruangLingkupIds.length > 0 ? data.ruangLingkupIds : null,
             });
 
             const newDoc = data.dokumenTerkait?.[0];
             if (newDoc?.url?.startsWith('data:')) {
               const blob = dataUrlToBlob(newDoc.url);
               await uploadDokumenFile(created.id, blob, newDoc.nama);
+            }
+
+            const newDocPendukung = data.dokumenPendukung?.[0];
+            if (newDocPendukung?.url?.startsWith('data:')) {
+              const blob = dataUrlToBlob(newDocPendukung.url);
+              await uploadDokumenFile(created.id, blob, newDocPendukung.nama, 'dokumen_pendukung');
             }
 
             setIsTambahModalOpen(false);
@@ -1486,11 +1503,15 @@ export default function RekapDataPage() {
             if (typeof editingItem.id === 'number') {
               // Sinkronkan kategori/bidang usaha/tingkat ke master_mitra juga (bukan cuma mitra_id).
               const resolvedMitraId = await resolveMitraId(data);
+              // Sebelumnya unit_prodi_id tidak pernah dikirim saat edit, jadi ganti Jurusan/Unit/Prodi
+              // di modal ini diam-diam tidak tersimpan — resolve & kirim sekarang juga.
+              const unitProdiId = await resolveUnitProdiId(data.unitKerja, data.prodiId);
 
               const apiPayload: Parameters<typeof updateDokumenKerjasamaById>[1] = {
                 nomor_dokumen: data.nomorDokumen || undefined,
                 judul_dokumen: data.judulKegiatan?.trim() || null,
                 jenis_dokumen: mapJenisToApi(data.jenisDokumen),
+                unit_prodi_id: unitProdiId ?? undefined,
                 tanggal_mulai: data.tanggalMulai || null,
                 tanggal_berakhir: data.tanggalBerakhir || null,
                 status_siklus: mapStatusToApi(data.status),
@@ -1499,6 +1520,7 @@ export default function RekapDataPage() {
                 keterangan: data.keterangan?.trim() || null,
                 manfaat: data.manfaatKerjasama?.trim() || null,
                 luaran_kerja_sama: data.luaranKerjaSama?.trim() || null,
+                ruang_lingkup_ids: data.ruangLingkupIds && data.ruangLingkupIds.length > 0 ? data.ruangLingkupIds : null,
               };
               promises.push(updateDokumenKerjasamaById(editingItem.id, apiPayload));
             }
@@ -1514,6 +1536,12 @@ export default function RekapDataPage() {
             if (typeof editingItem.id === 'number' && newDoc?.url?.startsWith('data:')) {
               const blob = dataUrlToBlob(newDoc.url);
               await uploadDokumenFile(editingItem.id, blob, newDoc.nama);
+            }
+
+            const newDocPendukung = data.dokumenPendukung?.[0];
+            if (typeof editingItem.id === 'number' && newDocPendukung?.url?.startsWith('data:')) {
+              const blob = dataUrlToBlob(newDocPendukung.url);
+              await uploadDokumenFile(editingItem.id, blob, newDocPendukung.nama, 'dokumen_pendukung');
             }
 
             // Refresh dari API agar data konsisten

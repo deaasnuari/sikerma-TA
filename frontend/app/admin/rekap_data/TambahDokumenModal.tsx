@@ -1,11 +1,32 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Download, FileText, Upload, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Download, FileText, Upload, X } from 'lucide-react';
 import { rekapJurusanOptions, rekapUnitOptions, type DokumenData, type DokumenTerkait } from '@/services/adminRekapDataService';
-import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
+import { getMasterUnitProdi, getMasterUnitProdiTree, type MasterUnitProdi } from '@/services/masterUnitProdiService';
 import { getMasterMitra, type MasterMitra } from '@/services/masterMitraService';
+import { getMasterRuangLingkup, type MasterRuangLingkup } from '@/services/masterRuangLingkupService';
+import { getMasterNegara } from '@/services/masterNegaraService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
+
+const defaultNegaraOptions = [
+  'Indonesia',
+  'Malaysia',
+  'Singapura',
+  'Amerika Serikat',
+  'Jepang',
+  'Korea Selatan',
+  'Australia',
+  'Jerman',
+  'Belanda',
+  'Inggris',
+  'Tiongkok',
+  'Taiwan',
+  'Prancis',
+  'Filipina',
+  'Vietnam',
+  'Palestina',
+];
 
 interface TambahDokumenModalProps {
   isOpen: boolean;
@@ -16,7 +37,7 @@ interface TambahDokumenModalProps {
   submitLabel?: string;
 }
 
-const jenisOptions = ['Pilih Jenis', 'MoU', 'MoA', 'IA'];
+const jenisOptions = ['Pilih Jenis', 'MoU', 'MoA', 'IA', 'Lainnya'];
 const kategoriOptions = ['Pilih Kategori', 'Pemerintahan', 'Perguruan Tinggi', 'Swasta/Dunia Usaha dan Dunia Industri (DUDI)', 'Sekolah/Institusi Pendidikan Lain', 'Organisasi Non-Profit / LSM', 'Lainnya'];
 const bidangUsahaOptions = [
   'Pilih Bidang Usaha',
@@ -37,7 +58,7 @@ const bidangUsahaOptions = [
   'Lainnya',
 ];
 const tingkatPerusahaanOptions = ['Pilih Tingkat Perusahaan', 'Lokal', 'Nasional', 'Internasional', 'Multinasional'];
-const statusOptions = ['Aktif', 'Akan Berakhir', 'Kadaluarsa'];
+const statusOptions = ['Pilih Status', 'Aktif', 'Akan Berakhir', 'Kadaluarsa'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 type TemplateKey = 'MoU' | 'MoA' | 'IA';
@@ -93,8 +114,12 @@ const emptyFormData: DokumenData = {
   tanggalBerakhir: '',
   alamatMitra: '',
   whatsappMitra: '',
+  negara: 'Indonesia',
   asalKategori: 'Jurusan',
   unitKerja: '',
+  prodiId: null,
+  ruangLingkup: [],
+  ruangLingkupIds: [],
   judulKegiatan: '',
   manfaatKerjasama: '',
   luaranKerjaSama: '',
@@ -113,15 +138,29 @@ export default function TambahDokumenModal({
   const [jurusanOptions, setJurusanOptions] = useState<string[]>(rekapJurusanOptions);
   const [unitOptions, setUnitOptions] = useState<string[]>(rekapUnitOptions);
   const [errors, setErrors] = useState<Partial<Record<keyof DokumenData, string>>>({});
-  const [uploadErrors, setUploadErrors] = useState<{ fileDokumen?: string }>({});
+  const [uploadErrors, setUploadErrors] = useState<{ fileDokumen?: string; fileDokumenPendukung?: string }>({});
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [documentMode, setDocumentMode] = useState<'keep' | 'replace'>('replace');
+  const [selectedFilePendukung, setSelectedFilePendukung] = useState<File | null>(null);
   const [mitraSuggestions, setMitraSuggestions] = useState<MasterMitra[]>([]);
   const [showMitraSuggestions, setShowMitraSuggestions] = useState(false);
+
+  // Master data & UI state untuk field yang disamakan dengan form "Tambah Pengajuan Baru":
+  // Negara Mitra, Ruang Lingkup (multi-select), dan Prodi (drill-down di bawah Jurusan).
+  const [negaraOptions, setNegaraOptions] = useState<string[]>(defaultNegaraOptions);
+  const [masterRuangLingkupRows, setMasterRuangLingkupRows] = useState<MasterRuangLingkup[]>([]);
+  const [rlOpen, setRlOpen] = useState(false);
+  const [rlSearch, setRlSearch] = useState('');
+  const [masterUnitProdiTree, setMasterUnitProdiTree] = useState<MasterUnitProdi[]>([]);
+  const [selectedJurusanId, setSelectedJurusanId] = useState<number | null>(null);
 
   const isEditMode = initialData !== null;
   const existingDokumen: DokumenTerkait[] = formData.dokumenTerkait ?? [];
   const hasExistingDokumen = isEditMode && existingDokumen.length > 0;
+  const existingDokumenPendukung: DokumenTerkait[] = formData.dokumenPendukung ?? [];
+  const selectedRuangLingkup = formData.ruangLingkup ?? [];
+  // Dokumen Pendukung (TOR/KAK/Proposal) wajib untuk jenis MoA/IA — sama seperti form Pengajuan.
+  const requiresDokumenPendukung = formData.jenisDokumen === 'MoA' || formData.jenisDokumen === 'IA';
 
   const pilihanUnit = useMemo(
     () => (formData.asalKategori === 'Jurusan' ? ['Pilih Jurusan', ...jurusanOptions] : ['Pilih Unit', ...unitOptions]),
@@ -130,6 +169,19 @@ export default function TambahDokumenModal({
   const selectedTemplate = formData.jenisDokumen && formData.jenisDokumen in defaultTemplateDokumenMap
     ? defaultTemplateDokumenMap[formData.jenisDokumen as TemplateKey]
     : null;
+
+  const hiddenJurusanAliases = new Set(['EL', 'TM', 'MB']);
+  const allJurusanRows = masterUnitProdiTree.filter(
+    (item) =>
+      item.jenis_node === 'unit' &&
+      item.kategori_unit === 'jurusan' &&
+      item.aktif &&
+      !hiddenJurusanAliases.has(item.nama.trim().toUpperCase()),
+  );
+  const selectedJurusanNode = allJurusanRows.find((item) => item.id === selectedJurusanId) ?? null;
+  const prodiOptionsForJurusan = (selectedJurusanNode?.children ?? []).filter((child) => child.jenis_node === 'prodi' && child.aktif);
+  const masterRuangLingkupOpts = Array.from(new Set(masterRuangLingkupRows.map((item) => item.nama_ruang_lingkup)));
+  const filteredRlOptions = masterRuangLingkupOpts.filter((opt) => opt.toLowerCase().includes(rlSearch.trim().toLowerCase()));
 
   useEffect(() => {
     if (!isOpen) {
@@ -140,8 +192,30 @@ export default function TambahDokumenModal({
     setErrors({});
     setUploadErrors({});
     setSelectedFile(null);
+    setSelectedFilePendukung(null);
     setDocumentMode(initialData?.dokumenTerkait?.length ? 'keep' : 'replace');
+    setSelectedJurusanId(null);
+    setRlSearch('');
   }, [initialData, isOpen]);
+
+  // Kalau edit mode dan dokumennya nyangkut ke Prodi, cari Jurusan induknya di tree supaya
+  // dropdown Jurusan → Prodi ke-prefill dengan benar (bukan cuma kosong).
+  useEffect(() => {
+    if (!isOpen || !initialData?.prodiId || masterUnitProdiTree.length === 0) {
+      return;
+    }
+
+    const parent = masterUnitProdiTree.find(
+      (item) =>
+        item.jenis_node === 'unit' &&
+        item.kategori_unit === 'jurusan' &&
+        (item.children ?? []).some((child) => child.id === initialData.prodiId)
+    );
+
+    if (parent) {
+      setSelectedJurusanId(parent.id);
+    }
+  }, [isOpen, initialData, masterUnitProdiTree]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -152,9 +226,12 @@ export default function TambahDokumenModal({
 
     async function loadMasterOptions() {
       try {
-        const [jurusanRows, unitRows] = await Promise.all([
+        const [jurusanRows, unitRows, tree, ruangLingkupRows, negaraRows] = await Promise.all([
           getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
           getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
+          getMasterUnitProdiTree(),
+          getMasterRuangLingkup({ aktif: true }),
+          getMasterNegara({ aktif: true }),
         ]);
 
         if (!isMounted) {
@@ -169,6 +246,11 @@ export default function TambahDokumenModal({
         }
         if (nextUnit.length > 0) {
           setUnitOptions(nextUnit);
+        }
+        setMasterUnitProdiTree(tree);
+        setMasterRuangLingkupRows(ruangLingkupRows);
+        if (negaraRows.length > 0) {
+          setNegaraOptions(Array.from(new Set([...defaultNegaraOptions, ...negaraRows.map((n) => n.nama_negara)])));
         }
       } catch {
         // fallback tetap gunakan opsi service lokal.
@@ -235,15 +317,23 @@ export default function TambahDokumenModal({
     if (!isEditMode && !formData.namaPIC.trim()) newErrors.namaPIC = 'Nama PIC wajib diisi';
     if (!isEditMode && (!formData.kategoriMitra || formData.kategoriMitra === 'Pilih Kategori')) newErrors.kategoriMitra = 'Kategori mitra wajib dipilih';
     if (!formData.unitKerja || formData.unitKerja === 'Pilih Jurusan' || formData.unitKerja === 'Pilih Unit') newErrors.unitKerja = `${formData.asalKategori} wajib dipilih`;
-    if (!formData.status) newErrors.status = 'Status wajib dipilih';
+    // Sama seperti form Pengajuan: kalau asal dari Jurusan, Prodi di bawahnya wajib dipilih juga.
+    if (formData.asalKategori === 'Jurusan' && selectedJurusanNode && prodiOptionsForJurusan.length > 0 && !formData.prodiId) {
+      newErrors.unitKerja = 'Prodi wajib dipilih';
+    }
+    if (!formData.status || formData.status === 'Pilih Status') newErrors.status = 'Status wajib dipilih';
     if (!formData.tanggalMulai) newErrors.tanggalMulai = 'Tanggal mulai wajib diisi';
     if (!formData.tanggalBerakhir) newErrors.tanggalBerakhir = 'Tanggal berakhir wajib diisi';
     if (!isEditMode && !formData.alamatMitra.trim()) newErrors.alamatMitra = 'Alamat mitra wajib diisi';
 
-    const nextUploadErrors: { fileDokumen?: string } = {};
+    const nextUploadErrors: { fileDokumen?: string; fileDokumenPendukung?: string } = {};
     const needNewFile = !hasExistingDokumen || documentMode === 'replace';
     if (needNewFile && formData.jenisDokumen && !selectedFile) {
       nextUploadErrors.fileDokumen = 'Upload dokumen wajib diisi';
+    }
+    // Dokumen Pendukung (TOR/KAK/Proposal) wajib untuk jenis MoA/IA — sama seperti form Pengajuan.
+    if (requiresDokumenPendukung && existingDokumenPendukung.length === 0 && !selectedFilePendukung) {
+      nextUploadErrors.fileDokumenPendukung = 'Dokumen pendukung (TOR, KAK, atau Proposal/Laporan Kegiatan) wajib diunggah untuk jenis dokumen MoA atau IA.';
     }
 
     if (Object.keys(newErrors).length > 0 || Object.keys(nextUploadErrors).length > 0) {
@@ -292,11 +382,31 @@ export default function TambahDokumenModal({
       dokumenTerkait = existingDokumen;
     }
 
+    let dokumenPendukung = formData.dokumenPendukung;
+    if (selectedFilePendukung) {
+      const dataUrl = await readFileAsDataUrl(selectedFilePendukung);
+      dokumenPendukung = [{
+        nama: selectedFilePendukung.name,
+        url: dataUrl,
+        ukuran: `${(selectedFilePendukung.size / (1024 * 1024)).toFixed(2)} MB`,
+        tanggal: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+      }];
+    } else if (isEditMode) {
+      dokumenPendukung = existingDokumenPendukung;
+    }
+
     if (onSubmit) {
-      onSubmit({ ...formData, nomorDokumen, dokumenTerkait });
+      onSubmit({
+        ...formData,
+        nomorDokumen,
+        dokumenTerkait,
+        dokumenPendukung,
+        prodiId: formData.asalKategori === 'Jurusan' ? formData.prodiId : null,
+      });
     }
     setFormData(emptyFormData);
     setSelectedFile(null);
+    setSelectedFilePendukung(null);
     onClose();
   };
 
@@ -308,8 +418,20 @@ export default function TambahDokumenModal({
 
     if (field === 'jenisDokumen') {
       setSelectedFile(null);
+      setSelectedFilePendukung(null);
       setUploadErrors({});
     }
+  };
+
+  const toggleRuangLingkup = (opt: string) => {
+    setFormData((prev) => {
+      const current = prev.ruangLingkup ?? [];
+      const nextNames = current.includes(opt) ? current.filter((x) => x !== opt) : [...current, opt];
+      const nextIds = nextNames
+        .map((name) => masterRuangLingkupRows.find((r) => r.nama_ruang_lingkup === name)?.id)
+        .filter((id): id is number => typeof id === 'number');
+      return { ...prev, ruangLingkup: nextNames, ruangLingkupIds: nextIds };
+    });
   };
 
   const handleDownloadTemplate = () => {
@@ -345,6 +467,28 @@ export default function TambahDokumenModal({
 
     setSelectedFile(file);
     setUploadErrors((prev) => ({ ...prev, fileDokumen: undefined }));
+  };
+
+  const handleFileChangePendukung = (file: File | null) => {
+    if (!file) {
+      setSelectedFilePendukung(null);
+      setUploadErrors((prev) => ({ ...prev, fileDokumenPendukung: undefined }));
+      return;
+    }
+
+    const validationError = validateSelectedFile(file, {
+      maxSizeBytes: MAX_FILE_SIZE,
+      accept: ['.pdf', '.doc', '.docx'],
+    });
+
+    if (validationError) {
+      setSelectedFilePendukung(null);
+      setUploadErrors((prev) => ({ ...prev, fileDokumenPendukung: validationError }));
+      return;
+    }
+
+    setSelectedFilePendukung(file);
+    setUploadErrors((prev) => ({ ...prev, fileDokumenPendukung: undefined }));
   };
 
   return (
@@ -393,8 +537,10 @@ export default function TambahDokumenModal({
               />
             </Field>
 
-            {selectedTemplate && (
+            {formData.jenisDokumen && formData.jenisDokumen !== 'Pilih Jenis' && (
               <div className="space-y-4 rounded-2xl border border-[#D7E0F0] bg-[#F8FAFF] p-3 sm:p-5 md:col-span-2">
+                {selectedTemplate ? (
+                  <>
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 sm:text-xl">Template Dokumen</h3>
                   <p className="mt-1 text-xs text-gray-600 sm:text-sm">Template opsional. Kamu bisa download sebagai referensi atau langsung upload dokumen PDF.</p>
@@ -457,6 +603,13 @@ export default function TambahDokumenModal({
 
                   <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-[#173B82]">Catatan: {selectedTemplate.note}</p>
                 </div>
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <p className="text-base font-bold text-slate-800">Dokumen Lainnya</p>
+                    <p className="mt-1 text-sm text-slate-600">Gunakan format atau template milik instansi Anda sendiri. Upload dokumen langsung di bawah ini tanpa perlu mengikuti template standar.</p>
+                  </div>
+                )}
 
                 {/* Dokumen section */}
                 <div>
@@ -564,6 +717,66 @@ export default function TambahDokumenModal({
                     </>
                   )}
                 </div>
+
+                {/* Dokumen Pendukung — sama seperti section "Dokumen Pendukung" di form Pengajuan,
+                    wajib diisi untuk jenis MoA/IA. */}
+                {requiresDokumenPendukung && (
+                  <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">
+                        Dokumen Pendukung <span className="text-rose-500">*</span>
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-amber-700">
+                        Jenis dokumen <span className="font-semibold">{formData.jenisDokumen}</span> wajib dilampirkan minimal satu dokumen pendukung: <span className="font-semibold">TOR, KAK, atau Proposal/Laporan Kegiatan</span>.
+                      </p>
+                    </div>
+
+                    {existingDokumenPendukung.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Dokumen pendukung tersimpan</p>
+                        {existingDokumenPendukung.map((doc, idx) => (
+                          <div key={idx} className="flex items-center gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100">
+                              <FileText size={14} className="text-amber-700" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold text-gray-800">{doc.nama}</p>
+                              <p className="text-xs text-gray-400">{doc.ukuran} · {doc.tanggal}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {existingDokumenPendukung.length === 0 && !selectedFilePendukung && (
+                      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2.5 text-[11px] text-amber-800">
+                        <span className="mt-0.5 shrink-0">⚠</span>
+                        <span>Belum ada dokumen pendukung yang dilampirkan. Harap unggah TOR, KAK, atau Proposal/Laporan Kegiatan.</span>
+                      </div>
+                    )}
+
+                    <label className="block cursor-pointer rounded-xl border-2 border-dashed border-amber-300 bg-white p-4 text-center transition hover:border-amber-500 hover:bg-amber-50/50">
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        onChange={(e) => handleFileChangePendukung(e.target.files?.[0] || null)}
+                        className="hidden"
+                      />
+                      <Upload className={`mx-auto ${selectedFilePendukung ? 'text-green-600' : 'text-amber-600'}`} size={20} />
+                      <p className="mt-2 text-sm font-semibold text-slate-800">
+                        {existingDokumenPendukung.length > 0 ? 'Ganti Dokumen Pendukung' : 'Upload TOR / KAK / Proposal / Laporan Kegiatan'}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">PDF, DOC, atau DOCX — maks. 10 MB</p>
+                      {selectedFilePendukung && (
+                        <div className="mt-3 inline-flex items-center rounded-lg border border-green-200 bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700">
+                          File dipilih: {selectedFilePendukung.name}
+                        </div>
+                      )}
+                    </label>
+
+                    {uploadErrors.fileDokumenPendukung && <p className="mt-1 text-xs text-red-500">{uploadErrors.fileDokumenPendukung}</p>}
+                  </div>
+                )}
               </div>
             )}
 
@@ -689,6 +902,8 @@ export default function TambahDokumenModal({
                         onChange={() => {
                           handleInputChange('asalKategori', item);
                           handleInputChange('unitKerja', '');
+                          setSelectedJurusanId(null);
+                          setFormData((prev) => ({ ...prev, prodiId: null }));
                         }}
                         className="sr-only"
                       />
@@ -699,14 +914,52 @@ export default function TambahDokumenModal({
               </div>
             </Field>
 
-            <Field label={`Pilih ${formData.asalKategori} *`} error={errors.unitKerja}>
-              <SelectInput
-                options={pilihanUnit}
-                value={formData.unitKerja}
-                onChange={(e) => handleInputChange('unitKerja', e.target.value)}
-                hasError={!!errors.unitKerja}
-              />
-            </Field>
+            {formData.asalKategori === 'Jurusan' ? (
+              <div className="space-y-3">
+                <Field label="Pilih Jurusan *" error={errors.unitKerja}>
+                  <select
+                    value={selectedJurusanId ?? ''}
+                    onChange={(e) => {
+                      const nextId = e.target.value ? Number(e.target.value) : null;
+                      setSelectedJurusanId(nextId);
+                      setFormData((prev) => ({ ...prev, prodiId: null }));
+                      const nextJurusan = allJurusanRows.find((item) => item.id === nextId);
+                      handleInputChange('unitKerja', nextJurusan?.nama ?? '');
+                    }}
+                    className={`input-field h-11 w-full bg-white px-4 text-sm text-gray-700 ${errors.unitKerja ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}
+                  >
+                    <option value="">Pilih jurusan</option>
+                    {allJurusanRows.map((item) => (
+                      <option key={item.id} value={item.id}>{item.nama}</option>
+                    ))}
+                  </select>
+                </Field>
+
+                {selectedJurusanNode && prodiOptionsForJurusan.length > 0 && (
+                  <Field label="Prodi *" error={errors.unitKerja}>
+                    <select
+                      value={formData.prodiId ?? ''}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, prodiId: e.target.value ? Number(e.target.value) : null }))}
+                      className={`input-field h-11 w-full bg-white px-4 text-sm text-gray-700 ${errors.unitKerja ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}
+                    >
+                      <option value="">Pilih prodi</option>
+                      {prodiOptionsForJurusan.map((item) => (
+                        <option key={item.id} value={item.id}>{item.nama}</option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+              </div>
+            ) : (
+              <Field label="Pilih Unit *" error={errors.unitKerja}>
+                <SelectInput
+                  options={pilihanUnit}
+                  value={formData.unitKerja}
+                  onChange={(e) => handleInputChange('unitKerja', e.target.value)}
+                  hasError={!!errors.unitKerja}
+                />
+              </Field>
+            )}
 
             <Field label="Jabatan Mitra">
               <TextInput
@@ -760,6 +1013,98 @@ export default function TambahDokumenModal({
                 onChange={(e) => handleInputChange('whatsappMitra', e.target.value)}
               />
             </Field>
+
+            <Field label="Negara Mitra">
+              <SelectInput
+                options={negaraOptions}
+                value={formData.negara || 'Indonesia'}
+                onChange={(e) => handleInputChange('negara', e.target.value)}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                {formData.negara && formData.negara !== 'Indonesia' ? '🌐 Luar Negeri' : '🇮🇩 Dalam Negeri'}
+              </p>
+            </Field>
+
+            <div className="md:col-span-2">
+              <label className="mb-2 block text-sm font-semibold text-gray-900">Ruang Lingkup</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRlOpen((prev) => {
+                      const next = !prev;
+                      if (!next) setRlSearch('');
+                      return next;
+                    });
+                  }}
+                  className="input-field flex min-h-[44px] w-full items-start justify-between gap-2 rounded-lg px-4 py-2 text-sm text-left"
+                >
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedRuangLingkup.length === 0 ? (
+                      <span className="text-slate-400">Pilih ruang lingkup kerjasama...</span>
+                    ) : (
+                      selectedRuangLingkup.map((rl) => (
+                        <span key={rl} className="inline-flex items-center gap-1 rounded-full bg-[#1E376C] px-2 py-0.5 text-xs font-semibold text-white">
+                          {rl}
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRuangLingkup(rl);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                toggleRuangLingkup(rl);
+                              }
+                            }}
+                            className="cursor-pointer hover:opacity-75"
+                            aria-label={`Hapus ${rl}`}
+                          >
+                            <X size={10} />
+                          </span>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  <ChevronDown size={14} className={`mt-0.5 shrink-0 text-slate-400 transition-transform ${rlOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {rlOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => { setRlOpen(false); setRlSearch(''); }} />
+                    <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg">
+                      <div className="border-b border-slate-100 p-2">
+                        <input
+                          type="text"
+                          value={rlSearch}
+                          onChange={(e) => setRlSearch(e.target.value)}
+                          placeholder="Cari ruang lingkup..."
+                          className="input-field h-8 w-full rounded-lg px-2 text-xs"
+                        />
+                      </div>
+                      <div className="max-h-48 overflow-y-auto p-1">
+                        {filteredRlOptions.map((opt) => (
+                          <label key={opt} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 hover:bg-slate-50">
+                            <input
+                              type="checkbox"
+                              checked={selectedRuangLingkup.includes(opt)}
+                              onChange={() => toggleRuangLingkup(opt)}
+                              className="h-4 w-4 accent-[#1E376C]"
+                            />
+                            <span className="flex-1 text-sm text-slate-800">{opt}</span>
+                          </label>
+                        ))}
+                        {filteredRlOptions.length === 0 && (
+                          <p className="px-3 py-2 text-xs text-slate-500">Tidak ada ruang lingkup yang cocok.</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
 
             <div className="md:col-span-2">
               <label className="block">

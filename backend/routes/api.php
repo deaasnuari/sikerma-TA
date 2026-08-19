@@ -52,6 +52,14 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::delete('/catatan-admin/{catatan_admin}', [CatatanAdminController::class, 'destroy']);
 	Route::post('/dokumen-kerjasama/{dokumen_kerjasama}/upload-file', [DokumenKerjasamaController::class, 'uploadFile'])
 		->whereNumber('dokumen_kerjasama');
+	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/documents', [DokumenKerjasamaController::class, 'documents'])
+		->whereNumber('dokumen_kerjasama');
+	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/documents/{dokumen_file}/download', [DokumenKerjasamaController::class, 'downloadDocument'])
+		->whereNumber('dokumen_kerjasama')
+		->name('dokumen-kerjasama.documents.download');
+	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/documents/{dokumen_file}/view', [DokumenKerjasamaController::class, 'viewDocument'])
+		->whereNumber('dokumen_kerjasama')
+		->name('dokumen-kerjasama.documents.view');
 	Route::post('/dokumen-kerjasama/manual', [DokumenKerjasamaController::class, 'storeManual']);
 	Route::get('/dokumen-kerjasama/perpanjangan/requests', [DokumenKerjasamaController::class, 'renewalRequests']);
 	Route::post('/dokumen-kerjasama/{dokumen_kerjasama}/perpanjangan', [DokumenKerjasamaController::class, 'submitRenewalRequest'])

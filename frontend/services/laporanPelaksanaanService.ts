@@ -93,7 +93,7 @@ function mapRow(row: ApiLaporanRow): LaporanPelaksanaanRecord {
     jabatanMengetahui: row.jabatan_mengetahui ?? undefined,
     namaMengetahui: row.nama_mengetahui ?? undefined,
     nipMengetahui: row.nip_mengetahui ?? undefined,
-    fileUrl: row.file_path ? `${getBackendOrigin()}/storage/${row.file_path}` : undefined,
+    fileUrl: row.file_path ? `${getBackendOrigin()}/storage/${row.file_path.replace(/^\/+/, '')}` : undefined,
     fileNama: row.file_nama ?? undefined,
     fileUkuranBytes: row.file_ukuran_bytes ?? undefined,
     status: row.status,

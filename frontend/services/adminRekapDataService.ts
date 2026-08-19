@@ -2,7 +2,7 @@ import { addAdminNotification } from '@/services/adminService';
 
 // Status dokumen kerjasama yang ditampilkan di rekap data.
 export type RekapStatus = 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
-export type RekapJenis = 'MoA' | 'MoU' | 'IA';
+export type RekapJenis = 'MoA' | 'MoU' | 'IA' | 'Lainnya';
 
 // Tipe data utama untuk satu baris dokumen pada tabel rekap.
 export interface DokumenTerkait {
@@ -29,7 +29,15 @@ export interface RekapDokumen {
   status: RekapStatus;
   whatsappNumber?: string;
   ruangLingkup?: string[];
+  ruangLingkupIds?: number[];
+  mitraNegara?: string;
+  // unitProdiId: node yang benar-benar tersimpan di dokumen_kerjasama.unit_prodi_id (Jurusan/Unit
+  // ATAU Prodi). jurusanUnitProdiId cuma terisi kalau unitProdiId itu Prodi — dipakai form edit
+  // untuk prefill dropdown Jurusan → Prodi bertingkat.
+  unitProdiId?: number;
+  jurusanUnitProdiId?: number;
   dokumenTerkait?: DokumenTerkait[];
+  dokumenPendukungTerkait?: DokumenTerkait[];
   manfaatKerjasama?: string;
   kodePerusahaan?: string;
   jenisMitra?: string;
@@ -88,7 +96,14 @@ export interface DokumenData {
   whatsappMitra: string;
   asalKategori: 'Jurusan' | 'Unit';
   unitKerja: string;
+  // Terisi kalau asalKategori === 'Jurusan' dan Prodi-nya sudah dipilih — dikirim sebagai
+  // unit_prodi_id ke backend supaya dokumen tersimpan di level Prodi, bukan cuma Jurusan.
+  prodiId?: number | null;
+  negara?: string;
+  ruangLingkup?: string[];
+  ruangLingkupIds?: number[];
   dokumenTerkait?: DokumenTerkait[];
+  dokumenPendukung?: DokumenTerkait[];
   judulKegiatan?: string;
   manfaatKerjasama?: string;
   luaranKerjaSama?: string;
@@ -202,6 +217,7 @@ export const rekapJenisBadgeMap: Record<RekapJenis, string> = {
   MoA: 'bg-cyan-100 text-cyan-700',
   MoU: 'bg-violet-100 text-violet-700',
   IA: 'bg-orange-100 text-orange-700',
+  Lainnya: 'bg-slate-100 text-slate-700',
 };
 
 // Warna badge berdasarkan status masa berlaku dokumen.
@@ -565,9 +581,15 @@ if (item.sourcePengajuanId) {
     tanggalBerakhir: toDateInputValue(item.berlakuHinggaRaw || item.berlakuHingga),
     alamatMitra: item.alamatMitra || pengajuanData?.mitraAlamat || '',
     whatsappMitra: pengajuanData?.whatsappPengusul || item.whatsappNumber || '',
+    negara: item.mitraNegara || 'Indonesia',
     asalKategori,
     unitKerja: item.unit,
+    // prodiId cuma terisi kalau unitProdiId dokumen ini memang menunjuk ke Prodi (bukan Jurusan/Unit).
+    prodiId: item.jurusanUnitProdiId ? item.unitProdiId ?? null : null,
+    ruangLingkup: item.ruangLingkup || [],
+    ruangLingkupIds: item.ruangLingkupIds || [],
     dokumenTerkait: item.dokumenTerkait,
+    dokumenPendukung: item.dokumenPendukungTerkait,
     judulKegiatan: item.judulKegiatan || '',
     manfaatKerjasama: item.manfaatSebenarnya || item.manfaatKerjasama || '',
     luaranKerjaSama: item.luaranKerjaSama || '',

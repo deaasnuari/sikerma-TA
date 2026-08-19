@@ -59,6 +59,7 @@ type ApiDokumenRow = {
     bidang_usaha?: string | null;
     tingkat_perusahaan?: string | null;
     alamat?: string | null;
+    negara?: string | null;
     nama_kontak_utama?: string | null;
     jabatan_kontak_utama?: string | null;
     telepon_kontak_utama?: string | null;
@@ -110,10 +111,11 @@ type ApiDokumenRow = {
   }> | null;
 };
 
-function mapJenis(value?: string | null): 'MoA' | 'MoU' | 'IA' {
+function mapJenis(value?: string | null): 'MoA' | 'MoU' | 'IA' | 'Lainnya' {
   const upper = (value || '').toUpperCase();
   if (upper === 'MOA') return 'MoA';
   if (upper === 'IA') return 'IA';
+  if (upper === 'LAINNYA') return 'Lainnya';
   return 'MoU';
 }
 
@@ -185,10 +187,22 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       }
     }
 
-    // Gunakan dokumen_files (sudah difilter ke peran_berkas='dokumen_final' oleh controller).
+    // dokumen_files dari controller sudah dibatasi ke peran_berkas 'dokumen_final',
+    // 'dokumen_perpanjangan', atau 'dokumen_pendukung' — pisahkan lagi di sini supaya dokumen
+    // pendukung (TOR/KAK/Proposal) tidak ikut nyampur ke kartu dokumen utama.
     // Fallback ke kolom 'file' hanya untuk record lama yang belum punya dokumen_files.
     let dokumenTerkait: any[] = [];
-    const finalFiles = row.dokumen_files ?? [];
+    const allFiles = row.dokumen_files ?? [];
+    const finalFiles = allFiles.filter((f) => f.peran_berkas !== 'dokumen_pendukung');
+    const dokumenPendukungTerkait = allFiles
+      .filter((f) => f.peran_berkas === 'dokumen_pendukung')
+      .map((f) => ({
+        nama: f.nama_file,
+        url: buildLegacyFileUrl(f.path_file || ''),
+        tipe: f.mime_type || (f.nama_file.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'),
+        ukuran: f.ukuran_file_bytes ? `${Math.round(f.ukuran_file_bytes / 1024)} KB` : 'Dokumen Pendukung',
+        tanggal: toDisplayDate(tanggalMulaiRaw),
+      }));
     if (finalFiles.length > 0) {
       const seenPaths = new Set<string>();
       dokumenTerkait = finalFiles
@@ -300,7 +314,15 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       status: mapStatus(row.status_siklus),
       whatsappNumber: row.pengajuan?.whatsapp_pengusul || row.snap_whatsapp_pengusul || undefined,
       dokumenTerkait,
+      dokumenPendukungTerkait: dokumenPendukungTerkait.length > 0 ? dokumenPendukungTerkait : undefined,
       ruangLingkup,
+      ruangLingkupIds: Array.isArray(row.ruang_lingkup_ids) ? (row.ruang_lingkup_ids as number[]) : undefined,
+      mitraNegara: row.mitra?.negara || undefined,
+      // unitProdiId menunjuk ke node yang benar-benar tersimpan di dokumen_kerjasama.unit_prodi_id
+      // (bisa Jurusan/Unit ATAU Prodi). jurusanUnitProdiId cuma terisi kalau node itu Prodi (anak
+      // dari Jurusan) — dipakai form edit untuk prefill dropdown Jurusan → Prodi bertingkat.
+      unitProdiId: row.unit_prodi?.id ?? undefined,
+      jurusanUnitProdiId: row.unit_prodi?.jenis_node === 'prodi' ? (row.unit_prodi?.parent?.id ?? undefined) : undefined,
       alasanArsip: row.alasan_arsip || null,
       buktiPdf: dokumenTerkait.length > 0 ? dokumenTerkait[0].url : null,
       manfaatKerjasama: (row.keterangan && !row.keterangan.includes('Mitra:')) ? row.keterangan : undefined,
@@ -359,10 +381,11 @@ function mapStatusToApi(status: string): 'active' | 'expiring' | 'archived' {
   return 'active';
 }
 
-function mapJenisToApi(jenis: string): 'MOU' | 'MOA' | 'IA' {
+function mapJenisToApi(jenis: string): 'MOU' | 'MOA' | 'IA' | 'LAINNYA' {
   const upper = jenis.toUpperCase();
   if (upper === 'MOA') return 'MOA';
   if (upper === 'IA') return 'IA';
+  if (upper === 'LAINNYA') return 'LAINNYA';
   return 'MOU';
 }
 
@@ -373,6 +396,7 @@ export async function updateDokumenKerjasamaById(
     nama_dokumen?: string;
     judul_dokumen?: string | null;
     jenis_dokumen?: string;
+    unit_prodi_id?: number;
     tanggal_mulai?: string | null;
     tanggal_berakhir?: string | null;
     status_siklus?: 'active' | 'expiring' | 'archived';
@@ -380,6 +404,7 @@ export async function updateDokumenKerjasamaById(
     follow_up?: string | null;
     manfaat?: string | null;
     luaran_kerja_sama?: string | null;
+    ruang_lingkup_ids?: number[] | null;
     mitra_id?: number | null;
   }
 ): Promise<void> {
@@ -403,6 +428,7 @@ export async function createDokumenKerjasama(payload: {
   keterangan?: string | null;
   manfaat?: string | null;
   luaran_kerja_sama?: string | null;
+  ruang_lingkup_ids?: number[] | null;
 }): Promise<{ id: number }> {
   const response = await apiRequest<{ success: boolean; data: { id: number }; message: string }>('/dokumen-kerjasama/manual', {
     method: 'POST',
@@ -425,10 +451,14 @@ export async function updatePengajuanNamaMitra(
 export async function uploadDokumenFile(
   id: number,
   blob: Blob,
-  fileName: string
+  fileName: string,
+  peranBerkas?: 'dokumen_final' | 'dokumen_pendukung'
 ): Promise<void> {
   const formData = new FormData();
   formData.append('file', blob, fileName);
+  if (peranBerkas) {
+    formData.append('peran_berkas', peranBerkas);
+  }
   await apiRequest<unknown>(`/dokumen-kerjasama/${id}/upload-file`, {
     method: 'POST',
     body: formData,
@@ -461,7 +491,7 @@ export type ArsipDokumenApiItem = {
   id: number;
   noDokumen: string;
   namaMitra: string;
-  jenis: 'MoA' | 'MoU' | 'IA';
+  jenis: 'MoA' | 'MoU' | 'IA' | 'Lainnya';
   tanggalMulai: string;
   berlakuHingga: string;
   alasanArsip: string | null;

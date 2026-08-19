@@ -326,15 +326,8 @@ function buildAttachmentUrl(pathFile: string): string {
   }
 
   const origin = getBackendOrigin();
-  const normalized = pathFile.replace(/\\/g, '/').replace(/^\/+/, '');
-
-  if (normalized.startsWith('storage/')) {
-    return `${origin}/${normalized}`;
-  }
-
-  if (normalized.startsWith('uploads/')) {
-    return `${origin}/storage/${normalized}`;
-  }
+  let normalized = pathFile.replace(/\\/g, '/').replace(/^\/+/, '');
+  normalized = normalized.replace(/^storage\//, '');
 
   return `${origin}/storage/${normalized}`;
 }
