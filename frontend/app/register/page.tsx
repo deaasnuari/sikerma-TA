@@ -208,7 +208,7 @@ export default function RegisterPage() {
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-[#173B82]">Nama Lengkap</label>
                     <div className="relative">
-                      <User className="absolute left-3 top-3 text-slate-400" size={18} />
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
                         name="name"
                         value={form.name}
@@ -223,7 +223,7 @@ export default function RegisterPage() {
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-[#173B82]">Email Pengusul</label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
                         type="email"
                         name="email"
@@ -239,7 +239,7 @@ export default function RegisterPage() {
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-[#173B82]">Nama Perusahaan/Institusi</label>
                     <div className="relative">
-                      <Building2 className="absolute left-3 top-3 text-slate-400" size={18} />
+                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
                         name="institution_name"
                         value={form.institution_name}
@@ -254,7 +254,7 @@ export default function RegisterPage() {
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-[#173B82]">Negara Mitra</label>
                     <div className="relative">
-                      <Globe className="pointer-events-none absolute left-3 top-3 text-slate-400" size={18} />
+                      <Globe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <select
                         name="negara"
                         value={form.negara}
@@ -309,7 +309,7 @@ export default function RegisterPage() {
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-[#173B82]">Username</label>
                     <div className="relative">
-                      <UserRound className="absolute left-3 top-3 text-slate-400" size={18} />
+                      <UserRound className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
                         name="username"
                         value={form.username}
@@ -326,7 +326,7 @@ export default function RegisterPage() {
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-[#173B82]">Jabatan</label>
                     <div className="relative">
-                      <User className="absolute left-3 top-3 text-slate-400" size={18} />
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
                         name="position"
                         value={form.position}
@@ -341,7 +341,7 @@ export default function RegisterPage() {
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-[#173B82]">Password</label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-3 text-slate-400" size={18} />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
                         type="password"
                         name="password"
@@ -357,7 +357,7 @@ export default function RegisterPage() {
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-[#173B82]">Konfirmasi Password</label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-3 text-slate-400" size={18} />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
                         type="password"
                         name="password_confirmation"
