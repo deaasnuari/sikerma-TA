@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getExternalPengajuanData, syncExternalPengajuanWithAdminData, getExternalPengajuanUpdateEventName } from '@/services/externalPengajuanService';
+import { fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
 import { useEffect, useMemo, useState } from 'react';
 
 // Dashboard Mitra Eksternal: dibuat lebih ringkas & “indah”, tetap mudah karena
@@ -81,26 +82,41 @@ export default function EksternalPage() {
   useEffect(() => {
     let mounted = true;
 
-    const sync = () => {
-      const synced = syncExternalPengajuanWithAdminData();
-      if (mounted) setRaw(synced as any[]);
+    // Sebelumnya dashboard ini cuma baca cache localStorage (syncExternalPengajuanWithAdminData),
+    // yang bisa basi/tidak sinkron dengan akun yang sedang login — beda dari halaman Daftar
+    // Kerjasama yang selalu fetch langsung ke API. Akibatnya jumlah & daftar di dashboard bisa
+    // menampilkan data yang sudah tidak ada di server (atau milik akun lain di browser yang sama)
+    // sementara Daftar Kerjasama (sumber data yang benar) menunjukkan kosong.
+    // Sekarang samakan sumber datanya: fetch langsung dari API, filter kategoriPengajuan Eksternal.
+    const sync = async () => {
+      if (!mounted) return;
+
+      try {
+        const allItems = await fetchPengajuanDataFromApi({ perPage: 500 });
+        if (!mounted) return;
+        const ownItems = allItems.filter((item) => item.kategoriPengajuan === 'Eksternal');
+        setRaw(ownItems);
+      } catch {
+        // Offline/API gagal -> fallback ke cache lokal supaya halaman tidak kosong total.
+        if (mounted) {
+          syncExternalPengajuanWithAdminData();
+          setRaw(getExternalPengajuanData());
+        }
+      }
     };
 
-    // initial
-    try {
-      sync();
-    } catch {
-      // ignore
-    }
+    void sync();
 
     // realtime update
     const eventName = getExternalPengajuanUpdateEventName();
-    const handler = () => sync();
+    const handler = () => void sync();
     window.addEventListener(eventName, handler);
+    window.addEventListener('pengajuan-data-updated', handler);
 
     return () => {
       mounted = false;
       window.removeEventListener(eventName, handler);
+      window.removeEventListener('pengajuan-data-updated', handler);
     };
   }, []);
 

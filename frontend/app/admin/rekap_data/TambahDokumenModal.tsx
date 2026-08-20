@@ -9,25 +9,6 @@ import { getMasterRuangLingkup, type MasterRuangLingkup } from '@/services/maste
 import { getMasterNegara } from '@/services/masterNegaraService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 
-const defaultNegaraOptions = [
-  'Indonesia',
-  'Malaysia',
-  'Singapura',
-  'Amerika Serikat',
-  'Jepang',
-  'Korea Selatan',
-  'Australia',
-  'Jerman',
-  'Belanda',
-  'Inggris',
-  'Tiongkok',
-  'Taiwan',
-  'Prancis',
-  'Filipina',
-  'Vietnam',
-  'Palestina',
-];
-
 interface TambahDokumenModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -147,7 +128,9 @@ export default function TambahDokumenModal({
 
   // Master data & UI state untuk field yang disamakan dengan form "Tambah Pengajuan Baru":
   // Negara Mitra, Ruang Lingkup (multi-select), dan Prodi (drill-down di bawah Jurusan).
-  const [negaraOptions, setNegaraOptions] = useState<string[]>(defaultNegaraOptions);
+  // Daftar negara sepenuhnya dari master data (master_negara di database, dikelola admin lewat
+  // Data Pengajuan > Tambah Negara) — tidak ada lagi daftar default yang di-hardcode di sini.
+  const [negaraOptions, setNegaraOptions] = useState<string[]>([]);
   const [masterRuangLingkupRows, setMasterRuangLingkupRows] = useState<MasterRuangLingkup[]>([]);
   const [rlOpen, setRlOpen] = useState(false);
   const [rlSearch, setRlSearch] = useState('');
@@ -250,7 +233,7 @@ export default function TambahDokumenModal({
         setMasterUnitProdiTree(tree);
         setMasterRuangLingkupRows(ruangLingkupRows);
         if (negaraRows.length > 0) {
-          setNegaraOptions(Array.from(new Set([...defaultNegaraOptions, ...negaraRows.map((n) => n.nama_negara)])));
+          setNegaraOptions(Array.from(new Set(negaraRows.map((n) => n.nama_negara))));
         }
       } catch {
         // fallback tetap gunakan opsi service lokal.

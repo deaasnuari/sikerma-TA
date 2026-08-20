@@ -61,24 +61,6 @@ const jurusanOptions = pengajuanJurusanOptions;
 
 const unitOptions = pengajuanUnitOptions;
 
-const defaultNegaraOptions = [
-  'Indonesia',
-  'Malaysia',
-  'Singapura',
-  'Amerika Serikat',
-  'Jepang',
-  'Korea Selatan',
-  'Australia',
-  'Jerman',
-  'Belanda',
-  'Inggris',
-  'Tiongkok',
-  'Taiwan',
-  'Prancis',
-  'Filipina',
-  'Vietnam',
-  'Palestina',
-];
 
 const normalizeText = (value: string) => value.trim().toLowerCase();
 
@@ -352,7 +334,9 @@ export default function AdminAjukanKerjasamaForm({
   const masterRuangLingkupOpts = masterRuangLingkupRows.map((item) => item.nama_ruang_lingkup);
   const allRlOptions = Array.from(new Set(masterRuangLingkupOpts));
   const filteredRlOptions = allRlOptions.filter((opt) => opt.toLowerCase().includes(rlSearch.trim().toLowerCase()));
-  const allNegaraOptions = Array.from(new Set([...defaultNegaraOptions, ...customNegaraOpts]));
+  // Daftar negara sepenuhnya dari master data (master_negara di database, dikelola admin lewat
+  // Data Pengajuan > Tambah Negara) — tidak ada lagi daftar default yang di-hardcode di sini.
+  const allNegaraOptions = Array.from(new Set(customNegaraOpts));
   const filteredMitraOptions = masterMitraRows.filter(
     (m) =>
       !mitraSearch ||

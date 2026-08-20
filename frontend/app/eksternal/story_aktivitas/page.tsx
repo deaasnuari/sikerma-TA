@@ -14,9 +14,8 @@ import {
 } from 'lucide-react';
 
 import DetailStoryModal from './DetailStoryModal';
-import { type PengajuanItem, type PengajuanStatus } from '@/services/adminPengajuanService';
+import { type PengajuanItem, type PengajuanStatus, fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
 import { refreshAktivitasDataFromApi } from '@/services/adminStoryAktivitasService';
-import { refreshPengajuanDataFromApi } from '@/services/adminPengajuanService';
 import {
   getExternalPengajuanData,
   getExternalPengajuanUpdateEventName,
@@ -154,37 +153,52 @@ export default function EksternalStoryAktivitasPage() {
     let isMounted = true;
     const updateEventName = getExternalPengajuanUpdateEventName();
 
-    const loadData = () => {
+    // Sebelumnya halaman ini selalu baca cache gabungan (getExternalPengajuanData()), yang
+    // punya celah: kalau pengajuan yang dihapus dari Daftar Kerjasama adalah SATU-SATUNYA
+    // pengajuan eksternal yang tersisa, sync-nya menganggap hasil live kosong = "belum tentu
+    // segar" (lihat canPruneStale di syncExternalPengajuanWithAdminData) sehingga entri lama di
+    // cache tidak pernah dibuang — pengajuan yang sudah dihapus tetap nongol lagi di sini
+    // beserta story & aktivitasnya, padahal di Daftar Kerjasama sudah hilang.
+    // Sekarang utamakan hasil fetch API langsung (sama seperti Daftar Kerjasama): begitu sebuah
+    // pengajuan dihapus (soft-delete dihapus_user_pada), otomatis tidak ikut kefetch lagi dan
+    // story & aktivitasnya pun ikut hilang dari tampilan eksternal ini — cache cuma dipakai
+    // sebagai fallback saat API benar-benar gagal (offline).
+    const sync = async () => {
       if (!isMounted) return;
-      const items = getExternalPengajuanData();
-      const approved = items.filter((item) => APPROVED_STATUSES.has(item.statusPengajuan));
-      setKerjasamaData(groupStoryAktivitasByMitra(approved).map(mapStoryGroupToStory));
-    };
 
-    const syncAndLoad = async () => {
       try {
-        await Promise.all([
-          refreshPengajuanDataFromApi(true).catch(() => {}),
-          refreshAktivitasDataFromApi().catch(() => {}),
+        const [pengajuanItems] = await Promise.all([
+          fetchPengajuanDataFromApi({ perPage: 500 }),
+          refreshAktivitasDataFromApi().catch(() => ({})),
         ]);
+        if (!isMounted) return;
+
         syncExternalPengajuanWithAdminData();
+
+        const ownItems = pengajuanItems.filter((item) => item.kategoriPengajuan === 'Eksternal');
+        const approved = ownItems.filter((item) => APPROVED_STATUSES.has(item.statusPengajuan));
+        setKerjasamaData(groupStoryAktivitasByMitra(approved).map(mapStoryGroupToStory));
       } catch {
-        // Gunakan data cache
+        // Offline/API gagal -> fallback ke cache lokal supaya halaman tidak kosong total.
+        if (!isMounted) return;
+        const items = getExternalPengajuanData();
+        const approved = items.filter((item) => APPROVED_STATUSES.has(item.statusPengajuan));
+        setKerjasamaData(groupStoryAktivitasByMitra(approved).map(mapStoryGroupToStory));
       }
-      loadData();
     };
 
-    void syncAndLoad();
+    void sync();
 
-    window.addEventListener(updateEventName, loadData);
-    window.addEventListener('pengajuan-data-updated', loadData);
-    window.addEventListener('story-data-updated', loadData);
+    const handler = () => void sync();
+    window.addEventListener(updateEventName, handler);
+    window.addEventListener('pengajuan-data-updated', handler);
+    window.addEventListener('story-data-updated', handler);
 
     return () => {
       isMounted = false;
-      window.removeEventListener(updateEventName, loadData);
-      window.removeEventListener('pengajuan-data-updated', loadData);
-      window.removeEventListener('story-data-updated', loadData);
+      window.removeEventListener(updateEventName, handler);
+      window.removeEventListener('pengajuan-data-updated', handler);
+      window.removeEventListener('story-data-updated', handler);
     };
   }, []);
 

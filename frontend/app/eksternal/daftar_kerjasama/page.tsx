@@ -246,14 +246,13 @@ export default function DaftarKerjasamaEksternalPage() {
   }, [data]);
 
   const handleDelete = async (item: KerjasamaItem) => {
-    if (!window.confirm(`Yakin ingin menghapus pengajuan ${item.noDokumen}? Pengajuan ini akan hilang dari daftar Anda, tapi tetap bisa dilihat admin.`)) {
+    if (!window.confirm(`Yakin ingin menghapus pengajuan ${item.noDokumen}? Pengajuan ini akan dihapus permanen dan tidak bisa dikembalikan lagi.`)) {
       return;
     }
 
     try {
-      // Backend memastikan yang boleh dihapus cuma milik sendiri — sifatnya cuma sembunyi dari
-      // akun sendiri, admin tetap bisa lihat untuk keperluan audit/rekap institusi (lihat
-      // PengajuanController::destroy).
+      // Backend memastikan yang boleh dihapus cuma milik sendiri — dan sekarang hapus permanen
+      // dari database (lihat PengajuanController::destroy), bukan cuma disembunyikan.
       await deletePengajuanItemApi(item.id);
       // Refresh cache pengajuan dari server & broadcast 'pengajuan-data-updated' — listener yang
       // sudah ada di halaman ini (lihat useEffect di atas) akan ikut sinkron ulang otomatis.

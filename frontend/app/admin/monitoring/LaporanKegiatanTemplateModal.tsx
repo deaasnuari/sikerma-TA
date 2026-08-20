@@ -323,14 +323,28 @@ export default function LaporanKegiatanTemplateModal({ isOpen, onClose, data }: 
       : '-';
 
     let polibatamLogoSrc = '';
+    // Tinggi tetap dalam px yang benar-benar dipakai lewat atribut HTML width/height —
+    // Word mengabaikan max-height/object-fit di CSS sehingga logo tampil ukuran asli
+    // (bisa sangat besar) kalau hanya diatur lewat style.
+    const targetLogoHeight = 56;
+    let polibatamLogoWidth = 140;
     try {
       polibatamLogoSrc = await loadImageAsDataUrl('/polibatam_logo.png');
+      const dims = await new Promise<{ width: number; height: number }>((ok, fail) => {
+        const img = new Image();
+        img.onload = () => ok({ width: img.naturalWidth, height: img.naturalHeight });
+        img.onerror = () => fail(new Error('Gagal membaca ukuran logo'));
+        img.src = polibatamLogoSrc;
+      });
+      if (dims.height > 0) {
+        polibatamLogoWidth = Math.round((dims.width / dims.height) * targetLogoHeight);
+      }
     } catch {
       polibatamLogoSrc = '';
     }
 
     const polibatamLogoHtml = polibatamLogoSrc
-      ? `<img src="${polibatamLogoSrc}" alt="Logo Polibatam" style="max-height:56px; width:auto; object-fit:contain;" />`
+      ? `<img src="${polibatamLogoSrc}" alt="Logo Polibatam" width="${polibatamLogoWidth}" height="${targetLogoHeight}" style="width:${polibatamLogoWidth}px; height:${targetLogoHeight}px;" />`
       : `<div style="font-size:18px; font-weight:800; color:#1A4EA1;">POLIBATAM</div>`;
 
     const docHtml = `
@@ -345,24 +359,32 @@ export default function LaporanKegiatanTemplateModal({ isOpen, onClose, data }: 
             .title { text-align: center; font-weight: 700; margin: 10px 0; }
             .label { width: 220px; font-weight: 700; }
             .no { width: 30px; text-align: center; }
-            .header { display:flex; justify-content:space-between; align-items:center; border:1px solid #cbd5e1; padding:10px 14px; background:#f8fbff; margin-bottom:10px; }
-            .mitra-wrap { display:flex; align-items:center; gap:10px; }
-            .mitra-box { width:56px; height:56px; border:1px dashed #94a3b8; text-align:center; line-height:56px; font-size:10px; font-weight:700; color:#475569; background:#fff; }
+            .header-table { width:100%; border:1px solid #cbd5e1; background:#f8fbff; margin-bottom:10px; }
+            .header-table td { border:none; padding:10px 14px; vertical-align:middle; }
+            .mitra-wrap-table td { border:none; padding:0; vertical-align:middle; }
+            td.mitra-box { width:56px; height:56px; border:1px dashed #94a3b8; text-align:center; vertical-align:middle; font-size:10px; font-weight:700; color:#475569; background:#fff; }
+            .mitra-info { padding-left:10px; }
             .mitra-name { font-weight:700; color:#1F429A; }
             .mitra-note { font-size:10px; color:#64748b; }
           </style>
         </head>
         <body>
-          <div class='header'>
-            <div class='mitra-wrap'>
-              <div class='mitra-box'>LOGO MITRA</div>
-              <div>
-                <div class='mitra-name'>${escapeHtml(data.namaMitra)}</div>
-                <div class='mitra-note'>Area logo mitra kerja sama</div>
-              </div>
-            </div>
-            <div>${polibatamLogoHtml}</div>
-          </div>
+          <table class='header-table'>
+            <tr>
+              <td>
+                <table class='mitra-wrap-table'>
+                  <tr>
+                    <td class='mitra-box'>LOGO MITRA</td>
+                    <td class='mitra-info'>
+                      <div class='mitra-name'>${escapeHtml(data.namaMitra)}</div>
+                      <div class='mitra-note'>Area logo mitra kerja sama</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td align='right'>${polibatamLogoHtml}</td>
+            </tr>
+          </table>
 
           <div class='title'>LAPORAN PELAKSANAAN KERJA SAMA</div>
           <table>

@@ -288,6 +288,11 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
   async function handleDownload() {
     if (!data) return;
     let logoSrc = '';
+    // Tinggi tetap dalam px yang benar-benar dipakai lewat atribut HTML width/height —
+    // Word mengabaikan max-height/object-fit di CSS sehingga logo tampil ukuran asli
+    // (bisa sangat besar) kalau hanya diatur lewat style.
+    const targetLogoHeight = 56;
+    let logoWidth = 140;
     try {
       const res = await fetch('/polibatam_logo.png');
       const blob = await res.blob();
@@ -297,10 +302,20 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
         r.onerror = () => fail(new Error('logo error'));
         r.readAsDataURL(blob);
       });
+
+      const dims = await new Promise<{ width: number; height: number }>((ok, fail) => {
+        const img = new Image();
+        img.onload = () => ok({ width: img.naturalWidth, height: img.naturalHeight });
+        img.onerror = () => fail(new Error('Gagal membaca ukuran logo'));
+        img.src = logoSrc;
+      });
+      if (dims.height > 0) {
+        logoWidth = Math.round((dims.width / dims.height) * targetLogoHeight);
+      }
     } catch { logoSrc = ''; }
 
     const logoHtml = logoSrc
-      ? `<img src="${logoSrc}" alt="Logo Polibatam" style="max-height:56px;width:auto;object-fit:contain;" />`
+      ? `<img src="${logoSrc}" alt="Logo Polibatam" width="${logoWidth}" height="${targetLogoHeight}" style="width:${logoWidth}px;height:${targetLogoHeight}px;" />`
       : `<div style="font-size:18px;font-weight:800;color:#1A4EA1;">POLIBATAM</div>`;
 
     const bilingual = (id: string, en: string) => `${escapeHtml(id)}<br/><em>${escapeHtml(en)}</em>`;
@@ -316,17 +331,20 @@ td{border:1px solid #888;padding:6px;vertical-align:top;}
 .center{text-align:center;}
 .label{width:260px;font-weight:700;}
 .colon{width:16px;text-align:center;}
-.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}
-.mitra-box{width:64px;height:64px;border:1px dashed #94a3b8;text-align:center;line-height:64px;font-size:10px;font-weight:700;color:#475569;background:#fff;}
+.header-table{width:100%;margin-bottom:14px;}
+.header-table td{border:none;padding:0;vertical-align:top;}
+td.mitra-box{width:64px;height:64px;border:1px dashed #94a3b8;text-align:center;vertical-align:middle;font-size:10px;font-weight:700;color:#475569;background:#fff;}
 .nomor{text-align:center;margin:2px 0;}
 .intro{margin:14px 0;text-align:justify;}
 .sign-table td{text-align:center;vertical-align:top;padding:10px 8px;}
 </style></head>
 <body>
-<div class='header'>
-  <div>${logoHtml}</div>
-  <div class='mitra-box'>LOGO MITRA</div>
-</div>
+<table class='header-table'>
+  <tr>
+    <td>${logoHtml}</td>
+    <td class='mitra-box' align='center'>LOGO MITRA</td>
+  </tr>
+</table>
 
 <div class='title'>IMPLEMENTATION ARRANGEMENT</div>
 <div class='center'>ANTARA</div>

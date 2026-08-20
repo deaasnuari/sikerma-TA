@@ -82,25 +82,6 @@ const countryPhoneCodeMap: Record<string, string> = {
   'Palestina':       '+970',
 };
 
-const defaultNegaraOptions = [
-  'Indonesia',
-  'Malaysia',
-  'Singapura',
-  'Amerika Serikat',
-  'Jepang',
-  'Korea Selatan',
-  'Australia',
-  'Jerman',
-  'Belanda',
-  'Inggris',
-  'Tiongkok',
-  'Taiwan',
-  'Prancis',
-  'Filipina',
-  'Vietnam',
-  'Palestina',
-];
-
 const JENIS_MITRA_OPTIONS = [
   'Pemerintahan',
   'Perguruan Tinggi',
@@ -341,7 +322,9 @@ export default function InternalAjukanKerjasamaForm({
 
   const allJurusanOptions = [...jurusanOptions, ...customJurusanOpts];
   const allUnitOptions = [...unitOptions, ...customUnitOpts];
-  const allNegaraOptions = Array.from(new Set([...defaultNegaraOptions, ...customNegaraOpts]));
+  // Daftar negara sepenuhnya dari master data (master_negara di database, dikelola admin lewat
+  // Data Pengajuan > Tambah Negara) — tidak ada lagi daftar default yang di-hardcode di sini.
+  const allNegaraOptions = Array.from(new Set(customNegaraOpts));
   const filteredMitraOptions = masterMitraRows.filter(
     (m) =>
       !mitraSearch ||

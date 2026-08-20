@@ -16,12 +16,12 @@ function getBackendOrigin(): string {
 function buildLegacyFileUrl(filePath: string): string {
   if (filePath.startsWith('http')) return filePath;
   const origin = getBackendOrigin();
-  // Semua file diunggah lewat Storage::disk('public') dan disimpan langsung di bawah
-  // storage/app/public/<folder>/... (mis. "pengajuan/2026/08/berkas.doc"), diakses lewat
-  // symlink public/storage. Path TIDAK pernah punya prefix "uploads/" di disk sebenarnya —
-  // dulu ada fallback yang nambahin "uploads/" di sini dan itu yang bikin link jadi 403
-  // (folder storage/app/public/uploads memang tidak pernah ada).
-  const clean = filePath.replace(/^\/+/, '').replace(/^storage\//, '');
+  //ini untuk menghapus prefix /storage/ di filePath, karena di backend sudah diubah ke dokumen/
+  let clean = filePath.replace(/^\/+/, '').replace(/^storage\//, '');
+  // Kalau path cuma nama file (mis. legacy "49 MOU Solustar Pte Ltd 2017.pdf"), tambahkan prefix
+  if (!clean.includes('/')) {
+    clean = `dokumen/${clean}`;
+  }
   return `${origin}/storage/${clean}`;
 }
 import type { RekapDokumen } from '@/services/adminRekapDataService';

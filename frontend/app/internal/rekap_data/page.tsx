@@ -253,14 +253,14 @@ export default function InternalRekapDataPage() {
   }, []);
 
   async function handleDelete(item: KerjasamaItem) {
-    if (!window.confirm(`Yakin ingin menghapus dokumen ${item.noDokumen}? Dokumen ini akan hilang dari daftar Anda, tapi tetap bisa dilihat admin.`)) return;
+    if (!window.confirm(`Yakin ingin menghapus dokumen ${item.noDokumen}? Dokumen ini akan dihapus permanen dan tidak bisa dikembalikan lagi.`)) return;
 
     try {
       // Sudah ada dokumen kerjasama (Rekap Data) -> hapus lewat situ; kalau belum (masih data
       // pengajuan mentah dari fallback), hapus pengajuannya langsung. Backend memastikan yang
-      // boleh dihapus cuma milik sendiri — sifatnya cuma sembunyi dari akun sendiri, admin tetap
-      // bisa lihat untuk keperluan audit/rekap institusi (lihat PengajuanController::destroy /
-      // DokumenKerjasamaController::destroy).
+      // boleh dihapus cuma milik sendiri — dan sekarang hapus permanen dari database (lihat
+      // PengajuanController::destroy / DokumenKerjasamaController::destroy), bukan cuma
+      // disembunyikan.
       if (typeof item.id === 'number') {
         await deleteDokumenKerjasamaById(item.id);
       } else if (typeof item.sourcePengajuanId === 'number') {

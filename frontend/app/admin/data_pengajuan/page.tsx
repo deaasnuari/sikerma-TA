@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { FileText, Clock, CheckCircle, XCircle, Search, Filter, Plus, Eye, MessageSquare, X, ThumbsUp, ThumbsDown, CalendarDays, ChevronLeft, ChevronRight, Pencil, Trash2, ExternalLink, Paperclip, Download, Upload, Bell } from 'lucide-react';
+import { FileText, Clock, CheckCircle, XCircle, Search, Filter, Plus, Eye, MessageSquare, X, ThumbsUp, ThumbsDown, CalendarDays, ChevronLeft, ChevronRight, Pencil, Trash2, ExternalLink, Paperclip, Download, Upload, Bell, CheckSquare, Square } from 'lucide-react';
 import { addAdminNotification, markNotificationsByHrefPrefixAsRead } from '@/services/adminService';
 import AdminAjukanKerjasamaForm from './AjukanKerjasamaForm';
 import InternalAjukanKerjasamaForm from '@/app/internal/data_pengajuan/AjukanKerjasamaForm';
@@ -240,6 +240,9 @@ export default function PengajuanKerjasama() {
   const [pengajuanData, setPengajuanData] = useState<PengajuanItem[]>([]);
   const [pengajuanLoading, setPengajuanLoading] = useState(true);
 const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
+  const [selectedPengajuanIds, setSelectedPengajuanIds] = useState<Set<number>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [reviewItem, setReviewItem] = useState<PengajuanItem | null>(null);
   const [reviewDecision, setReviewDecision] = useState<PengajuanStatus>('Disetujui');
   const [reviewComment, setReviewComment] = useState('');
@@ -340,6 +343,46 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
       }
     }
   }, []);
+
+  // Centang/lepas satu pengajuan untuk dihapus massal — mirip pola checkbox + "Hapus (N)"
+  // di Rekap Data, supaya admin tidak perlu klik tombol Hapus satu-satu per kartu.
+  function togglePengajuanSelected(id: number) {
+    setSelectedPengajuanIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAllPengajuan() {
+    const visibleIds = filtered.map((item) => item.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedPengajuanIds.has(id));
+    setSelectedPengajuanIds(allSelected ? new Set() : new Set(visibleIds));
+  }
+
+  async function confirmBulkDeletePengajuan() {
+    const ids = Array.from(selectedPengajuanIds);
+    if (ids.length === 0) return;
+
+    setBulkDeleting(true);
+    try {
+      await Promise.all(ids.map((id) => deletePengajuanItemApi(id)));
+    } catch {
+      // Lanjut refresh meski sebagian gagal, biar admin lihat sisa yang belum kehapus.
+    }
+
+    if (detailItem && ids.includes(detailItem.id)) setDetailItem(null);
+    if (reviewItem && ids.includes(reviewItem.id)) setReviewItem(null);
+
+    setSelectedPengajuanIds(new Set());
+    setShowBulkDeleteConfirm(false);
+    setBulkDeleting(false);
+    await refreshPengajuanData(false);
+  }
 
 // Sync detailItem dengan pengajuanData setiap kali list di-refresh/update
   useEffect(() => {
@@ -1796,23 +1839,60 @@ function addEditJurusanUnitOption() {
         </div>
       </div>
 
+      {/* Toolbar pilih & hapus massal */}
+      {filtered.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={toggleSelectAllPengajuan}
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 hover:text-[#1E376C]"
+          >
+            {filtered.length > 0 && filtered.every((item) => selectedPengajuanIds.has(item.id))
+              ? <CheckSquare size={15} className="text-[#1E376C]" />
+              : <Square size={15} />}
+            Pilih Semua yang Tampil
+          </button>
+          {selectedPengajuanIds.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowBulkDeleteConfirm(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-[12px] font-semibold text-white hover:bg-red-700"
+            >
+              <Trash2 size={14} />
+              Hapus ({selectedPengajuanIds.size})
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Cards List */}
       <div className="space-y-4">
         {filtered.map((item) => {
           const sc = statusConfig[item.statusPengajuan] || statusConfig['Menunggu'];
+          const isSelected = selectedPengajuanIds.has(item.id);
           return (
             <div
               key={item.id}
-              className="card p-4 hover:shadow-md transition-shadow"
+              className={`card p-4 hover:shadow-md transition-shadow ${isSelected ? 'ring-2 ring-[#1E376C]' : ''}`}
             >
               {/* Top row */}
               <div className="flex justify-between items-start gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] text-gray-500 mb-0.5">Judul Pengajuan:</p>
-                  <h3 className="text-[13.5px] font-bold text-gray-900">{item.judulPengajuan}</h3>
-                  <p className="text-[10px] text-gray-500 mt-1">
-                    Pengusul: {item.namaPengusul} &bull; {item.diajukanPada}
-                  </p>
+                <div className="flex flex-1 min-w-0 items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => togglePengajuanSelected(item.id)}
+                    className="mt-0.5 shrink-0 text-gray-400 hover:text-[#1E376C]"
+                    aria-label={`Pilih pengajuan ${item.judulPengajuan}`}
+                  >
+                    {isSelected ? <CheckSquare size={16} className="text-[#1E376C]" /> : <Square size={16} />}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-gray-500 mb-0.5">Judul Pengajuan:</p>
+                    <h3 className="text-[13.5px] font-bold text-gray-900">{item.judulPengajuan}</h3>
+                    <p className="text-[10px] text-gray-500 mt-1">
+                      Pengusul: {item.namaPengusul} &bull; {item.diajukanPada}
+                    </p>
+                  </div>
                 </div>
                 <span className={`flex items-center gap-1.5 flex-shrink-0 ${sc.className}`}>
                   {sc.iconEl}
@@ -3242,6 +3322,39 @@ function addEditJurusanUnitOption() {
                 className="h-9 px-4 rounded-lg bg-red-600 text-white text-[12px] font-semibold hover:bg-red-700"
               >
                 Ya, Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 z-[75] bg-black/50 backdrop-blur-[2px] p-4 flex items-center justify-center">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="px-5 py-4 border-b border-slate-200">
+              <h3 className="text-[15px] font-bold text-slate-900">Hapus {selectedPengajuanIds.size} Pengajuan</h3>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-[12px] text-slate-700">
+                Yakin ingin menghapus <span className="font-semibold">{selectedPengajuanIds.size} pengajuan</span> yang dipilih? Tindakan ini tidak bisa dibatalkan.
+              </p>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                disabled={bulkDeleting}
+                className="h-9 px-4 rounded-lg bg-slate-100 text-slate-700 text-[12px] font-semibold hover:bg-slate-200 disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmBulkDeletePengajuan}
+                disabled={bulkDeleting}
+                className="h-9 px-4 rounded-lg bg-red-600 text-white text-[12px] font-semibold hover:bg-red-700 disabled:opacity-50"
+              >
+                {bulkDeleting ? 'Menghapus...' : 'Ya, Hapus Semua'}
               </button>
             </div>
           </div>
