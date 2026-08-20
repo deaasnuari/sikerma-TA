@@ -35,16 +35,23 @@ return new class extends Migration
             return;
         }
 
-        // 1. Ambil mapping no_dokumen → unit dari sikerma_old (MySQL)
-        $oldRows = DB::connection('sikerma_old')
-            ->table('dokumen')
-            ->whereNotNull('no_dokumen')
-            ->where('no_dokumen', '!=', '')
-            ->whereNotNull('unit')
-            ->where('unit', '!=', '')
-            ->where('unit', '!=', 'Pilih...')
-            ->select('no_dokumen', 'unit')
-            ->get();
+        // 1. Ambil mapping no_dokumen → unit dari sikerma_old (MySQL) — kalau koneksinya tidak
+        // tersedia (mis. environment lokal/dev yang tidak punya akses ke database lama itu),
+        // lewati langkah backfill ini saja. Baris yang belum ke-backfill tetap ke-cover oleh
+        // langkah 3 di bawah (default unit), jadi migrasi tetap bisa lanjut & aman dijalankan.
+        try {
+            $oldRows = DB::connection('sikerma_old')
+                ->table('dokumen')
+                ->whereNotNull('no_dokumen')
+                ->where('no_dokumen', '!=', '')
+                ->whereNotNull('unit')
+                ->where('unit', '!=', '')
+                ->where('unit', '!=', 'Pilih...')
+                ->select('no_dokumen', 'unit')
+                ->get();
+        } catch (\Throwable $e) {
+            $oldRows = collect();
+        }
 
         // 2. Update satu per satu berdasarkan nomor_dokumen yang cocok
         foreach ($oldRows as $row) {

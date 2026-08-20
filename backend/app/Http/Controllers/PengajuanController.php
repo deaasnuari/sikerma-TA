@@ -1555,29 +1555,13 @@ class PengajuanController extends Controller
             ], 403);
         }
 
-        // Soft delete, bukan hapus permanen dari database — akun (login, profil) yang menghapus
-        // maupun pemilik pengajuannya sama sekali tidak tersentuh oleh aksi ini, cuma baris
-        // pengajuannya yang ditandai:
-        // - Dihapus admin -> hilang dari semua orang KECUALI dari pemiliknya sendiri.
-        // - Dihapus pemiliknya sendiri -> hilang dari akunnya sendiri, admin tetap bisa lihat.
-        $flagColumn = null;
-        if ($isAdmin && $this->hasPengajuanColumn('dihapus_admin_pada')) {
-            $flagColumn = 'dihapus_admin_pada';
-            $pengajuan->update([$flagColumn => now()]);
-        } elseif (!$isAdmin && $this->hasPengajuanColumn('dihapus_user_pada')) {
-            $flagColumn = 'dihapus_user_pada';
-            $pengajuan->update([$flagColumn => now()]);
-        } else {
-            $pengajuan->delete();
-        }
-
-        //delete dokumen_kerjasama yang terkait dengan pengajuan ini, jika kolom flag ada
-        if ($flagColumn && Schema::hasColumn('dokumen_kerjasama', $flagColumn)) {
-            DokumenKerjasama::query()
-                ->where('sumber_pengajuan_id', $pengajuan->id)
-                ->whereNull($flagColumn)
-                ->update([$flagColumn => now()]);
-        }
+        // Hapus PERMANEN dari database — baik dihapus admin (Data Pengajuan) maupun dihapus
+        // pemiliknya sendiri (internal/eksternal/kampus-LDAP, tombol Hapus di Daftar
+        // Kerjasama/Rekap Data masing-masing). Data Pengajuan dan Rekap Data (dokumen_kerjasama)
+        // masing-masing dihapus terpisah lewat halamannya sendiri-sendiri — hapus di sini TIDAK
+        // ikut menghapus dokumen kerjasama terkait. FK sumber_pengajuan_id sudah nullOnDelete
+        // jadi baris dokumen kerjasama-nya tetap ada, cuma sumber_pengajuan_id-nya jadi null.
+        $pengajuan->delete();
 
         return response([
             'success' => true,

@@ -183,6 +183,34 @@ class DokumenKerjasamaController extends Controller
     }
 
     /**
+     * Cari path fisik dokumen di disk 'public'. Dokumen lama hasil import dari sistem sikerma
+     * sebelumnya cuma menyimpan NAMA FILE POLOS di kolom `file`/`path_file` (tanpa folder),
+     * padahal berkas fisiknya diletakkan di subfolder storage/app/public/dokumen/ — jadi kalau
+     * path aslinya tidak ketemu langsung di root disk public, coba juga di dalam folder
+     * dokumen/ sebelum dianggap benar-benar hilang. Path baru (mis. pengajuan/2026/08/xxx.pdf)
+     * tetap ketemu langsung di percobaan pertama, tidak terpengaruh fallback ini.
+     */
+    private function resolveDokumenFilePath(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        $trimmed = ltrim($path, '/');
+
+        if (Storage::disk('public')->exists($trimmed)) {
+            return $trimmed;
+        }
+
+        $legacyCandidate = 'dokumen/' . basename($trimmed);
+        if (Storage::disk('public')->exists($legacyCandidate)) {
+            return $legacyCandidate;
+        }
+
+        return null;
+    }
+
+    /**
      //ini guard untuk memastikan dokumen kerjasama yang diakses user memang bisa dilihat oleh user tersebut
      */
     public function documents(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
@@ -196,7 +224,7 @@ class DokumenKerjasamaController extends Controller
         if ($files->isEmpty() && $dokumen_kerjasama->file) {
             // Record lama yang belum punya baris dokumen_file — jatuhkan ke kolom 'file' legacy.
             $path = $dokumen_kerjasama->file;
-            $exists = Storage::disk('public')->exists(ltrim($path, '/'));
+            $exists = $this->resolveDokumenFilePath($path) !== null;
             $items = [[
                 'id' => null,
                 'peran_berkas' => 'final',
@@ -218,7 +246,7 @@ class DokumenKerjasamaController extends Controller
             ]];
         } else {
             $items = $files->map(function (DokumenFile $f) use ($dokumen_kerjasama) {
-                $exists = Storage::disk('public')->exists(ltrim($f->path_file, '/'));
+                $exists = $this->resolveDokumenFilePath($f->path_file) !== null;
 
                 return [
                     'id' => $f->id,
@@ -274,14 +302,15 @@ class DokumenKerjasamaController extends Controller
             }
         }
 
-        if (!$path || !Storage::disk('public')->exists(ltrim($path, '/'))) {
+        $resolvedPath = $this->resolveDokumenFilePath($path);
+        if (!$resolvedPath) {
             return response([
                 'success' => false,
                 'message' => 'File dokumen tidak ditemukan.',
             ], 404);
         }
 
-        return Storage::disk('public')->download(ltrim($path, '/'), $displayName);
+        return Storage::disk('public')->download($resolvedPath, $displayName);
     }
 
     /**
@@ -313,14 +342,15 @@ class DokumenKerjasamaController extends Controller
             }
         }
 
-        if (!$path || !Storage::disk('public')->exists(ltrim($path, '/'))) {
+        $resolvedPath = $this->resolveDokumenFilePath($path);
+        if (!$resolvedPath) {
             return response([
                 'success' => false,
                 'message' => 'File dokumen tidak ditemukan.',
             ], 404);
         }
 
-        return Storage::disk('public')->response(ltrim($path, '/'), $displayName);
+        return Storage::disk('public')->response($resolvedPath, $displayName);
     }
 
     //fungsi untuk memeriksa apakah dokumen kerjasama sudah dihapus oleh admin atau user, dan apakah user yang mengakses adalah admin atau pemilik dokumen
@@ -702,25 +732,11 @@ class DokumenKerjasamaController extends Controller
             ], 403);
         }
 
-        // Tandai dokumen kerjasama sebagai dihapus oleh admin atau user, sesuai peran yang menghapus.
-        $flagColumn = null;
-        if ($isAdmin && Schema::hasColumn('dokumen_kerjasama', 'dihapus_admin_pada')) {
-            $flagColumn = 'dihapus_admin_pada';
-            $dokumen_kerjasama->update([$flagColumn => now()]);
-        } elseif (!$isAdmin && Schema::hasColumn('dokumen_kerjasama', 'dihapus_user_pada')) {
-            $flagColumn = 'dihapus_user_pada';
-            $dokumen_kerjasama->update([$flagColumn => now()]);
-        } else {
-            $dokumen_kerjasama->delete();
-        }
-
-        // Jika dokumen kerjasama ini terkait dengan pengajuan, dan kolom flag ada di tabel pengajuan_v2, maka update kolom flag di pengajuan_v2 juga.
-        if ($flagColumn && $dokumen_kerjasama->sumber_pengajuan_id && Schema::hasColumn('pengajuan_v2', $flagColumn)) {
-            Pengajuan::query()
-                ->where('id', $dokumen_kerjasama->sumber_pengajuan_id)
-                ->whereNull($flagColumn)
-                ->update([$flagColumn => now()]);
-        }
+        // Hapus PERMANEN dari database — baik dihapus admin maupun dihapus pemiliknya sendiri
+        // (internal/eksternal/kampus-LDAP, tombol Hapus di Rekap Data mereka). Rekap Data dan
+        // Data Pengajuan (pengajuan_v2) masing-masing dihapus terpisah lewat halamannya
+        // sendiri-sendiri — hapus di sini TIDAK ikut menghapus pengajuan sumbernya.
+        $dokumen_kerjasama->delete();
 
         return response([
             'success' => true,

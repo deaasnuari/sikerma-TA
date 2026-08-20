@@ -53,7 +53,8 @@ class DummyDataSeeder extends Seeder
                 'deskripsi_pengajuan' => $faker->paragraph,
                 'jenis_dokumen' => $faker->randomElement(['MoU', 'MoA', 'SPK', 'IA']),
                 'kategori_pengajuan' => $faker->randomElement(['Dalam Negeri', 'Luar Negeri']),
-                'ruang_lingkup_ids' => json_encode([]),
+                //ini untuk
+                'ruang_lingkup_ids' => '{}',
                 'tanggal_mulai' => $faker->date(),
                 'tanggal_berakhir' => $faker->dateTimeBetween('now', '+5 years')->format('Y-m-d'),
                 'status_pengajuan' => $faker->randomElement(['menunggu', 'review', 'revisi', 'disetujui', 'ditolak']),

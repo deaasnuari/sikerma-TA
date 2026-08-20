@@ -303,9 +303,8 @@ class DokumenKerjasamaTest extends TestCase
 
     public function test_admin_dapat_hapus_dokumen(): void
     {
-        // "Hapus" oleh admin adalah soft delete: baris tetap ada di database (supaya akun
-        // internal/eksternal/kampus-LDAP pembuatnya tidak kehilangan riwayat dokumennya sendiri),
-        // tapi disembunyikan dari daftar kelola admin & pengguna lain.
+        // "Hapus" oleh admin sekarang hapus PERMANEN dari database (bukan cuma disembunyikan) —
+        // hilang dari semua orang termasuk pembuatnya sendiri.
         $admin   = $this->admin();
         $pemilik = $this->internal();
         $pengajuanPemilik = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
@@ -320,23 +319,46 @@ class DokumenKerjasamaTest extends TestCase
         $this->actingAs($admin)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")
             ->assertOk()->assertJsonPath('success', true);
 
-        // Baris masih ada di database, cuma ditandai dihapus.
-        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
-        $this->assertNotNull($dokumen->fresh()->dihapus_admin_pada);
+        // Baris sudah benar-benar hilang dari database.
+        $this->assertDatabaseMissing('dokumen_kerjasama', ['id' => $dokumen->id]);
 
         // Hilang dari daftar kelola admin.
         $adminIds = collect($this->actingAs($admin)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
             ->pluck('id');
         $this->assertNotContains($dokumen->id, $adminIds);
 
-        // TAPI pembuatnya sendiri tetap bisa melihat dokumennya di daftar & detail.
+        // Sekarang hapus admin sungguhan hilang permanen, jadi pembuatnya sendiri pun sudah
+        // tidak bisa melihatnya lagi di daftar maupun detail.
         $pemilikIds = collect($this->actingAs($pemilik)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
             ->pluck('id');
-        $this->assertContains($dokumen->id, $pemilikIds);
-        $this->actingAs($pemilik)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+        $this->assertNotContains($dokumen->id, $pemilikIds);
+        $this->actingAs($pemilik)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertNotFound();
 
         // Akun pembuatnya sendiri (login/profil) tidak ikut tersentuh sama sekali.
         $this->assertDatabaseHas('users', ['id' => $pemilik->id, 'email' => $pemilik->email]);
+    }
+
+    public function test_admin_hapus_dokumen_tidak_ikut_hapus_pengajuan_sumbernya(): void
+    {
+        // Kebalikan dari test_admin_hapus_pengajuan_tidak_ikut_hapus_dokumen_kerjasama_terkait:
+        // hapus dari Rekap Data (dokumen kerjasama) oleh admin cuma hapus permanen dokumennya
+        // saja. Pengajuan sumbernya di Data Pengajuan TIDAK ikut terhapus — masing-masing
+        // halaman punya tombol hapus sendiri-sendiri.
+        $admin   = $this->admin();
+        $pemilik = $this->internal();
+        $pengajuanPemilik = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
+        $pengajuanPemilik->update(['user_pengusul_id' => $pemilik->id]);
+        $dokumen = $this->buatDokumen([
+            'nomor_dokumen' => 'DEL-ADMIN-CASCADE',
+            'no_permohonan' => $pengajuanPemilik->nomor_pengajuan,
+            'sumber_pengajuan_id' => $pengajuanPemilik->id,
+            'dibuat_oleh_user_id' => $pemilik->id,
+        ]);
+
+        $this->actingAs($admin)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+
+        $this->assertDatabaseMissing('dokumen_kerjasama', ['id' => $dokumen->id]);
+        $this->assertDatabaseHas('pengajuan_v2', ['id' => $pengajuanPemilik->id]);
     }
 
     public function test_hapus_dokumen_ditolak_bukan_admin(): void
@@ -350,9 +372,9 @@ class DokumenKerjasamaTest extends TestCase
 
     public function test_pemilik_internal_dapat_hapus_dokumen_miliknya_sendiri(): void
     {
-        // Internal/eksternal/kampus-LDAP sekarang juga punya tombol Hapus sendiri di Rekap Data
-        // mereka — kebalikan dari hapus admin: cuma hilang dari akunnya sendiri, admin tetap bisa
-        // lihat (buat audit/rekap institusi).
+        // Internal/eksternal/kampus-LDAP juga punya tombol Hapus sendiri di Rekap Data mereka —
+        // sama seperti admin sekarang, ini hapus PERMANEN dari database, hilang dari semua orang
+        // termasuk admin.
         $admin   = $this->admin();
         $pemilik = $this->internal();
         $pengajuanPemilik = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
@@ -367,9 +389,8 @@ class DokumenKerjasamaTest extends TestCase
         $this->actingAs($pemilik)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")
             ->assertOk()->assertJsonPath('success', true);
 
-        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
-        $this->assertNotNull($dokumen->fresh()->dihapus_user_pada);
-        $this->assertNull($dokumen->fresh()->dihapus_admin_pada);
+        // Baris sudah benar-benar hilang dari database.
+        $this->assertDatabaseMissing('dokumen_kerjasama', ['id' => $dokumen->id]);
 
         // Hilang dari daftar & detail milik pemiliknya sendiri.
         $pemilikIds = collect($this->actingAs($pemilik)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
@@ -377,20 +398,19 @@ class DokumenKerjasamaTest extends TestCase
         $this->assertNotContains($dokumen->id, $pemilikIds);
         $this->actingAs($pemilik)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertNotFound();
 
-        // TAPI admin tetap bisa melihatnya.
+        // Hilang juga dari admin — hapus sekarang permanen buat siapa saja yang menghapus.
         $adminIds = collect($this->actingAs($admin)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
             ->pluck('id');
-        $this->assertContains($dokumen->id, $adminIds);
-        $this->actingAs($admin)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+        $this->assertNotContains($dokumen->id, $adminIds);
+        $this->actingAs($admin)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertNotFound();
     }
 
-    public function test_hapus_dokumen_ikut_sembunyikan_pengajuan_sumbernya(): void
+    public function test_hapus_dokumen_tidak_ikut_hapus_pengajuan_sumbernya(): void
     {
-        // Kebalikan dari cascade di PengajuanTest: hapus dari Rekap Data (dokumen kerjasama)
-        // harus ikut menyembunyikan pengajuan sumbernya juga di Data Pengajuan — kalau tidak,
-        // dokumennya hilang dari Rekap Data tapi pengajuannya tetap kelihatan di Data Pengajuan
-        // seolah belum dihapus, padahal keduanya kerjasama yang sama.
-        $admin   = $this->admin();
+        // Kebalikan dari test_hapus_pengajuan_tidak_ikut_hapus_dokumen_kerjasama_terkait di
+        // PengajuanTest: pemiliknya sendiri menghapus dari Rekap Data (dokumen kerjasama) cuma
+        // menghapus baris dokumen itu saja — pengajuan sumbernya di Data Pengajuan TIDAK ikut
+        // terhapus.
         $pemilik = $this->internal();
         $pengajuanPemilik = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
         $pengajuanPemilik->update(['user_pengusul_id' => $pemilik->id]);
@@ -403,15 +423,8 @@ class DokumenKerjasamaTest extends TestCase
 
         $this->actingAs($pemilik)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
 
-        $this->assertNotNull($pengajuanPemilik->fresh()->dihapus_user_pada);
-
-        $pemilikIds = collect($this->actingAs($pemilik)->getJson('/api/pengajuan?per_page=100')->json('data.data'))
-            ->pluck('id');
-        $this->assertNotContains($pengajuanPemilik->id, $pemilikIds);
-
-        $adminIds = collect($this->actingAs($admin)->getJson('/api/pengajuan?per_page=100')->json('data.data'))
-            ->pluck('id');
-        $this->assertContains($pengajuanPemilik->id, $adminIds);
+        $this->assertDatabaseMissing('dokumen_kerjasama', ['id' => $dokumen->id]);
+        $this->assertDatabaseHas('pengajuan_v2', ['id' => $pengajuanPemilik->id]);
     }
 
     public function test_hapus_dokumen_ditolak_bukan_pemilik_dan_bukan_admin(): void

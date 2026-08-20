@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             MasterUnitProdiSeeder::class,
             MasterRuangLingkupSeeder::class,
             MasterMitraSeeder::class,
+            MasterNegaraSeeder::class,
             DummyDataSeeder::class,
         ]);
 
