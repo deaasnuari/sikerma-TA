@@ -196,13 +196,13 @@ function LoginPageContent() {
 
   return (
     <div
-      className="min-h-screen bg-slate-900 bg-cover bg-center bg-no-repeat px-4 py-8"
+      className="fixed inset-0 overflow-hidden bg-slate-900 bg-cover bg-center bg-no-repeat px-4 py-4"
       style={{ backgroundImage: "url('/polibatam.jpg')" }}
     >
-      <div className="flex min-h-screen items-center justify-center bg-slate-950/60">
-        <div className="w-full max-w-[400px]">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-800 shadow-xl sm:p-7">
-            <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="flex h-full items-center justify-center overflow-y-auto scrollbar-none bg-slate-950/60">
+        <div className="w-full max-w-[400px] py-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 text-slate-800 shadow-xl sm:p-6">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => router.push('/')}
@@ -216,7 +216,7 @@ function LoginPageContent() {
             </div>
 
             <div className="text-center">
-              <h1 className="mt-1.5 text-2xl font-extrabold text-slate-900">Login</h1>
+              <h1 className="text-2xl font-extrabold text-slate-900">Login</h1>
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#173B82]">
                 Sikerma Polibatam
               </p>
@@ -414,7 +414,7 @@ function LoginPageContent() {
       </div>
       {fpOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <div className="max-h-[92vh] w-full max-w-md overflow-y-auto scrollbar-none rounded-2xl border border-slate-200 bg-white shadow-2xl">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div className="flex items-center gap-3">

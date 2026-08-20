@@ -128,7 +128,7 @@ export default function RegisterPage() {
 
   return (
     <div
-      className="relative min-h-screen px-4 py-6"
+      className="fixed inset-0 overflow-hidden px-4 py-4"
     >
       {/* Background image */}
       <div
@@ -137,14 +137,14 @@ export default function RegisterPage() {
       />
       {/* Color overlay #0E1D34 50% */}
       <div className="absolute inset-0" style={{ backgroundColor: 'rgba(14,29,52,0.5)' }} />
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl items-center justify-center">
-        <div className="w-full overflow-hidden rounded-[30px] border border-white/20 bg-slate-950/70 shadow-[0_24px_80px_rgba(15,23,42,0.55)] backdrop-blur-sm">
-          <div className="border-b border-white/10 px-5 py-6 text-center text-white md:px-8">
-            <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="relative z-10 mx-auto flex h-full max-w-6xl items-center justify-center">
+        <div className="flex max-h-full w-full flex-col overflow-hidden rounded-[30px] border border-white/20 bg-slate-950/70 shadow-[0_24px_80px_rgba(15,23,42,0.55)] backdrop-blur-sm">
+          <div className="shrink-0 border-b border-white/10 px-5 py-2 text-center text-white md:px-8">
+            <div className="mb-1.5 flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => router.push('/login')}
-                className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/15"
+                className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white/15"
               >
                 <ArrowLeft size={14} />
                 Kembali
@@ -155,15 +155,15 @@ export default function RegisterPage() {
               </span>
             </div>
 
-            <h1 className="mt-1 text-2xl font-black uppercase tracking-wide md:text-3xl">
+            <h1 className="text-lg font-black uppercase tracking-wide md:text-xl">
               Registrasi Akun Sikerma Polibatam
             </h1>
-            <p className="mt-1 text-sm text-slate-200">
+            <p className="mt-0.5 text-xs text-slate-200">
               Lengkapi data mitra untuk mengajukan akun kerja sama.
             </p>
           </div>
 
-          <div className="bg-white/95 px-4 py-5 text-slate-800 md:px-6 md:py-6">
+          <div className="flex-1 overflow-y-auto scrollbar-none bg-white/95 px-4 py-3 text-slate-800 md:px-6 md:py-4">
             {step === 2 ? (
               <OtpStep
                 email={form.email}
@@ -173,9 +173,9 @@ export default function RegisterPage() {
               />
             ) : (
             <>
-            <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50/90 p-3 text-sm text-slate-600">
+            <div className="mb-2 rounded-lg border border-blue-100 bg-blue-50/90 p-2 text-xs text-slate-600">
               <div className="flex items-start gap-2">
-                <ShieldCheck size={18} className="mt-0.5 shrink-0 text-[#173B82]" />
+                <ShieldCheck size={14} className="mt-0.5 shrink-0 text-[#173B82]" />
                 <p>
                   Registrasi ini hanya untuk <span className="font-semibold text-[#173B82]">mitra eksternal</span>.
                   Setelah mendaftar, akun bisa langsung digunakan untuk login
@@ -184,29 +184,29 @@ export default function RegisterPage() {
             </div>
 
             {error && (
-              <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
-                <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-600" />
-                <p className="text-sm text-red-600">{error}</p>
+              <div className="mb-2 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2">
+                <AlertCircle size={14} className="mt-0.5 shrink-0 text-red-600" />
+                <p className="text-xs text-red-600">{error}</p>
               </div>
             )}
 
             {success && (
-              <div className="mb-4 flex items-start gap-2 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-                <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
+              <div className="mb-2 flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-2 text-xs text-green-700">
+                <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
                 <p>{success}</p>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-                <div className="mb-4 flex items-center gap-2 text-[#173B82]">
-                  <Building2 size={18} />
-                  <h2 className="text-base font-bold">Informasi Mitra</h2>
+            <form onSubmit={handleSubmit} className="space-y-2">
+              <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:p-3.5">
+                <div className="mb-2 flex items-center gap-2 text-[#173B82]">
+                  <Building2 size={15} />
+                  <h2 className="text-sm font-bold">Informasi Mitra</h2>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-2 md:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">Nama Lengkap</label>
+                    <label className="mb-1 block text-xs font-semibold text-[#173B82]">Nama Lengkap</label>
                     <div className="relative">
                       <User className="absolute left-3 top-3 text-slate-400" size={18} />
                       <input
@@ -215,13 +215,13 @@ export default function RegisterPage() {
                         onChange={handleChange}
                         placeholder="Masukkan nama lengkap"
                         required
-                        className="input-field h-11 w-full rounded-xl pl-10 pr-4 text-sm"
+                        className="input-field h-9 w-full rounded-xl pl-10 pr-4 text-sm"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">Email Pengusul</label>
+                    <label className="mb-1 block text-xs font-semibold text-[#173B82]">Email Pengusul</label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
                       <input
@@ -231,13 +231,13 @@ export default function RegisterPage() {
                         onChange={handleChange}
                         placeholder="Masukkan email pengusul"
                         required
-                        className="input-field h-11 w-full rounded-xl pl-10 pr-4 text-sm"
+                        className="input-field h-9 w-full rounded-xl pl-10 pr-4 text-sm"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">Nama Perusahaan/Institusi</label>
+                    <label className="mb-1 block text-xs font-semibold text-[#173B82]">Nama Perusahaan/Institusi</label>
                     <div className="relative">
                       <Building2 className="absolute left-3 top-3 text-slate-400" size={18} />
                       <input
@@ -246,13 +246,13 @@ export default function RegisterPage() {
                         onChange={handleChange}
                         placeholder="Masukkan nama mitra"
                         required
-                        className="input-field h-11 w-full rounded-xl pl-10 pr-4 text-sm"
+                        className="input-field h-9 w-full rounded-xl pl-10 pr-4 text-sm"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">Negara Mitra</label>
+                    <label className="mb-1 block text-xs font-semibold text-[#173B82]">Negara Mitra</label>
                     <div className="relative">
                       <Globe className="pointer-events-none absolute left-3 top-3 text-slate-400" size={18} />
                       <select
@@ -260,7 +260,7 @@ export default function RegisterPage() {
                         value={form.negara}
                         onChange={handleChange}
                         required
-                        className="input-field h-11 w-full appearance-none rounded-xl pl-10 pr-10 text-sm text-slate-700"
+                        className="input-field h-9 w-full appearance-none rounded-xl pl-10 pr-10 text-sm text-slate-700"
                       >
                         <option value="" disabled>
                           Pilih negara mitra
@@ -279,7 +279,7 @@ export default function RegisterPage() {
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">Nomor Telepon</label>
+                    <label className="mb-1 block text-xs font-semibold text-[#173B82]">Nomor Telepon</label>
                     <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white focus-within:border-[#173B82] focus-within:ring-1 focus-within:ring-[#173B82]/20">
                       {phoneCode && (
                         <span className="flex shrink-0 items-center border-r border-slate-200 bg-slate-100 px-3 text-sm font-semibold text-slate-600">
@@ -294,20 +294,20 @@ export default function RegisterPage() {
                           onChange={handleChange}
                           placeholder={form.negara === 'Indonesia' ? '8xxxxxxxxxx' : 'Nomor telepon'}
                           required
-                          className="h-11 w-full bg-transparent pl-9 pr-4 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                          className="h-9 w-full bg-transparent pl-9 pr-4 text-sm text-slate-800 outline-none placeholder:text-slate-400"
                         />
                       </div>
                     </div>
                     {form.negara === 'Indonesia' && (
                       <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-emerald-600">
                         <MessageCircle size={12} className="shrink-0" />
-                        Pastikan nomor ini aktif di WhatsApp agar mudah dihubungi
+                        Pastikan nomor aktif di WhatsApp
                       </p>
                     )}
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">Username</label>
+                    <label className="mb-1 block text-xs font-semibold text-[#173B82]">Username</label>
                     <div className="relative">
                       <UserRound className="absolute left-3 top-3 text-slate-400" size={18} />
                       <input
@@ -318,13 +318,13 @@ export default function RegisterPage() {
                         required
                         pattern="[a-zA-Z0-9_\-]+"
                         title="Username hanya boleh berisi huruf, angka, tanda hubung (-), dan garis bawah (_)."
-                        className="input-field h-11 w-full rounded-xl pl-10 pr-4 text-sm"
+                        className="input-field h-9 w-full rounded-xl pl-10 pr-4 text-sm"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">Jabatan</label>
+                    <label className="mb-1 block text-xs font-semibold text-[#173B82]">Jabatan</label>
                     <div className="relative">
                       <User className="absolute left-3 top-3 text-slate-400" size={18} />
                       <input
@@ -333,13 +333,13 @@ export default function RegisterPage() {
                         onChange={handleChange}
                         placeholder="Masukkan jabatan"
                         required
-                        className="input-field h-11 w-full rounded-xl pl-10 pr-4 text-sm"
+                        className="input-field h-9 w-full rounded-xl pl-10 pr-4 text-sm"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">Password</label>
+                    <label className="mb-1 block text-xs font-semibold text-[#173B82]">Password</label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 text-slate-400" size={18} />
                       <input
@@ -349,13 +349,13 @@ export default function RegisterPage() {
                         onChange={handleChange}
                         placeholder="Min 8 karakter"
                         required
-                        className="input-field h-11 w-full rounded-xl pl-10 pr-4 text-sm"
+                        className="input-field h-9 w-full rounded-xl pl-10 pr-4 text-sm"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">Konfirmasi Password</label>
+                    <label className="mb-1 block text-xs font-semibold text-[#173B82]">Konfirmasi Password</label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 text-slate-400" size={18} />
                       <input
@@ -365,20 +365,20 @@ export default function RegisterPage() {
                         onChange={handleChange}
                         placeholder="Ulangi password"
                         required
-                        className="input-field h-11 w-full rounded-xl pl-10 pr-4 text-sm"
+                        className="input-field h-9 w-full rounded-xl pl-10 pr-4 text-sm"
                       />
                     </div>
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">Jenis Akun</label>
+                    <label className="mb-1 block text-xs font-semibold text-[#173B82]">Jenis Akun</label>
                     <div className="relative">
                       <select
                         name="account_type"
                         value={(JENIS_AKUN_OPTIONS.filter(o => o !== 'Lainnya') as string[]).includes(form.account_type) || form.account_type === '' ? form.account_type : 'Lainnya'}
                         onChange={handleChange}
                         required
-                        className="input-field h-11 w-full appearance-none rounded-xl px-4 pr-10 text-sm text-slate-600"
+                        className="input-field h-9 w-full appearance-none rounded-xl px-4 pr-10 text-sm text-slate-600"
                       >
                         <option value="" disabled>Pilih Kategori Mitra</option>
                         {JENIS_AKUN_OPTIONS.map((opt) => (
@@ -392,7 +392,7 @@ export default function RegisterPage() {
                         name="account_type"
                         value={form.account_type === 'Lainnya' ? '' : form.account_type}
                         onChange={(e) => setForm((prev) => ({ ...prev, account_type: e.target.value || 'Lainnya' }))}
-                        className="input-field mt-2 h-11 w-full rounded-xl px-4 text-sm text-slate-600"
+                        className="input-field mt-2 h-9 w-full rounded-xl px-4 text-sm text-slate-600"
                         placeholder="Ketik jenis akun..."
                         required
                       />
@@ -400,13 +400,13 @@ export default function RegisterPage() {
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className="mb-1.5 block text-sm font-semibold text-[#173B82]">Tingkat Perusahaan</label>
+                    <label className="mb-1 block text-xs font-semibold text-[#173B82]">Tingkat Perusahaan</label>
                     <div className="relative">
                       <select
                         name="tingkat_perusahaan"
                         value={form.tingkat_perusahaan}
                         onChange={handleChange}
-                        className="input-field h-11 w-full appearance-none rounded-xl px-4 pr-10 text-sm text-slate-600"
+                        className="input-field h-9 w-full appearance-none rounded-xl px-4 pr-10 text-sm text-slate-600"
                       >
                         <option value="">Pilih tingkat perusahaan</option>
                         {TINGKAT_PERUSAHAAN_OPTIONS.map((opt) => (
@@ -418,7 +418,7 @@ export default function RegisterPage() {
                   </div>
                 </div>
 
-                <label className="mt-4 inline-flex items-start gap-2 text-xs text-slate-600">
+                <label className="mt-2 inline-flex items-start gap-2 text-xs text-slate-600">
                   <input
                     type="checkbox"
                     checked={agreeTerms}
@@ -432,13 +432,13 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="btn-primary h-11 w-full rounded-xl font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-primary h-9 w-full rounded-xl font-semibold disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isLoading ? 'Memproses...' : 'Daftar Mitra'}
               </button>
             </form>
 
-            <div className="mt-5 text-center text-sm text-slate-600">
+            <div className="mt-2 text-center text-xs text-slate-600">
               Sudah punya akun?{' '}
               <button
                 type="button"
