@@ -274,7 +274,7 @@ function LoginPageContent() {
                     {loginMode === 'campus' ? 'Username Kampus' : 'Email'}
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-3 text-slate-400" size={18} />
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     {loginMode === 'campus' ? (
                       <input
                         type="text"
@@ -304,7 +304,7 @@ function LoginPageContent() {
                     Password
                   </label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-3 text-slate-400" size={18} />
+                    <Lock className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     {loginMode === 'campus' ? (
                       <input
                         type="password"
@@ -468,7 +468,7 @@ function LoginPageContent() {
                   <div>
                     <label className="mb-1.5 block text-sm font-semibold text-slate-700">Email Akun</label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-3 text-slate-400" size={16} />
+                      <Mail className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
                         type="email"
                         value={fpEmail}
@@ -549,7 +549,7 @@ function LoginPageContent() {
                   <div>
                     <label className="mb-1.5 block text-sm font-semibold text-slate-700">Password Baru</label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-3 text-slate-400" size={16} />
+                      <Lock className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
                         type="password"
                         value={fpPassword}
@@ -563,7 +563,7 @@ function LoginPageContent() {
                   <div>
                     <label className="mb-1.5 block text-sm font-semibold text-slate-700">Konfirmasi Password</label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-3 text-slate-400" size={16} />
+                      <Lock className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
                         type="password"
                         value={fpConfirm}
