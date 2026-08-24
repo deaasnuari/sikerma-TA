@@ -1053,7 +1053,6 @@ export default function AdminAjukanKerjasamaForm({
                               setSelectedMitraId(m.id);
                               handleChange('namaMitra', m.nama_mitra);
                               handleChange('jenisMitra', m.kategori_mitra || '');
-                              handleChange('bidangUsaha', m.bidang_usaha || '');
                               handleChange('tingkatPerusahaan', m.tingkat_perusahaan || '');
                               setMitraOpen(false);
                               setMitraSearch('');
