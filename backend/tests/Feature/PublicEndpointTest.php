@@ -43,8 +43,10 @@ class PublicEndpointTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonCount(1, 'data');
-        $this->assertEquals('Teknik Informatika', $response->json('data.0'));
+            ->assertJsonCount(1, 'data.jurusan');
+        $this->assertEquals('Teknik Informatika', $response->json('data.jurusan.0'));
+        $this->assertCount(0, $response->json('data.prodi'));
+        $this->assertCount(0, $response->json('data.unit'));
     }
 
     public function test_public_unit_prodi_hanya_tampilkan_yang_aktif(): void
@@ -64,7 +66,21 @@ class PublicEndpointTest extends TestCase
 
         $response = $this->getJson('/api/public/unit-prodi');
 
-        $response->assertOk()->assertJsonCount(1, 'data');
+        $response->assertOk()->assertJsonCount(1, 'data.jurusan');
+    }
+
+    public function test_public_unit_prodi_dipisah_per_kategori(): void
+    {
+        MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'Jurusan Teknik Informatika', 'aktif' => true]);
+        MasterUnitProdi::create(['jenis_node' => 'prodi', 'nama' => 'D4 Teknik Informatika', 'aktif' => true]);
+        MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'Bagian Kerjasama', 'aktif' => true]);
+
+        $response = $this->getJson('/api/public/unit-prodi');
+
+        $response->assertOk();
+        $this->assertEquals(['Jurusan Teknik Informatika'], $response->json('data.jurusan'));
+        $this->assertEquals(['D4 Teknik Informatika'], $response->json('data.prodi'));
+        $this->assertEquals(['Bagian Kerjasama'], $response->json('data.unit'));
     }
 
     // ------------------------------------------------------------------
@@ -141,6 +157,23 @@ class PublicEndpointTest extends TestCase
         $response->assertOk();
         $this->assertEquals(0, $response->json('data.total'));
         $this->assertEquals(0, $response->json('data.luar_negeri'));
+    }
+
+    public function test_mitra_stats_dapat_diakses_tanpa_auth(): void
+    {
+        // Dipakai landing page publik juga (bukan cuma dashboard admin),
+        // jadi harus bisa diakses tanpa login.
+        $response = $this->getJson('/api/dokumen-kerjasama/stats/mitra');
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure([
+                'data' => [
+                    'total', 'dalam_negeri', 'luar_negeri',
+                    'dudi_nasional', 'dudi_internasional',
+                    'instansi_nasional', 'instansi_internasional',
+                ],
+            ]);
     }
 
     public function test_public_stats_menghitung_luar_negeri_dengan_benar(): void

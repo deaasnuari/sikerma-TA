@@ -443,4 +443,152 @@ class DokumenKerjasamaTest extends TestCase
         $this->actingAs($penyusup)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")
             ->assertForbidden();
     }
+
+    public function test_mitra_stats_menghitung_mitra_unik_bukan_jumlah_dokumen(): void
+    {
+        $admin = $this->admin();
+
+        // 1 mitra Indonesia non-DUDI (Instansi Dalam Negeri) dengan 3 dokumen berbeda —
+        // harus tetap dihitung 1 kali walau dokumennya banyak.
+        $mitraInstansi = MasterMitra::create([
+            'nama_mitra'     => 'Universitas Test',
+            'kategori_mitra' => 'Perguruan Tinggi',
+            'negara'         => 'Indonesia',
+            'aktif'          => true,
+        ]);
+        $this->buatDokumen(['nomor_dokumen' => 'STAT-001', 'mitra_id' => $mitraInstansi->id]);
+        $this->buatDokumen(['nomor_dokumen' => 'STAT-002', 'mitra_id' => $mitraInstansi->id]);
+        $this->buatDokumen(['nomor_dokumen' => 'STAT-003', 'mitra_id' => $mitraInstansi->id]);
+
+        // 1 mitra DUDI luar negeri dengan 2 dokumen — kategori pakai label baru
+        // "dudi luar negeri" & negara huruf kapital, untuk pastikan pencocokan
+        // tidak hanya cocok ke label lama "Industri"/"Perusahaan".
+        $mitraDudiLuar = MasterMitra::create([
+            'nama_mitra'     => 'Global Industri Corp',
+            'kategori_mitra' => 'dudi luar negeri',
+            'negara'         => 'JAPAN',
+            'aktif'          => true,
+        ]);
+        $this->buatDokumen(['nomor_dokumen' => 'STAT-004', 'mitra_id' => $mitraDudiLuar->id]);
+        $this->buatDokumen(['nomor_dokumen' => 'STAT-005', 'mitra_id' => $mitraDudiLuar->id]);
+
+        // 1 mitra DUDI dalam negeri TANPA dokumen kerjasama sama sekali —
+        // tetap harus ikut dihitung karena sumbernya Data Kemitraan, bukan dokumen.
+        MasterMitra::create([
+            'nama_mitra'     => 'PT Belum Ada Dokumen',
+            'kategori_mitra' => 'Swasta/Dunia Usaha dan Dunia Industri (DUDI)',
+            'negara'         => 'indonesia',
+            'aktif'          => true,
+        ]);
+
+        $response = $this->actingAs($admin)->getJson('/api/dokumen-kerjasama/stats/mitra');
+
+        $response->assertOk()->assertJsonPath('success', true);
+
+        // Total mitra = 3 (sama dengan jumlah baris di Data Kemitraan), walaupun total dokumen = 5.
+        $this->assertEquals(3, $response->json('data.total'));
+        $this->assertEquals(1, $response->json('data.instansi_nasional'));
+        $this->assertEquals(0, $response->json('data.instansi_internasional'));
+        $this->assertEquals(1, $response->json('data.dudi_nasional'));
+        $this->assertEquals(1, $response->json('data.dudi_internasional'));
+        $this->assertEquals(2, $response->json('data.dalam_negeri'));
+        $this->assertEquals(1, $response->json('data.luar_negeri'));
+    }
+
+    public function test_mitra_stats_menghitung_apa_adanya_termasuk_nama_mitra_yang_duplikat(): void
+    {
+        // Data Kemitraan (frontend) sengaja TIDAK menggabungkan baris yang nama
+        // mitranya sama — mitra yang terinput dobel tetap tampil sebagai baris
+        // terpisah supaya admin bisa hapus manual satu-satu. Statistik harus
+        // ikut hitung apa adanya (tidak dedup nama), supaya totalnya selalu
+        // sama persis dengan jumlah baris yang tampil di Data Kemitraan.
+        $admin = $this->admin();
+
+        MasterMitra::create([
+            'nama_mitra'     => 'PT Feen Marine',
+            'kategori_mitra' => 'Perguruan Tinggi',
+            'negara'         => 'Indonesia',
+            'aktif'          => true,
+        ]);
+        MasterMitra::create([
+            'nama_mitra'     => '  pt feen marine  ', // sama, cuma beda kapitalisasi & ada spasi
+            'kategori_mitra' => 'Perguruan Tinggi',
+            'negara'         => 'Indonesia',
+            'aktif'          => true,
+        ]);
+        MasterMitra::create([
+            'nama_mitra'     => 'PT Lain Sendirian',
+            'kategori_mitra' => 'Perguruan Tinggi',
+            'negara'         => 'Indonesia',
+            'aktif'          => true,
+        ]);
+
+        $response = $this->actingAs($admin)->getJson('/api/dokumen-kerjasama/stats/mitra');
+
+        $response->assertOk();
+        // 3 baris di master_mitra -> total statistik juga 3, sama persis
+        // (nama yang kebetulan sama TIDAK digabung).
+        $this->assertEquals(3, $response->json('data.total'));
+        $this->assertEquals(3, $response->json('data.instansi_nasional'));
+    }
+
+    public function test_mitra_stats_ikut_turun_saat_mitra_dihapus_dari_data_kemitraan(): void
+    {
+        $admin = $this->admin();
+
+        $mitra = MasterMitra::create([
+            'nama_mitra'     => 'PT Akan Dihapus',
+            'kategori_mitra' => 'Perguruan Tinggi',
+            'negara'         => 'Indonesia',
+            'aktif'          => true,
+        ]);
+
+        $before = $this->actingAs($admin)->getJson('/api/dokumen-kerjasama/stats/mitra')->json('data.total');
+
+        $mitra->delete();
+
+        $after = $this->actingAs($admin)->getJson('/api/dokumen-kerjasama/stats/mitra')->json('data.total');
+
+        $this->assertEquals($before - 1, $after);
+    }
+
+    public function test_mitra_stats_dalam_luar_negeri_ikut_tingkat_perusahaan_bukan_negara(): void
+    {
+        // "Dalam Negeri"/"Luar Negeri" harus ikut kartu "Nasional/Lokal" &
+        // "Internasional/Multinasional" di Data Kemitraan (field
+        // tingkat_perusahaan), BUKAN field negara — keduanya bisa beda:
+        // mitra berkantor di Indonesia tapi berskala Internasional tetap
+        // dihitung "Luar Negeri" di sini.
+        $admin = $this->admin();
+
+        MasterMitra::create([
+            'nama_mitra'         => 'PT Skala Internasional Tapi Di Indonesia',
+            'kategori_mitra'     => 'Perguruan Tinggi',
+            'negara'             => 'Indonesia',
+            'tingkat_perusahaan' => 'Internasional',
+            'aktif'              => true,
+        ]);
+        MasterMitra::create([
+            'nama_mitra'         => 'PT Skala Nasional',
+            'kategori_mitra'     => 'Perguruan Tinggi',
+            'negara'             => 'Indonesia',
+            'tingkat_perusahaan' => 'Nasional',
+            'aktif'              => true,
+        ]);
+        MasterMitra::create([
+            'nama_mitra'         => 'PT Belum Diisi Tingkatnya',
+            'kategori_mitra'     => 'Perguruan Tinggi',
+            'negara'             => 'Jepang', // tingkat_perusahaan null -> fallback ke negara
+            'aktif'              => true,
+        ]);
+
+        $response = $this->actingAs($admin)->getJson('/api/dokumen-kerjasama/stats/mitra');
+
+        $response->assertOk();
+        $this->assertEquals(3, $response->json('data.total'));
+        // Luar Negeri = 2: yang tingkat "Internasional" (walau negara Indonesia)
+        // + yang fallback ke negara (Jepang).
+        $this->assertEquals(2, $response->json('data.luar_negeri'));
+        $this->assertEquals(1, $response->json('data.dalam_negeri'));
+    }
 }

@@ -26,8 +26,8 @@ import {
   getQuickActions,
   markNotificationAsRead,
 } from '@/services/adminService';
-import { getMasterMitra } from '@/services/masterMitraService';
-import { fetchMonitoringDataFromApi, getMonitoringStats } from '@/services/adminMonitoringService';
+import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
+import { getRekapStats } from '@/services/adminRekapDataService';
 import { refreshPengajuanDataFromApi } from '@/services/adminPengajuanService';
 import { apiRequest } from '@/lib/api';
 import type { AdminNotification } from '@/types/admin';
@@ -134,68 +134,30 @@ export default function AdminDashboard() {
   useEffect(() => {
     let mounted = true;
 
-    const loadMitraDistribution = async () => {
-      try {
-        const mitraRows = await getMasterMitra();
-
-        if (!mounted) {
-          return;
-        }
-
-        const domesticCount = mitraRows.filter((item) => (item.negara || '').trim().toLowerCase() === 'indonesia').length;
-        const foreignCount = Math.max(mitraRows.length - domesticCount, 0);
-        const totalMitra = mitraRows.length;
-
-        setDashboardStats((prev) =>
-          prev.map((stat) => {
-            if (stat.label === 'Dalam Negeri') {
-              return { ...stat, value: String(domesticCount) };
-            }
-
-            if (stat.label === 'Luar Negeri') {
-              return { ...stat, value: String(foreignCount) };
-            }
-
-            if (stat.label === 'Total Mitra') {
-              return { ...stat, value: String(totalMitra) };
-            }
-
-            return stat;
-          })
-        );
-      } catch {
-        // Fallback ke nilai default dashboard bila API belum tersedia.
-      }
-    };
-
-    loadMitraDistribution();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
     const loadKerjasamaStats = async () => {
       try {
-        const [, monitoringItems] = await Promise.all([
+        // Pakai sumber & status yang sama dengan halaman Rekap Data (status_siklus
+        // dari database), BUKAN status_kerjasama.status milik halaman monitoring
+        // yang dihitung ulang dari tanggal_berakhir — supaya "Total Kerjasama
+        // Aktif/Tidak Aktif" di sini selalu sama dengan kartu "Aktif"/"Kadaluarsa"
+        // di Rekap Data. forceRefresh: true supaya tidak kena cache 60 detik
+        // milik fetchRekapDokumenFromApi — kalau baru saja ada dokumen dihapus
+        // di Rekap Data, dashboard harus langsung baca angka terbaru juga.
+        const [, rekapItems] = await Promise.all([
           refreshPengajuanDataFromApi(),
-          fetchMonitoringDataFromApi(),
+          fetchRekapDokumenFromApi({ forceRefresh: true }),
         ]);
 
         if (!mounted) return;
 
-        // Total Kerjasama Aktif & Tidak Aktif dari monitoring
-        const monStats = getMonitoringStats(monitoringItems);
+        const rekapStats = getRekapStats(rekapItems);
         setDashboardStats((prev) =>
           prev.map((stat) => {
             if (stat.label === 'Total Kerjasama Aktif') {
-              return { ...stat, value: String(monStats.totalAktif + monStats.totalAkanBerakhir) };
+              return { ...stat, value: String(rekapStats.totalAktif + rekapStats.totalAkanBerakhir) };
             }
             if (stat.label === 'Total Kerjasama Tidak Aktif') {
-              return { ...stat, value: String(monStats.totalKadaluarsa) };
+              return { ...stat, value: String(rekapStats.totalKadaluarsa) };
             }
             return stat;
           })
@@ -213,16 +175,40 @@ export default function AdminDashboard() {
     };
   }, []);
 
-  // Statistik Kerjasama — pakai endpoint publik yang sama dengan landing page,
-  // supaya angka & tampilannya sama persis.
+  // Statistik "Jenis Mitra & Wilayah" — beda dari endpoint publik landing page.
+  // Endpoint ini baca langsung dari Data Kemitraan (master_mitra), apa adanya
+  // (tidak dedup nama) — dipakai juga untuk kartu "Dalam Negeri"/"Luar
+  // Negeri"/"Total Mitra" di atas supaya semua kartu konsisten & ikut turun
+  // begitu ada mitra yang dihapus di Data Kemitraan.
   useEffect(() => {
     let mounted = true;
 
     type KerjasamaRow = { id: number; nama: string; bidang: string; jenis: string; unit: string; wilayah: string };
 
-    apiRequest<{ success: boolean; data: typeof publicStats }>('/public/stats')
+    apiRequest<{ success: boolean; data: typeof publicStats }>('/dokumen-kerjasama/stats/mitra')
       .then((res) => {
-        if (mounted && res.data) setPublicStats(res.data);
+        if (!mounted || !res.data) return;
+
+        setPublicStats(res.data);
+
+        const { total: totalMitra, dalam_negeri: domesticCount, luar_negeri: foreignCount } = res.data;
+        setDashboardStats((prev) =>
+          prev.map((stat) => {
+            if (stat.label === 'Dalam Negeri') {
+              return { ...stat, value: String(domesticCount) };
+            }
+
+            if (stat.label === 'Luar Negeri') {
+              return { ...stat, value: String(foreignCount) };
+            }
+
+            if (stat.label === 'Total Mitra') {
+              return { ...stat, value: String(totalMitra) };
+            }
+
+            return stat;
+          })
+        );
       })
       .catch(() => {});
 

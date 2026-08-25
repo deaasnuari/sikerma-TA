@@ -455,6 +455,120 @@ class DokumenKerjasamaController extends Controller
         ]);
     }
 
+    /**
+     * Statistik "Jenis Mitra" & "Wilayah" untuk Dashboard Admin.
+     *
+     * Beda dari publicStats() yang menghitung jumlah dokumen kerjasama,
+     * di sini SEMUA mitra di Data Kemitraan (master_mitra) dihitung apa
+     * adanya — tidak peduli mitra itu sudah punya dokumen/pengajuan
+     * kerjasama atau belum, dan tidak dobel-hitung walau 1 mitra punya
+     * banyak dokumen/pengajuan.
+     *
+     * Data Kemitraan (halaman admin/master_mitra) sengaja TIDAK menggabungkan
+     * baris yang nama mitranya kebetulan sama — mitra yang terinput dobel
+     * tetap tampil sebagai baris terpisah supaya admin bisa hapus manual
+     * satu-satu. Statistik ini ikut prinsip yang sama: dihitung apa adanya
+     * per baris di master_mitra, tanpa dedup nama, supaya total di sini
+     * selalu sama persis dengan jumlah baris yang tampil di Data Kemitraan.
+     * Kalau sebuah mitra dihapus di Data Kemitraan, angka di sini otomatis
+     * ikut turun karena query di bawah selalu baca langsung dari tabel
+     * (tidak ada cache).
+     *
+     * "Dalam Negeri" / "Luar Negeri" di sini ikut kartu "Nasional/Lokal" &
+     * "Internasional/Multinasional" di Data Kemitraan — dihitung dari
+     * `tingkat_perusahaan` (skala bisnis), BUKAN `negara` (lokasi negara).
+     * Keduanya bisa beda: mitra yang berkantor di Indonesia tapi berskala
+     * "Internasional" tetap dihitung "Luar Negeri" di sini, karena itu juga
+     * cara Data Kemitraan menghitungnya. `negara` cuma dipakai sebagai
+     * fallback kalau `tingkat_perusahaan` kosong (mitra baru yang belum
+     * diisi tingkatnya) — sama seperti fallback di admin/master_mitra/page.tsx.
+     */
+    public function mitraStats(): Response
+    {
+        // kategori_mitra di data nyata bercampur antara label lama
+        // ("Swasta/Dunia Usaha dan Dunia Industri (DUDI)") dan label baru
+        // ("dudi dalam negeri" / "dudi luar negeri"), jadi deteksi DUDI
+        // memakai kata kunci "dudi" selain "industri"/"perusahaan".
+        $isDudiKategori = function (?string $kategori) {
+            $kategori = mb_strtolower((string) $kategori);
+
+            return str_contains($kategori, 'dudi')
+                || str_contains($kategori, 'industri')
+                || str_contains($kategori, 'perusahaan');
+        };
+
+        $isLuarNegeri = function (?string $tingkatPerusahaan, ?string $negara) {
+            $tingkat = trim((string) $tingkatPerusahaan);
+            if ($tingkat === 'Internasional' || $tingkat === 'Multinasional') {
+                return true;
+            }
+            if ($tingkat === 'Nasional' || $tingkat === 'Lokal') {
+                return false;
+            }
+
+            // tingkat_perusahaan belum diisi -> fallback ke negara (casing di
+            // data nyata bercampur "Indonesia"/"INDONESIA"/"indonesia", dan
+            // kosong/null dianggap dalam negeri).
+            $negara = mb_strtolower(trim((string) $negara));
+
+            return $negara !== '' && $negara !== 'indonesia';
+        };
+
+        $total = 0;
+        $luarNegeri = 0;
+        $dudiNasional = 0;
+        $dudiInternasional = 0;
+        $instansiNasional = 0;
+        $instansiInternasional = 0;
+
+        DB::table('master_mitra')
+            ->select('id', 'kategori_mitra', 'negara', 'tingkat_perusahaan')
+            ->orderBy('id')
+            ->each(function ($row) use (
+                $isDudiKategori,
+                $isLuarNegeri,
+                &$total,
+                &$luarNegeri,
+                &$dudiNasional,
+                &$dudiInternasional,
+                &$instansiNasional,
+                &$instansiInternasional
+            ) {
+                $total++;
+
+                $luar = $isLuarNegeri($row->tingkat_perusahaan, $row->negara);
+                $dudi = $isDudiKategori($row->kategori_mitra);
+
+                if ($luar) {
+                    $luarNegeri++;
+                }
+
+                if ($dudi && $luar) {
+                    $dudiInternasional++;
+                } elseif ($dudi) {
+                    $dudiNasional++;
+                } elseif ($luar) {
+                    $instansiInternasional++;
+                } else {
+                    $instansiNasional++;
+                }
+            });
+
+        return response([
+            'success' => true,
+            'data'    => [
+                'total'                  => $total,
+                'dalam_negeri'           => $total - $luarNegeri,
+                'luar_negeri'            => $luarNegeri,
+                'dudi_nasional'          => $dudiNasional,
+                'dudi_internasional'     => $dudiInternasional,
+                'instansi_nasional'      => $instansiNasional,
+                'instansi_internasional' => $instansiInternasional,
+            ],
+            'message' => 'Mitra stats (mitra dari Data Kemitraan) retrieved successfully',
+        ]);
+    }
+
     public function publicIndex(Request $request): Response
     {
         $perPage = min(max((int) $request->integer('per_page', 1000), 1), 1000);

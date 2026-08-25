@@ -371,10 +371,15 @@ export default function MasterMitraPage() {
   };
 
   const groupedRows = useMemo<GroupedMitraRow[]>(() => {
+    // Sengaja TIDAK digabung berdasarkan nama_mitra lagi — mitra dengan nama
+    // sama yang kebetulan terinput dobel di database harus tetap tampil
+    // sebagai baris terpisah (kunci per id, bukan per nama), supaya admin
+    // bisa lihat & hapus manual satu-satu dari sini. Total yang tampil di
+    // sini jadi sama persis dengan jumlah baris di tabel master_mitra.
     const groups = new Map<string, MasterMitra[]>();
 
     for (const item of rows) {
-      const key = item.nama_mitra.trim().toLowerCase();
+      const key = String(item.id);
       if (!groups.has(key)) {
         groups.set(key, []);
       }
@@ -462,11 +467,25 @@ export default function MasterMitraPage() {
   const paginatedRows = filteredRows.slice(pageStartIndex, pageStartIndex + itemsPerPage);
   const pageNumbers = getPageNumbers(safePage, totalPages);
 
+  // `tingkat_perusahaan` (Lokal/Nasional/Internasional/Multinasional) belum
+  // pernah diisi untuk sebagian besar mitra lama (kolomnya baru ditambahkan
+  // belakangan) — kalau kosong, tebak dari `negara` saja (sama seperti kartu
+  // "Dalam Negeri"/"Luar Negeri" di dashboard), supaya Nasional/Lokal +
+  // Internasional/Multinasional selalu pas dengan Total Mitra.
+  const isNasionalAtauLokal = (item: GroupedMitraRow): boolean => {
+    const tingkat = (item.primary.tingkat_perusahaan || '').trim();
+    if (tingkat === 'Nasional' || tingkat === 'Lokal') return true;
+    if (tingkat === 'Internasional' || tingkat === 'Multinasional') return false;
+
+    const negara = (item.primary.negara || '').trim().toLowerCase();
+    return negara === '' || negara === 'indonesia';
+  };
+
   const summary = {
     total: groupedRows.length,
     aktif: groupedRows.filter((item) => item.aktif).length,
-    nasional: groupedRows.filter((item) => item.primary.tingkat_perusahaan === 'Nasional' || item.primary.tingkat_perusahaan === 'Lokal').length,
-    internasional: groupedRows.filter((item) => item.primary.tingkat_perusahaan === 'Internasional' || item.primary.tingkat_perusahaan === 'Multinasional').length,
+    nasional: groupedRows.filter(isNasionalAtauLokal).length,
+    internasional: groupedRows.filter((item) => !isNasionalAtauLokal(item)).length,
   };
 
   return (

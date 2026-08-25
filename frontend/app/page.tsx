@@ -68,8 +68,14 @@ export default function Home() {
   const [isLoadingTable, setIsLoadingTable] = useState(true);
   const [perPage, setPerPage] = useState(10);
 
-  // Daftar unit untuk dropdown — diambil dari master unit di database
-  const [unitOptions, setUnitOptions] = useState<string[]>(['Semua Unit']);
+  // Daftar unit untuk dropdown — diambil dari master unit di database,
+  // dipisah per kategori (Jurusan / Program Studi / Unit Kerja) supaya
+  // tidak tercampur jadi 1 list rata.
+  const [unitGroups, setUnitGroups] = useState<{ jurusan: string[]; prodi: string[]; unit: string[] }>({
+    jurusan: [],
+    prodi: [],
+    unit: [],
+  });
 
   // Stat cards — diambil dari database
   const [stats, setStats] = useState({
@@ -118,19 +124,20 @@ export default function Home() {
     };
   }, []);
 
-  // Fetch semua unit dari master database untuk mengisi dropdown "Semua Unit"
+  // Fetch semua unit dari master database untuk mengisi dropdown "Semua Unit",
+  // sudah dipisah per kategori dari backend (jurusan/prodi/unit).
   useEffect(() => {
     let mounted = true;
 
-    apiRequest<{ success: boolean; data: string[] }>('/public/unit-prodi')
+    apiRequest<{ success: boolean; data: { jurusan: string[]; prodi: string[]; unit: string[] } }>('/public/unit-prodi')
       .then((res) => {
-        if (!mounted) return;
-        console.log('[UnitDropdown] API response:', res);
-        const names: string[] = Array.isArray(res.data) ? res.data : [];
-        console.log('[UnitDropdown] Unit count:', names.length, '| Units:', names);
-        if (names.length > 0) {
-          setUnitOptions(['Semua Unit', ...names]);
-        }
+        if (!mounted || !res.data) return;
+
+        setUnitGroups({
+          jurusan: Array.isArray(res.data.jurusan) ? res.data.jurusan : [],
+          prodi: Array.isArray(res.data.prodi) ? res.data.prodi : [],
+          unit: Array.isArray(res.data.unit) ? res.data.unit : [],
+        });
       })
       .catch((err: unknown) => {
         console.error('[UnitDropdown] Gagal memuat unit dari database:', err);
@@ -141,9 +148,12 @@ export default function Home() {
     };
   }, []);
 
+  // Statistik "Jenis Mitra & Wilayah" — sumbernya sama dengan Data Kemitraan
+  // & Dashboard Admin (mitra unik dari master_mitra, bukan jumlah dokumen),
+  // supaya angka yang tampil ke publik selalu konsisten dengan data internal.
   useEffect(() => {
     let mounted = true;
-    apiRequest<{ success: boolean; data: { total: number; dalam_negeri: number; luar_negeri: number; dudi_nasional: number; dudi_internasional: number; instansi_nasional: number; instansi_internasional: number } }>('/public/stats')
+    apiRequest<{ success: boolean; data: { total: number; dalam_negeri: number; luar_negeri: number; dudi_nasional: number; dudi_internasional: number; instansi_nasional: number; instansi_internasional: number } }>('/dokumen-kerjasama/stats/mitra')
       .then((res) => {
         if (mounted && res.data) setStats(res.data);
       })
@@ -403,7 +413,7 @@ export default function Home() {
       <section className="relative -mt-6 px-6 pb-3 md:pb-4">
         <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-3">
           {[
-            { label: 'Total Kerjasama', value: stats.total, sub: 'Seluruh dokumen aktif', color: '#173B82', bg: 'from-blue-600 to-blue-800', icon: <DocEditIcon className="h-9 w-9" /> },
+            { label: 'Total Mitra', value: stats.total, sub: 'Seluruh mitra terdaftar', color: '#173B82', bg: 'from-blue-600 to-blue-800', icon: <DocEditIcon className="h-9 w-9" /> },
             { label: 'Dalam Negeri',    value: stats.dalam_negeri, sub: `${Math.round((stats.dalam_negeri / (stats.total || 1)) * 100)}% dari total`, color: '#0e7490', bg: 'from-cyan-600 to-cyan-800', icon: <DocIcon className="h-9 w-9" /> },
             { label: 'Luar Negeri',     value: stats.luar_negeri,  sub: `${Math.round((stats.luar_negeri  / (stats.total || 1)) * 100)}% dari total`, color: '#b45309', bg: 'from-amber-500 to-amber-700', icon: <DocIcon className="h-9 w-9" /> },
           ].map((card) => (
@@ -610,15 +620,34 @@ export default function Home() {
                 <option>IA</option>
               </select>
 
-              {/* Unit */}
+              {/* Unit — dipisah per kategori: Jurusan / Program Studi / Unit Kerja */}
               <select
                 value={selectedUnit}
                 onChange={(e) => { setSelectedUnit(e.target.value); setCurrentPage(1); }}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11.5px] text-slate-700 shadow-sm outline-none focus:border-blue-400"
               >
-                {unitOptions.map((unit) => (
-                  <option key={unit} value={unit}>{unit}</option>
-                ))}
+                <option>Semua Unit</option>
+                {unitGroups.jurusan.length > 0 && (
+                  <optgroup label="Jurusan">
+                    {unitGroups.jurusan.map((unit) => (
+                      <option key={unit} value={unit}>{unit}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {unitGroups.prodi.length > 0 && (
+                  <optgroup label="Program Studi">
+                    {unitGroups.prodi.map((unit) => (
+                      <option key={unit} value={unit}>{unit}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {unitGroups.unit.length > 0 && (
+                  <optgroup label="Unit Kerja">
+                    {unitGroups.unit.map((unit) => (
+                      <option key={unit} value={unit}>{unit}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
 
               <div className="ml-auto flex items-center gap-2 text-[11.5px] text-slate-500">

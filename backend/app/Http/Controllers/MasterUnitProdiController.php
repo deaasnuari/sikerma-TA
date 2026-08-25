@@ -39,18 +39,31 @@ class MasterUnitProdiController extends Controller
     /**
      * Lightweight unit name list for the public landing page dropdown.
      * Returns only active unit/prodi names — no auth, no heavy relationships.
+     *
+     * Dipisah per kategori (jurusan / prodi / unit kerja) supaya dropdown di
+     * landing page bisa tampil sebagai grup terpisah, bukan 1 list rata yang
+     * mencampur ketiganya.
      */
     public function publicUnits(): Response
     {
-        $names = MasterUnitProdi::where('aktif', true)
+        $rows = MasterUnitProdi::where('aktif', true)
             ->orderBy('nama')
-            ->pluck('nama')
-            ->unique()
-            ->values();
+            ->get(['nama', 'jenis_node', 'kategori_unit']);
+
+        $jurusan = $rows->where('jenis_node', 'unit')->where('kategori_unit', 'jurusan')
+            ->pluck('nama')->unique()->values();
+        $prodi = $rows->where('jenis_node', 'prodi')
+            ->pluck('nama')->unique()->values();
+        $unit = $rows->where('jenis_node', 'unit')->where('kategori_unit', '!=', 'jurusan')
+            ->pluck('nama')->unique()->values();
 
         return response([
             'success' => true,
-            'data'    => $names,
+            'data'    => [
+                'jurusan' => $jurusan,
+                'prodi'   => $prodi,
+                'unit'    => $unit,
+            ],
             'message' => 'Unit list retrieved successfully',
         ]);
     }

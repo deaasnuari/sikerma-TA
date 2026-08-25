@@ -78,6 +78,9 @@ Route::get('/carousel-images', [CarouselImageController::class, 'index']);
 Route::get('/public/unit-prodi', [MasterUnitProdiController::class, 'publicUnits']);
 Route::get('/public/kerjasama', [DokumenKerjasamaController::class, 'publicIndex']);
 Route::get('/public/stats', [DokumenKerjasamaController::class, 'publicStats']);
+// Publik juga (dipakai landing page & dashboard admin) — datanya sudah sama kelasnya
+// dengan /public/kerjasama & /public/stats (nama/kategori mitra memang publik).
+Route::get('/dokumen-kerjasama/stats/mitra', [DokumenKerjasamaController::class, 'mitraStats']);
 Route::post('/admin/carousel-images', [CarouselImageController::class, 'store']);
 Route::patch('/admin/carousel-images/{carouselImage}', [CarouselImageController::class, 'update']);
 Route::delete('/admin/carousel-images/{carouselImage}', [CarouselImageController::class, 'destroy']);

@@ -730,6 +730,58 @@ Artisan::command('legacy:backfill-relasi-from-sikerma', function () {
     $this->line('- pengajuan.nama_pengusul terupdate: ' . $updatedNamaPengusul);
 })->purpose('Backfill relasi pengajuan (mitra/unit) dari database source Sikerma');
 
+Artisan::command('master-mitra:bersihkan-whitespace-nama {--apply : Terapkan perubahan ke database (default hanya preview/dry-run)}', function () {
+    // Sebagian nama_mitra di data lama diawali/diakhiri karakter whitespace
+    // tidak standar (non-breaking space U+00A0, tab, dsb) — bukan spasi biasa.
+    // JS `.trim()` di halaman Data Kemitraan (frontend) membuang karakter itu
+    // saat menggabungkan baris bernama sama, tapi baris di database tetap
+    // menyimpan karakter itu apa adanya. Command ini merapikan nama_mitra
+    // supaya konsisten, tanpa mengubah/menghapus baris (tidak menggabungkan
+    // baris yang memang benar-benar terinput dobel).
+    $apply = (bool) $this->option('apply');
+
+    $normalize = static function (?string $nama): string {
+        $nama = (string) $nama;
+        $nama = preg_replace('/[\x{00A0}\x{FEFF}\t\n\r]+/u', ' ', $nama) ?? $nama;
+
+        return trim($nama);
+    };
+
+    $changes = [];
+    foreach (DB::table('master_mitra')->select('id', 'nama_mitra')->orderBy('id')->get() as $row) {
+        $clean = $normalize($row->nama_mitra);
+        if ($clean !== '' && $clean !== $row->nama_mitra) {
+            $changes[] = ['id' => $row->id, 'before' => $row->nama_mitra, 'after' => $clean];
+        }
+    }
+
+    if (empty($changes)) {
+        $this->info('Tidak ada nama_mitra yang perlu dibersihkan.');
+        return;
+    }
+
+    $this->info(count($changes) . ' nama_mitra mengandung whitespace tidak standar:');
+    foreach ($changes as $c) {
+        $this->line(sprintf('  #%d: [%s] -> "%s"', $c['id'], bin2hex($c['before']), $c['after']));
+    }
+
+    if (!$apply) {
+        $this->warn('Ini baru preview (dry-run). Jalankan ulang dengan --apply untuk benar-benar mengubah data.');
+        return;
+    }
+
+    DB::transaction(function () use ($changes) {
+        foreach ($changes as $c) {
+            DB::table('master_mitra')->where('id', $c['id'])->update([
+                'nama_mitra' => $c['after'],
+                'updated_at' => now(),
+            ]);
+        }
+    });
+
+    $this->info(count($changes) . ' nama_mitra berhasil dibersihkan.');
+})->purpose('Bersihkan whitespace tidak standar (non-breaking space/tab) di nama_mitra');
+
 Artisan::command('legacy:audit-simplified', function () {
     $requiredTables = ['pengajuan', 'pengajuan_log', 'dokumen_kerjasama', 'dokumen_file', 'dokumen_log'];
     foreach ($requiredTables as $table) {

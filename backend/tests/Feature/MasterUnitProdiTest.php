@@ -64,7 +64,7 @@ class MasterUnitProdiTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonCount(2, 'data');
+            ->assertJsonCount(2, 'data.jurusan');
     }
 
     public function test_public_units_hanya_yang_aktif(): void
@@ -79,8 +79,22 @@ class MasterUnitProdiTest extends TestCase
 
         $response = $this->getJson('/api/public/unit-prodi');
 
-        $response->assertOk()->assertJsonCount(1, 'data');
-        $this->assertEquals('Aktif', $response->json('data.0'));
+        $response->assertOk()->assertJsonCount(1, 'data.jurusan');
+        $this->assertEquals('Aktif', $response->json('data.jurusan.0'));
+    }
+
+    public function test_public_units_dipisah_per_kategori(): void
+    {
+        $jurusan = $this->buatJurusan('Teknik Informatika');
+        $this->buatProdi($jurusan->id, 'D3 Teknik Informatika');
+        $this->buatUnitKerja('P3M');
+
+        $response = $this->getJson('/api/public/unit-prodi');
+
+        $response->assertOk();
+        $this->assertEquals(['Teknik Informatika'], $response->json('data.jurusan'));
+        $this->assertEquals(['D3 Teknik Informatika'], $response->json('data.prodi'));
+        $this->assertEquals(['P3M'], $response->json('data.unit'));
     }
 
     // ------------------------------------------------------------------
