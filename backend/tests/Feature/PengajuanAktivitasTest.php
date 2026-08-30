@@ -338,4 +338,54 @@ class PengajuanAktivitasTest extends TestCase
 
         $this->assertDatabaseHas('pengajuan_aktivitas', ['id' => $aktivitas->id]);
     }
+
+    // ------------------------------------------------------------------
+    // structural access (Ketua Jurusan/Ketua Prodi/Kepala Unit) — cerminan dari
+    // test yang sama di PengajuanTest, supaya "Story & Aktivitas" (endpoint ini)
+    // konsisten dengan Data Pengajuan.
+    // ------------------------------------------------------------------
+
+    private function mockCivitasStruktur(array $jurusan = [], array $prodi = [], array $unit = []): void
+    {
+        $this->mock(\App\Services\CivitasStructureService::class, function ($mock) use ($jurusan, $prodi, $unit) {
+            $mock->shouldReceive('getJurusan')->andReturn($jurusan);
+            $mock->shouldReceive('getProgramStudi')->andReturn($prodi);
+            $mock->shouldReceive('getUnit')->andReturn($unit);
+        });
+    }
+
+    public function test_kepala_unit_melihat_aktivitas_dari_pengajuan_dalam_unitnya(): void
+    {
+        $upaTik = \App\Models\MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA TIK', 'aktif' => true]);
+        $unitLain = \App\Models\MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA Perpustakaan', 'aktif' => true]);
+
+        $kepalaUnit = $this->user();
+        $kepalaUnit->update(['name' => 'Agus Prasetyo']);
+        $pemilikLain = $this->user();
+
+        $this->mockCivitasStruktur(unit: [[
+            'ID_UNIT' => '18', 'NAMA_UNIT' => 'UPA TIK', 'ID_KEPALA_UNIT' => '789', 'NAMA_KEPALA_UNIT' => 'Agus Prasetyo',
+        ]]);
+
+        $pengajuanDalamUnit = Pengajuan::create([
+            'nama_pengusul' => 'Dr. Test', 'judul_pengajuan' => 'Dalam Unit', 'jenis_dokumen' => 'MOU',
+            'status_pengajuan' => 'menunggu', 'ruang_lingkup_ids' => [],
+            'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $upaTik->id,
+        ]);
+        $pengajuanUnitLain = Pengajuan::create([
+            'nama_pengusul' => 'Dr. Test', 'judul_pengajuan' => 'Unit Lain', 'jenis_dokumen' => 'MOU',
+            'status_pengajuan' => 'menunggu', 'ruang_lingkup_ids' => [],
+            'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $unitLain->id,
+        ]);
+
+        $aktivitasDalamUnit = PengajuanAktivitas::create($this->dataAktivitas($pengajuanDalamUnit->id, ['judul' => 'Aktivitas Dalam Unit']));
+        $aktivitasUnitLain = PengajuanAktivitas::create($this->dataAktivitas($pengajuanUnitLain->id, ['judul' => 'Aktivitas Unit Lain']));
+
+        $response = $this->actingAs($kepalaUnit)->getJson('/api/pengajuan-aktivitas');
+        $response->assertOk();
+        $ids = collect($response->json('data'))->pluck('id')->all();
+
+        $this->assertContains($aktivitasDalamUnit->id, $ids);
+        $this->assertNotContains($aktivitasUnitLain->id, $ids);
+    }
 }

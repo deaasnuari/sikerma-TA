@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Archive, Bell, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Eye, Filter, HandshakeIcon, Mail, MessageCircle, Phone, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
+import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 
 // import RenewalHistoryModal from './RenewalHistoryModal';
 import RenewalFullForm from './RenewalFullForm';
@@ -67,7 +68,11 @@ export default function MonitoringdanstatusPage() {
   const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
   const [filterTingkatPerusahaan, setFilterTingkatPerusahaan] = useState('Semua Tingkat Perusahaan');
   const [filterTahun, setFilterTahun] = useState<string | null>(null);
-  const [masterUnitOptions, setMasterUnitOptions] = useState<string[]>([]);
+  // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) supaya dropdown filter bisa
+  // dikelompokkan pakai <optgroup>, sama seperti dropdown "Semua Unit" di landing page.
+  const [masterJurusanOptions, setMasterJurusanOptions] = useState<string[]>([]);
+  const [masterProdiOptions, setMasterProdiOptions] = useState<string[]>([]);
+  const [masterUnitKerjaOptions, setMasterUnitKerjaOptions] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -165,11 +170,9 @@ export default function MonitoringdanstatusPage() {
           return;
         }
 
-        const merged = Array.from(
-          new Set([...jurusanRows, ...unitRows, ...prodiRows].map((item) => item.nama).filter(Boolean))
-        );
-
-        setMasterUnitOptions(merged);
+        setMasterJurusanOptions(Array.from(new Set(jurusanRows.map((item) => item.nama).filter(Boolean))));
+        setMasterUnitKerjaOptions(Array.from(new Set(unitRows.map((item) => item.nama).filter(Boolean))));
+        setMasterProdiOptions(Array.from(new Set(prodiRows.map((item) => item.nama).filter(Boolean))));
       } catch {
         // fallback tetap dari data rekap lokal bila API belum siap.
       }
@@ -186,11 +189,20 @@ export default function MonitoringdanstatusPage() {
   const filteredByTab = getFilteredMonitoringData(monitoringData, activeTab);
 
   const jenisOptions = useMemo(() => getMonitoringJenisOptions(monitoringData), [monitoringData]);
-  const unitOptions = useMemo(() => {
-    const localOptions = getMonitoringUnitOptions(monitoringData);
-    const merged = Array.from(new Set([...localOptions, ...masterUnitOptions]));
-    return merged.includes('Semua Jurusan/unit') ? merged : ['Semua Jurusan/unit', ...merged];
-  }, [monitoringData, masterUnitOptions]);
+  // Nama dari data monitoring yang ter-load tapi tidak cocok ke Jurusan/Prodi/Unit Kerja aktif
+  // mana pun (unit lama/nonaktif) — ditampilkan di grup "Lainnya" biar tetap bisa difilter.
+  const unitGroups = useMemo(() => {
+    const docDerived = getMonitoringUnitOptions(monitoringData).filter((o) => o !== 'Semua Jurusan/unit');
+    const known = new Set([...masterJurusanOptions, ...masterProdiOptions, ...masterUnitKerjaOptions]);
+    const lainnya = docDerived.filter((nama) => !known.has(nama));
+
+    return {
+      jurusan: masterJurusanOptions,
+      prodi: masterProdiOptions,
+      unit: masterUnitKerjaOptions,
+      lainnya,
+    };
+  }, [monitoringData, masterJurusanOptions, masterProdiOptions, masterUnitKerjaOptions]);
   const jenisMitraOptions = useMemo(() => getMonitoringJenisMitraOptions(monitoringData), [monitoringData]);
   const tingkatPerusahaanOptions = useMemo(() => getMonitoringTingkatOptions(monitoringData), [monitoringData]);
   const availableYears = useMemo(() => getMonitoringYearOptions(monitoringData), [monitoringData]);
@@ -393,66 +405,51 @@ export default function MonitoringdanstatusPage() {
             Filter:
           </span>
 
-          <select
+          <GroupedFilterSelect
             value={filterJenis}
-            onChange={(event) => setFilterJenis(event.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C]"
-          >
-            {jenisOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            onChange={setFilterJenis}
+            allLabel={jenisOptions[0]}
+            buttonClassName="rounded-lg border border-gray-300 bg-white px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C] flex items-center justify-between gap-2 min-w-[140px]"
+            groups={[{ label: '', options: jenisOptions.slice(1) }]}
+          />
 
-          <select
+          <GroupedFilterSelect
             value={filterUnit}
-            onChange={(event) => setFilterUnit(event.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C]"
-          >
-            {unitOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            onChange={setFilterUnit}
+            allLabel="Semua Jurusan/unit"
+            buttonClassName="rounded-lg border border-gray-300 bg-white px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C] flex items-center justify-between gap-2 min-w-[200px]"
+            groups={[
+              { label: 'Jurusan', options: unitGroups.jurusan },
+              { label: 'Program Studi', options: unitGroups.prodi },
+              { label: 'Unit Kerja', options: unitGroups.unit },
+              { label: 'Lainnya', options: unitGroups.lainnya },
+            ]}
+          />
 
-          <select
+          <GroupedFilterSelect
             value={filterJenisMitra}
-            onChange={(event) => setFilterJenisMitra(event.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C]"
-          >
-            {jenisMitraOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            onChange={setFilterJenisMitra}
+            allLabel={jenisMitraOptions[0]}
+            buttonClassName="rounded-lg border border-gray-300 bg-white px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C] flex items-center justify-between gap-2 min-w-[160px]"
+            groups={[{ label: '', options: jenisMitraOptions.slice(1) }]}
+          />
 
-          <select
+          <GroupedFilterSelect
             value={filterTingkatPerusahaan}
-            onChange={(event) => setFilterTingkatPerusahaan(event.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C]"
-          >
-            {tingkatPerusahaanOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            onChange={setFilterTingkatPerusahaan}
+            allLabel={tingkatPerusahaanOptions[0]}
+            buttonClassName="rounded-lg border border-gray-300 bg-white px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C] flex items-center justify-between gap-2 min-w-[180px]"
+            groups={[{ label: '', options: tingkatPerusahaanOptions.slice(1) }]}
+          />
 
-          <select
+          <GroupedFilterSelect
             value={filterTahun ?? ''}
-            onChange={(event) => setFilterTahun(event.target.value || null)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C]"
-          >
-            <option value="">Semua Tahun</option>
-            {availableYears.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => setFilterTahun(next === '' ? null : next)}
+            allLabel="Semua Tahun"
+            allValue=""
+            buttonClassName="rounded-lg border border-gray-300 bg-white px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C] flex items-center justify-between gap-2 min-w-[130px]"
+            groups={[{ label: '', options: availableYears.map(String) }]}
+          />
         </div>
       </div>
 

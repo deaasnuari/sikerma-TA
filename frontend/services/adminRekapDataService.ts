@@ -453,9 +453,13 @@ export function getRekapJenisOptions(items: RekapDokumen[]): string[] {
   return ['Semua Jenis', ...Array.from(new Set([...rekapJenisOptions, ...items.map((item) => item.jenis)]))];
 }
 
-// Ambil daftar jurusan/unit unik untuk dropdown filter.
+// Ambil daftar jurusan/unit unik untuk dropdown filter — dari data dokumen yang ter-load
+// (jaga-jaga ada unit lama/nonaktif yang masih dipakai dokumen tapi sudah tidak ada di master
+// aktif). SENGAJA tidak lagi include rekapJurusanUnitOptions (daftar hardcode) di sini — nama
+// jurusan/unit aktif harus selalu ikut Data Master (lihat masterUnitOptions di rekap_data/page.tsx),
+// supaya kalau nama di Data Master diubah/disinkron ulang, dropdown ini tidak nyisain nama lama.
 export function getRekapUnitOptions(items: RekapDokumen[]): string[] {
-  return ['Semua Jurusan/unit', ...Array.from(new Set([...rekapJurusanUnitOptions, ...items.map((item) => item.unit)]))];
+  return ['Semua Jurusan/unit', ...Array.from(new Set(items.map((item) => item.unit).filter(Boolean)))];
 }
 
 // Ambil daftar jenis mitra (kategori mitra) unik untuk dropdown filter.

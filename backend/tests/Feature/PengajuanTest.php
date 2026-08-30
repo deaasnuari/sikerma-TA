@@ -287,11 +287,51 @@ class PengajuanTest extends TestCase
     public function test_tampil_pengajuan_berhasil(): void
     {
         $user      = $this->internal();
-        $pengajuan = $this->buatPengajuan(['judul_pengajuan' => 'Kolaborasi Industri']);
+        $pengajuan = $this->buatPengajuan(['judul_pengajuan' => 'Kolaborasi Industri', 'user_pengusul_id' => $user->id]);
 
         $response = $this->actingAs($user)->getJson("/api/pengajuan/{$pengajuan->id}");
 
         $response->assertOk()->assertJsonPath('data.judul_pengajuan', 'Kolaborasi Industri');
+    }
+
+    public function test_tampil_pengajuan_internal_ditolak_bukan_pemilik(): void
+    {
+        // Sebelumnya endpoint ini tidak punya pengecekan kepemilikan sama sekali —
+        // user internal mana pun bisa buka detail pengajuan siapa saja asal tahu ID-nya.
+        // Ini memastikan celah itu sudah tertutup, konsisten dengan filter di index().
+        $pemilik   = $this->internal();
+        $penyusup  = $this->internal();
+        $pengajuan = $this->buatPengajuan(['judul_pengajuan' => 'Punya Orang Lain', 'user_pengusul_id' => $pemilik->id]);
+
+        $response = $this->actingAs($penyusup)->getJson("/api/pengajuan/{$pengajuan->id}");
+
+        $response->assertStatus(404);
+    }
+
+    public function test_tampil_pengajuan_internal_boleh_lihat_yang_di_cc(): void
+    {
+        $pemilik = $this->internal();
+        $dicc    = $this->internal();
+        $pengajuan = $this->buatPengajuan([
+            'judul_pengajuan' => 'Di-CC ke user lain',
+            'user_pengusul_id' => $pemilik->id,
+            'distribusi_user_ids' => [$dicc->id],
+        ]);
+
+        $response = $this->actingAs($dicc)->getJson("/api/pengajuan/{$pengajuan->id}");
+
+        $response->assertOk();
+    }
+
+    public function test_tampil_pengajuan_admin_dan_pimpinan_tetap_bisa_lihat_semua(): void
+    {
+        $admin = $this->admin();
+        $pimpinan = User::factory()->create(['role' => 'pimpinan']);
+        $pemilik = $this->internal();
+        $pengajuan = $this->buatPengajuan(['user_pengusul_id' => $pemilik->id]);
+
+        $this->actingAs($admin)->getJson("/api/pengajuan/{$pengajuan->id}")->assertOk();
+        $this->actingAs($pimpinan)->getJson("/api/pengajuan/{$pengajuan->id}")->assertOk();
     }
 
     public function test_tampil_pengajuan_tidak_ditemukan(): void
@@ -579,5 +619,151 @@ class PengajuanTest extends TestCase
 
         $this->actingAs($user)->deleteJson("/api/pengajuan/{$pengajuan->id}")
             ->assertForbidden();
+    }
+
+    // ------------------------------------------------------------------
+    // structural access (Ketua Jurusan/Ketua Prodi/Kepala Unit) — role di DB
+    // tetap 'internal', ini cuma scope tambahan berdasarkan StructuralAccessService.
+    // ------------------------------------------------------------------
+
+    private function mockCivitasStruktur(array $jurusan = [], array $prodi = [], array $unit = []): void
+    {
+        $this->mock(\App\Services\CivitasStructureService::class, function ($mock) use ($jurusan, $prodi, $unit) {
+            $mock->shouldReceive('getJurusan')->andReturn($jurusan);
+            $mock->shouldReceive('getProgramStudi')->andReturn($prodi);
+            $mock->shouldReceive('getUnit')->andReturn($unit);
+        });
+    }
+
+    public function test_ketua_jurusan_melihat_pengajuan_jurusan_dan_prodi_di_bawahnya_tapi_bukan_jurusan_lain(): void
+    {
+        $jurusanTI = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'Teknik Informatika', 'aktif' => true]);
+        $prodiTI   = MasterUnitProdi::create(['jenis_node' => 'prodi', 'parent_id' => $jurusanTI->id, 'nama' => 'D3 Teknik Informatika', 'aktif' => true]);
+        $jurusanTM = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'Teknik Mesin', 'aktif' => true]);
+
+        $kajur = $this->internal();
+        $kajur->update(['name' => 'Budi Santoso']);
+
+        $this->mockCivitasStruktur(jurusan: [[
+            'ID_JURUSAN' => '1', 'NAMA_JURUSAN' => 'TEKNIK INFORMATIKA', 'NAMA_JURUSAN_INGGRIS' => '-',
+            'ID_KAJUR' => '123', 'NAMA_KAJUR' => 'Budi Santoso',
+        ]]);
+
+        $pemilikLain = $this->internal();
+        $a = $this->buatPengajuan(['judul_pengajuan' => 'A - langsung di jurusan', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $jurusanTI->id]);
+        $b = $this->buatPengajuan(['judul_pengajuan' => 'B - di prodi bawah jurusan', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $prodiTI->id]);
+        $c = $this->buatPengajuan(['judul_pengajuan' => 'C - jurusan lain', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $jurusanTM->id]);
+
+        $response = $this->actingAs($kajur)->getJson('/api/pengajuan?per_page=50');
+        $response->assertOk();
+        $ids = collect($response->json('data.data'))->pluck('id')->all();
+
+        $this->assertContains($a->id, $ids);
+        $this->assertContains($b->id, $ids);
+        $this->assertNotContains($c->id, $ids);
+
+        // show() harus ikut aturan yang sama.
+        $this->actingAs($kajur)->getJson("/api/pengajuan/{$a->id}")->assertOk();
+        $this->actingAs($kajur)->getJson("/api/pengajuan/{$b->id}")->assertOk();
+        $this->actingAs($kajur)->getJson("/api/pengajuan/{$c->id}")->assertStatus(404);
+    }
+
+    public function test_dosen_biasa_tidak_ikut_melihat_pengajuan_dosen_lain_walau_prodi_sama(): void
+    {
+        // Skenario 1 di spec: dosen yang BUKAN pejabat struktural cuma boleh lihat
+        // pengajuan miliknya sendiri, walau dosen lain di prodi yang sama.
+        $prodi = MasterUnitProdi::create(['jenis_node' => 'prodi', 'nama' => 'D3 Teknik Informatika', 'aktif' => true]);
+
+        $dosenA = $this->internal();
+        $dosenA->update(['name' => 'Dosen A']);
+        $dosenB = $this->internal();
+
+        $this->mockCivitasStruktur(); // tidak ada jabatan struktural apa pun
+
+        $pengajuanA = $this->buatPengajuan(['judul_pengajuan' => 'Punya Dosen A', 'user_pengusul_id' => $dosenA->id, 'unit_prodi_id' => $prodi->id]);
+        $pengajuanB = $this->buatPengajuan(['judul_pengajuan' => 'Punya Dosen B', 'user_pengusul_id' => $dosenB->id, 'unit_prodi_id' => $prodi->id]);
+
+        $response = $this->actingAs($dosenA)->getJson('/api/pengajuan?per_page=50');
+        $ids = collect($response->json('data.data'))->pluck('id')->all();
+
+        $this->assertContains($pengajuanA->id, $ids);
+        $this->assertNotContains($pengajuanB->id, $ids);
+    }
+
+    public function test_ketua_prodi_melihat_pengajuan_prodinya_saja(): void
+    {
+        // Skenario 3 di spec: Siti (KPS Teknik Informatika) boleh lihat pengajuan
+        // Prodi Teknik Informatika, tapi tidak boleh lihat Prodi Mekatronika.
+        $prodiTI  = MasterUnitProdi::create(['jenis_node' => 'prodi', 'nama' => 'D3 Teknik Informatika', 'aktif' => true]);
+        $prodiMek = MasterUnitProdi::create(['jenis_node' => 'prodi', 'nama' => 'Sarjana Terapan Teknik Mekatronika', 'aktif' => true]);
+
+        $kps = $this->internal();
+        $kps->update(['name' => 'Siti Aminah']);
+        $pemilikLain = $this->internal();
+
+        $this->mockCivitasStruktur(prodi: [[
+            'ID_PROGRAM_STUDI' => '10', 'JENJANG' => 'D3', 'NAMA_PROGRAM_STUDI' => 'TEKNIK INFORMATIKA',
+            'NAMA_PROGRAM_STUDI_INGGRIS' => '-', 'ID_KPS' => '456', 'NAMA_KPS' => 'Siti Aminah',
+        ]]);
+
+        $a = $this->buatPengajuan(['judul_pengajuan' => 'A - Prodi TI', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $prodiTI->id]);
+        $b = $this->buatPengajuan(['judul_pengajuan' => 'B - Prodi TI juga', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $prodiTI->id]);
+        $c = $this->buatPengajuan(['judul_pengajuan' => 'C - Prodi Mekatronika', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $prodiMek->id]);
+
+        $response = $this->actingAs($kps)->getJson('/api/pengajuan?per_page=50');
+        $ids = collect($response->json('data.data'))->pluck('id')->all();
+
+        $this->assertContains($a->id, $ids);
+        $this->assertContains($b->id, $ids);
+        $this->assertNotContains($c->id, $ids);
+    }
+
+    public function test_kepala_unit_melihat_pengajuan_unitnya_saja(): void
+    {
+        // Skenario 4 di spec: Agus (Kepala UPA TIK) boleh lihat pengajuan UPA TIK,
+        // tapi tidak boleh lihat unit lain.
+        $upaTik = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA TIK', 'aktif' => true]);
+        $upaLain = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA Perpustakaan', 'aktif' => true]);
+
+        $kepalaUnit = $this->internal();
+        $kepalaUnit->update(['name' => 'Agus Prasetyo']);
+        $pemilikLain = $this->internal();
+
+        $this->mockCivitasStruktur(unit: [[
+            'ID_UNIT' => '18', 'NAMA_UNIT' => 'UPA TIK', 'ID_KEPALA_UNIT' => '789', 'NAMA_KEPALA_UNIT' => 'Agus Prasetyo',
+        ]]);
+
+        $a = $this->buatPengajuan(['judul_pengajuan' => 'A - UPA TIK', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $upaTik->id]);
+        $b = $this->buatPengajuan(['judul_pengajuan' => 'B - Unit lain', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $upaLain->id]);
+
+        $response = $this->actingAs($kepalaUnit)->getJson('/api/pengajuan?per_page=50');
+        $ids = collect($response->json('data.data'))->pluck('id')->all();
+
+        $this->assertContains($a->id, $ids);
+        $this->assertNotContains($b->id, $ids);
+    }
+
+    public function test_unit_bernama_jurusan_tidak_membuat_kajur_dobel_terdeteksi_sebagai_kepala_unit(): void
+    {
+        // Temuan nyata dari data Civitas: Jurusan ikut nyempil di daftar Unit (nama
+        // diawali "JURUSAN "). CivitasStructureService::getUnit() sudah membuang baris
+        // ini — pastikan Kajur tidak salah dianggap Kepala Unit karena baris itu.
+        $jurusanTI = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'Teknik Informatika', 'aktif' => true]);
+
+        $kajur = $this->internal();
+        $kajur->update(['name' => 'Ahmad Hamim Thohari']);
+
+        $this->mockCivitasStruktur(
+            jurusan: [[
+                'ID_JURUSAN' => '9', 'NAMA_JURUSAN' => 'TEKNIK INFORMATIKA', 'NAMA_JURUSAN_INGGRIS' => '-',
+                'ID_KAJUR' => '182', 'NAMA_KAJUR' => 'Ahmad Hamim Thohari',
+            ]],
+        );
+
+        $access = app(\App\Services\StructuralAccessService::class)->getUserStructuralAccess($kajur->fresh());
+
+        $this->assertEquals('ketua_jurusan', $access['structural_position']);
+        $this->assertEquals($jurusanTI->id, $access['jurusan_id']);
+        $this->assertNull($access['unit_id']);
     }
 }

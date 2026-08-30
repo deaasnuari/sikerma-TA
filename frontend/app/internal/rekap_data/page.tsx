@@ -7,10 +7,11 @@ import { useAuth } from '@/context/AuthContext';
 import DetailKerjasamaModal from './DetailKerjasamaModal';
 import EditDokumenModal from './EditDokumenModal';
 import LaporanPelaksanaanModal, { type LaporanPelaksanaanData } from '@/components/LaporanPelaksanaanModal';
+import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 
 import {
+  getRekapStats,
   rekapJenisMitraOptions,
-  rekapJurusanOptions,
   rekapTingkatPerusahaanOptions,
   type DokumenTerkait,
   type RekapDokumen,
@@ -140,8 +141,12 @@ export default function InternalRekapDataPage() {
   const { user } = useAuth();
 
   const [data, setData] = useState<KerjasamaItem[]>([]);
+  // Dihitung dari data mentah (RekapDokumen) sebelum di-mapping ke KerjasamaItem — soalnya
+  // mapping-nya menyederhanakan status jadi Disetujui/Ditolak, jadi rincian Aktif/Akan
+  // Berakhir/Kadaluarsa harus diambil di titik ini (sama seperti admin/rekap_data).
+  const [stats, setStats] = useState({ totalKerjasama: 0, totalAktif: 0, totalAkanBerakhir: 0, totalKadaluarsa: 0 });
   const [search, setSearch] = useState('');
-  const [filterJurusan, setFilterJurusan] = useState('Semua Jurusan');
+  const [filterJurusan, setFilterJurusan] = useState('Semua Jurusan/unit');
   const [filterJenis, setFilterJenis] = useState('Semua Jenis');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
@@ -157,12 +162,20 @@ export default function InternalRekapDataPage() {
   // asli yang sudah di-ACC admin (mitraPicNama, accInternalAt, tahapanRiwayat, dst), bukan dummy.
   const [allPengajuan, setAllPengajuan] = useState<PengajuanItem[]>([]);
 
-  const [masterJurusanOptions, setMasterJurusanOptions] = useState<string[]>([]);
+  // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) — sama seperti admin/rekap_data
+  // — supaya dropdown filter bisa dikelompokkan dan selalu ikut Data Master (bukan daftar
+  // hardcode) begitu nama Jurusan/Unit diganti/disinkron ulang.
+  const [masterJurusanNames, setMasterJurusanNames] = useState<string[]>([]);
+  const [masterProdiNames, setMasterProdiNames] = useState<string[]>([]);
+  const [masterUnitNames, setMasterUnitNames] = useState<string[]>([]);
 
-  const jurusanOptions = useMemo(() => {
-    const merged = Array.from(new Set([...rekapJurusanOptions, ...masterJurusanOptions]));
-    return ['Semua Jurusan', ...merged];
-  }, [masterJurusanOptions]);
+  const unitGroups = useMemo(() => {
+    const docDerived = Array.from(new Set(data.map((item) => item.unit).filter(Boolean)));
+    const known = new Set([...masterJurusanNames, ...masterProdiNames, ...masterUnitNames]);
+    const lainnya = docDerived.filter((nama) => !known.has(nama));
+
+    return { jurusan: masterJurusanNames, prodi: masterProdiNames, unit: masterUnitNames, lainnya };
+  }, [data, masterJurusanNames, masterProdiNames, masterUnitNames]);
 
   const jenisMitraOptions = useMemo(() => [
     'Semua Jenis Mitra',
@@ -196,10 +209,9 @@ export default function InternalRekapDataPage() {
 
         if (!isMounted) return;
 
-        const names = Array.from(
-          new Set([...jurusanRows, ...unitRows, ...prodiRows].map((item) => item.nama).filter(Boolean))
-        );
-        setMasterJurusanOptions(names);
+        setMasterJurusanNames(Array.from(new Set(jurusanRows.map((item) => item.nama).filter(Boolean))));
+        setMasterUnitNames(Array.from(new Set(unitRows.map((item) => item.nama).filter(Boolean))));
+        setMasterProdiNames(Array.from(new Set(prodiRows.map((item) => item.nama).filter(Boolean))));
       } catch {
         // fallback tetap gunakan opsi lokal dari service.
       }
@@ -219,8 +231,11 @@ export default function InternalRekapDataPage() {
       try {
         // Data pengajuan lengkap selalu diambil (bukan cuma saat fallback) supaya modal Detail
         // Kerjasama bisa menampilkan Kontak & Histori asli dari pengajuan yang sudah di-ACC admin.
+        // forceRefresh: true — jangan pakai cache 60 detik (module-level, bukan per-user),
+        // supaya kalau baru ganti akun (mis. jadi Kepala Unit) datanya langsung sesuai
+        // scope akses user yang sedang login, bukan sisa cache akun sebelumnya.
         const [rekapData, allPengajuanData] = await Promise.all([
-          fetchRekapDokumenFromApi(),
+          fetchRekapDokumenFromApi({ forceRefresh: true }),
           fetchPengajuanDataFromApi({ perPage: 500 }),
         ]);
         if (!mounted) return;
@@ -229,6 +244,7 @@ export default function InternalRekapDataPage() {
 
         if (rekapData.length > 0) {
           setData(rekapData.map(mapRekapToItem));
+          setStats(getRekapStats(rekapData));
           return;
         }
 
@@ -237,6 +253,7 @@ export default function InternalRekapDataPage() {
           (item) => APPROVED_STATUSES.has(item.statusPengajuan) && item.kategoriPengajuan !== 'Eksternal',
         );
         setData(approvedInternal.map(mapApprovedPengajuanToItem));
+        setStats({ totalKerjasama: approvedInternal.length, totalAktif: approvedInternal.length, totalAkanBerakhir: 0, totalKadaluarsa: 0 });
       } catch {
         if (mounted) setData([]);
       }
@@ -283,7 +300,7 @@ export default function InternalRekapDataPage() {
         item.namaMitra.toLowerCase().includes(keyword) ||
         item.noDokumen.toLowerCase().includes(keyword);
 
-      const matchesJurusan = filterJurusan === 'Semua Jurusan' || item.unit === filterJurusan;
+      const matchesJurusan = filterJurusan === 'Semua Jurusan/unit' || item.unit === filterJurusan;
       const matchesJenis = filterJenis === 'Semua Jenis' || item.jenis === filterJenis;
       const matchesStatus = filterStatus === 'Semua Status' || item.status === filterStatus;
       const matchesJenisMitra = filterJenisMitra === 'Semua Jenis Mitra' || item.jenisMitra === filterJenisMitra;
@@ -372,6 +389,13 @@ export default function InternalRekapDataPage() {
         </button>
       </div>
 
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+        <StatCard title="Total Kerjasama" value={stats.totalKerjasama} caption="Semua dokumen" valueClassName="text-gray-900" />
+        <StatCard title="Aktif" value={stats.totalAktif} caption="Masa berlaku > 3 bulan" valueClassName="text-green-600" />
+        <StatCard title="Akan Berakhir" value={stats.totalAkanBerakhir} caption="Masa berlaku < 3 bulan" valueClassName="text-orange-600" />
+        <StatCard title="Kadaluarsa" value={stats.totalKadaluarsa} caption="Sudah berakhir" valueClassName="text-red-600" />
+      </div>
+
       {/* Filters */}
       <section className="toolbar-shell p-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
@@ -395,81 +419,61 @@ export default function InternalRekapDataPage() {
                 Unit: {scopedUnit}
               </span>
             ) : (
-              <select
+              <GroupedFilterSelect
                 value={filterJurusan}
-                onChange={(e) => {
-                  setFilterJurusan(e.target.value);
+                onChange={(next) => {
+                  setFilterJurusan(next);
                   setCurrentPage(1);
                 }}
-                className="input-field px-3 py-2 text-[12px] text-gray-700"
-              >
-                {jurusanOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
+                allLabel="Semua Jurusan/unit"
+                groups={[
+                  { label: 'Jurusan', options: unitGroups.jurusan },
+                  { label: 'Program Studi', options: unitGroups.prodi },
+                  { label: 'Unit Kerja', options: unitGroups.unit },
+                  { label: 'Lainnya', options: unitGroups.lainnya },
+                ]}
+              />
             )}
 
-            <select
+            <GroupedFilterSelect
               value={filterJenis}
-              onChange={(e) => {
-                setFilterJenis(e.target.value);
+              onChange={(next) => {
+                setFilterJenis(next);
                 setCurrentPage(1);
               }}
-              className="input-field px-3 py-2 text-[12px] text-gray-700"
-            >
-              {jenisOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
+              allLabel={jenisOptions[0]}
+              groups={[{ label: '', options: jenisOptions.slice(1) }]}
+            />
 
-            <select
+            <GroupedFilterSelect
               value={filterStatus}
-              onChange={(e) => {
-                setFilterStatus(e.target.value);
+              onChange={(next) => {
+                setFilterStatus(next);
                 setCurrentPage(1);
               }}
-              className="input-field px-3 py-2 text-[12px] text-gray-700"
-            >
-              {statusOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
+              allLabel={statusOptions[0]}
+              groups={[{ label: '', options: statusOptions.slice(1) }]}
+            />
 
-            <select
+            <GroupedFilterSelect
               value={filterJenisMitra}
-              onChange={(e) => {
-                setFilterJenisMitra(e.target.value);
+              onChange={(next) => {
+                setFilterJenisMitra(next);
                 setCurrentPage(1);
               }}
-              className="input-field px-3 py-2 text-[12px] text-gray-700"
-            >
-              {jenisMitraOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
+              allLabel={jenisMitraOptions[0]}
+              groups={[{ label: '', options: jenisMitraOptions.slice(1) }]}
+            />
 
-            <select
+            <GroupedFilterSelect
               value={filterTingkatPerusahaan}
-              onChange={(e) => {
-                setFilterTingkatPerusahaan(e.target.value);
+              onChange={(next) => {
+                setFilterTingkatPerusahaan(next);
                 setCurrentPage(1);
               }}
-              className="input-field px-3 py-2 text-[12px] text-gray-700"
-            >
-              {tingkatPerusahaanOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
+              allLabel={tingkatPerusahaanOptions[0]}
+              groups={[{ label: '', options: tingkatPerusahaanOptions.slice(1) }]}
+            />
 
             <select
               value={sortOrder}
@@ -663,6 +667,26 @@ export default function InternalRekapDataPage() {
         onClose={() => setLaporanItem(null)}
         data={laporanItem}
       />
+    </div>
+  );
+}
+
+function StatCard({
+  title,
+  value,
+  caption,
+  valueClassName,
+}: {
+  title: string;
+  value: number;
+  caption: string;
+  valueClassName: string;
+}) {
+  return (
+    <div className="stat-card p-3">
+      <p className="text-[10px] text-gray-500">{title}</p>
+      <p className={`mt-0.5 text-[17px] font-bold ${valueClassName}`}>{value}</p>
+      <p className="mt-0.5 text-[10px] text-gray-400">{caption}</p>
     </div>
   );
 }

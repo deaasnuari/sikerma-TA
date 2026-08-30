@@ -61,6 +61,20 @@ interface KerjasamaItem {
   reviewedBy?: string;
   tahapanStage?: string | null;
   tahapanGroup?: string | null;
+  // Cuma terisi kalau status === 'Aktif' (kerjasama beneran disetujui) — dihitung dari
+  // tanggalBerakhir asli (bukan dari `status` yang di sini artinya "hasil review pengajuan",
+  // beda dari status masa berlaku dokumen di Rekap Data admin/internal).
+  masaBerlakuTier?: 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa' | null;
+}
+
+function resolveMasaBerlakuTier(tanggalBerakhir?: string): 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa' | null {
+  if (!tanggalBerakhir) return null;
+  const end = new Date(tanggalBerakhir);
+  if (Number.isNaN(end.getTime())) return null;
+  const diffDays = Math.ceil((end.getTime() - Date.now()) / 86400000);
+  if (diffDays < 0) return 'Kadaluarsa';
+  if (diffDays <= 90) return 'Akan Berakhir';
+  return 'Aktif';
 }
 
 function toDisplayDate(value?: string): string {
@@ -113,6 +127,7 @@ function mapPengajuanToItem(item: PengajuanItem): KerjasamaItem {
     reviewedBy: item.reviewedBy,
     tahapanStage: item.tahapanStage ?? null,
     tahapanGroup: item.tahapanGroup ?? null,
+    masaBerlakuTier: statusMap[item.statusPengajuan] === 'Aktif' ? resolveMasaBerlakuTier(item.tanggalBerakhir) : null,
   };
 }
 
@@ -245,6 +260,19 @@ export default function DaftarKerjasamaEksternalPage() {
     return { belumDireview, sudahDireview };
   }, [data]);
 
+  // Cerminan dari kartu "Total Kerjasama/Aktif/Akan Berakhir/Kadaluarsa" di Rekap Data
+  // admin/internal — di sini "Total Kerjasama" = pengajuan yang sudah disetujui (status
+  // 'Aktif' di halaman ini), rinciannya dari masaBerlakuTier (berdasarkan tanggalBerakhir).
+  const kerjasamaStats = useMemo(() => {
+    const disetujui = data.filter((item) => item.status === 'Aktif');
+    return {
+      totalKerjasama: disetujui.length,
+      totalAktif: disetujui.filter((item) => item.masaBerlakuTier === 'Aktif').length,
+      totalAkanBerakhir: disetujui.filter((item) => item.masaBerlakuTier === 'Akan Berakhir').length,
+      totalKadaluarsa: disetujui.filter((item) => item.masaBerlakuTier === 'Kadaluarsa').length,
+    };
+  }, [data]);
+
   const handleDelete = async (item: KerjasamaItem) => {
     if (!window.confirm(`Yakin ingin menghapus pengajuan ${item.noDokumen}? Pengajuan ini akan dihapus permanen dan tidak bisa dikembalikan lagi.`)) {
       return;
@@ -296,6 +324,13 @@ export default function DaftarKerjasamaEksternalPage() {
           <Download size={15} />
           Export
         </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+        <StatCard title="Total Kerjasama" value={kerjasamaStats.totalKerjasama} caption="Sudah disetujui" valueClassName="text-gray-900" />
+        <StatCard title="Aktif" value={kerjasamaStats.totalAktif} caption="Masa berlaku > 3 bulan" valueClassName="text-green-600" />
+        <StatCard title="Akan Berakhir" value={kerjasamaStats.totalAkanBerakhir} caption="Masa berlaku < 3 bulan" valueClassName="text-orange-600" />
+        <StatCard title="Kadaluarsa" value={kerjasamaStats.totalKadaluarsa} caption="Sudah berakhir" valueClassName="text-red-600" />
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -779,6 +814,26 @@ function InfoRow({
         <p className="text-[9.5px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
         <p className="mt-0.5 text-[12px] font-medium text-slate-800">{value || '-'}</p>
       </div>
+    </div>
+  );
+}
+
+function StatCard({
+  title,
+  value,
+  caption,
+  valueClassName,
+}: {
+  title: string;
+  value: number;
+  caption: string;
+  valueClassName: string;
+}) {
+  return (
+    <div className="stat-card p-3">
+      <p className="text-[10px] text-gray-500">{title}</p>
+      <p className={`mt-0.5 text-[17px] font-bold ${valueClassName}`}>{value}</p>
+      <p className="mt-0.5 text-[10px] text-gray-400">{caption}</p>
     </div>
   );
 }

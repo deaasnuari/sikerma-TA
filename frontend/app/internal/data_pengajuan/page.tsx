@@ -23,15 +23,15 @@ import {
   getPengajuanData,
   getPengajuanStats,
   pengajuanDokumenBadge,
-  pengajuanJurusanOptions,
-  pengajuanUnitOptions,
   refreshPengajuanDataFromApi,
   updatePengajuanItem,
   type PengajuanItem,
   type PengajuanStatus,
 } from '@/services/adminPengajuanService';
 import AjukanKerjasamaForm from './AjukanKerjasamaForm';
+import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import DetailPengajuanModal from './DetailPengajuanModal';
+import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
 
 type EditFormState = {
   id: number;
@@ -107,12 +107,6 @@ const reviewCopy: Record<PengajuanStatus, string> = {
   Ditolak: 'Pengajuan belum disetujui admin. Silakan cek catatan review.',
 };
 
-const unitKeywords = ['upt', 'upa', 'pokja', 'subag', 'spi', 'p3m', 'p4m', 'shilau', 'sbum', 'akademik'];
-
-function isUnitValue(value: string) {
-  const normalized = value.toLowerCase();
-  return pengajuanUnitOptions.includes(value) || unitKeywords.some((keyword) => normalized.includes(keyword));
-}
 
 export default function InternalDataPengajuanPage() {
   const router = useRouter();
@@ -128,6 +122,47 @@ export default function InternalDataPengajuanPage() {
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PengajuanItem | null>(null);
   const [infoModalMessage, setInfoModalMessage] = useState<string | null>(null);
+
+  // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) dari Data Master —
+  // dipakai untuk mengelompokkan dropdown filter (<optgroup>) dan menggantikan
+  // klasifikasi keyword-tebak-tebakan lama (isUnitValue) yang gampang meleset
+  // begitu nama Jurusan/Unit di Data Master diubah/disinkron ulang.
+  const [masterJurusanNames, setMasterJurusanNames] = useState<string[]>([]);
+  const [masterProdiNames, setMasterProdiNames] = useState<string[]>([]);
+  const [masterUnitNames, setMasterUnitNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadMasterUnitOptions() {
+      try {
+        const [jurusanRows, unitRows, prodiRows] = await Promise.all([
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'prodi', aktif: true }),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setMasterJurusanNames(Array.from(new Set(jurusanRows.map((item) => item.nama).filter(Boolean))));
+        setMasterUnitNames(Array.from(new Set(unitRows.map((item) => item.nama).filter(Boolean))));
+        setMasterProdiNames(Array.from(new Set(prodiRows.map((item) => item.nama).filter(Boolean))));
+      } catch {
+        // fallback: klasifikasi sementara nganggur (dianggap Jurusan) sampai API siap.
+      }
+    }
+
+    loadMasterUnitOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const unitNameSet = useMemo(() => new Set(masterUnitNames), [masterUnitNames]);
+  const prodiNameSet = useMemo(() => new Set(masterProdiNames), [masterProdiNames]);
 
   useEffect(() => {
     let isMounted = true;
@@ -162,19 +197,32 @@ export default function InternalDataPengajuanPage() {
     };
   }, []);
 
-  const jurusanOptions = useMemo(() => {
-    const currentValues = pengajuanData.map((item) => item.namaUnitProdi);
+  // Flat (Jurusan/Unit tab — 1 kategori saja) atau null (tab Semua, pakai jurusanOptionGroups
+  // yang sudah dikelompokkan Jurusan/Program Studi/Unit Kerja/Lainnya lewat <optgroup>).
+  const jurusanOptionsFlat = useMemo(() => {
+    const currentValues = pengajuanData.map((item) => item.namaUnitProdi).filter(Boolean);
 
     if (filterKategori === 'Jurusan') {
-      return [...new Set([...pengajuanJurusanOptions, ...currentValues.filter((value) => !isUnitValue(value))])];
+      return Array.from(new Set([
+        ...masterJurusanNames,
+        ...currentValues.filter((value) => !unitNameSet.has(value) && !prodiNameSet.has(value)),
+      ]));
     }
 
     if (filterKategori === 'Unit') {
-      return [...new Set([...pengajuanUnitOptions, ...currentValues.filter((value) => isUnitValue(value))])];
+      return Array.from(new Set([...masterUnitNames, ...currentValues.filter((value) => unitNameSet.has(value))]));
     }
 
-    return [...new Set([...pengajuanJurusanOptions, ...pengajuanUnitOptions, ...currentValues])];
-  }, [filterKategori, pengajuanData]);
+    return null;
+  }, [filterKategori, pengajuanData, masterJurusanNames, masterUnitNames, unitNameSet, prodiNameSet]);
+
+  const jurusanOptionGroups = useMemo(() => {
+    const currentValues = pengajuanData.map((item) => item.namaUnitProdi).filter(Boolean);
+    const known = new Set([...masterJurusanNames, ...masterProdiNames, ...masterUnitNames]);
+    const lainnya = Array.from(new Set(currentValues.filter((value) => !known.has(value))));
+
+    return { jurusan: masterJurusanNames, prodi: masterProdiNames, unit: masterUnitNames, lainnya };
+  }, [pengajuanData, masterJurusanNames, masterProdiNames, masterUnitNames]);
 
   const filteredItems = useMemo(() => {
     const baseItems = getFilteredPengajuanData(pengajuanData, {
@@ -186,9 +234,9 @@ export default function InternalDataPengajuanPage() {
 
     let filtered = baseItems;
     if (filterKategori === 'Jurusan') {
-      filtered = baseItems.filter((item) => !isUnitValue(item.namaUnitProdi));
+      filtered = baseItems.filter((item) => !unitNameSet.has(item.namaUnitProdi));
     } else if (filterKategori === 'Unit') {
-      filtered = baseItems.filter((item) => isUnitValue(item.namaUnitProdi));
+      filtered = baseItems.filter((item) => unitNameSet.has(item.namaUnitProdi));
     }
     // Dedup sebelum render
     const seen = new Set();
@@ -200,7 +248,7 @@ export default function InternalDataPengajuanPage() {
       }
     }
     return unique;
-  }, [pengajuanData, filterStatus, filterJurusan, search, filterKategori]);
+  }, [pengajuanData, filterStatus, filterJurusan, search, filterKategori, unitNameSet]);
 
   const stats = getPengajuanStats(pengajuanData);
 
@@ -344,36 +392,38 @@ export default function InternalDataPengajuanPage() {
             ))}
           </div>
 
-          <select
+          <GroupedFilterSelect
             value={filterJurusan}
-            onChange={(e) => setFilterJurusan(e.target.value)}
-            className="input-field min-w-[220px] px-3 py-2 text-sm text-gray-700 cursor-pointer"
-          >
-            <option value="Semua Jurusan/unit">
-              {filterKategori === 'Jurusan'
+            onChange={setFilterJurusan}
+            allLabel={
+              filterKategori === 'Jurusan'
                 ? 'Semua Jurusan'
                 : filterKategori === 'Unit'
                   ? 'Semua Unit'
-                  : 'Semua Jurusan/unit'}
-            </option>
-            {jurusanOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+                  : 'Semua Jurusan/unit'
+            }
+            allValue="Semua Jurusan/unit"
+            className="min-w-[220px]"
+            buttonClassName="input-field flex min-w-[220px] items-center justify-between gap-2 px-3 py-2 text-sm text-gray-700 cursor-pointer"
+            groups={
+              jurusanOptionsFlat
+                ? [{ label: '', options: jurusanOptionsFlat }]
+                : [
+                    { label: 'Jurusan', options: jurusanOptionGroups.jurusan },
+                    { label: 'Program Studi', options: jurusanOptionGroups.prodi },
+                    { label: 'Unit Kerja', options: jurusanOptionGroups.unit },
+                    { label: 'Lainnya', options: jurusanOptionGroups.lainnya },
+                  ]
+            }
+          />
 
-          <select
+          <GroupedFilterSelect
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="input-field px-3 py-2 text-sm text-gray-700 cursor-pointer"
-          >
-            <option>Semua Status</option>
-            <option>Menunggu</option>
-            <option>Diproses</option>
-            <option>Disetujui</option>
-            <option>Ditolak</option>
-          </select>
+            onChange={setFilterStatus}
+            allLabel="Semua Status"
+            buttonClassName="input-field flex items-center justify-between gap-2 px-3 py-2 text-sm text-gray-700 cursor-pointer"
+            groups={[{ label: '', options: ['Menunggu', 'Diproses', 'Disetujui', 'Ditolak'] }]}
+          />
 
           <div className="relative flex-1 min-w-[220px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />

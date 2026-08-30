@@ -591,4 +591,62 @@ class DokumenKerjasamaTest extends TestCase
         $this->assertEquals(2, $response->json('data.luar_negeri'));
         $this->assertEquals(1, $response->json('data.dalam_negeri'));
     }
+
+    // ------------------------------------------------------------------
+    // structural access (Ketua Jurusan/Ketua Prodi/Kepala Unit) — role di DB
+    // tetap 'internal', cerminan dari test yang sama di PengajuanTest.
+    // ------------------------------------------------------------------
+
+    private function mockCivitasStruktur(array $jurusan = [], array $prodi = [], array $unit = []): void
+    {
+        $this->mock(\App\Services\CivitasStructureService::class, function ($mock) use ($jurusan, $prodi, $unit) {
+            $mock->shouldReceive('getJurusan')->andReturn($jurusan);
+            $mock->shouldReceive('getProgramStudi')->andReturn($prodi);
+            $mock->shouldReceive('getUnit')->andReturn($unit);
+        });
+    }
+
+    public function test_dokumen_kerjasama_internal_ditolak_bukan_pemilik(): void
+    {
+        // Sebelumnya endpoint ini cuma cek kepemilikan untuk dokumen yang sudah
+        // dihapus — dokumen normal bisa dibuka siapa saja yang login.
+        $pemilik  = $this->internal();
+        $penyusup = $this->internal();
+        $this->mockCivitasStruktur();
+        $dokumen = $this->buatDokumen(['nomor_dokumen' => 'OWN-001', 'dibuat_oleh_user_id' => $pemilik->id]);
+
+        $this->actingAs($penyusup)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertStatus(404);
+        $this->actingAs($pemilik)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+    }
+
+    public function test_ketua_jurusan_melihat_dokumen_kerjasama_jurusan_dan_prodi_di_bawahnya(): void
+    {
+        $jurusanTI = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'Teknik Informatika', 'aktif' => true]);
+        $prodiTI   = MasterUnitProdi::create(['jenis_node' => 'prodi', 'parent_id' => $jurusanTI->id, 'nama' => 'D3 Teknik Informatika', 'aktif' => true]);
+        $jurusanTM = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'Teknik Mesin', 'aktif' => true]);
+
+        $kajur = $this->internal();
+        $kajur->update(['name' => 'Budi Santoso']);
+        $pemilikLain = $this->internal();
+
+        $this->mockCivitasStruktur(jurusan: [[
+            'ID_JURUSAN' => '1', 'NAMA_JURUSAN' => 'TEKNIK INFORMATIKA', 'NAMA_JURUSAN_INGGRIS' => '-',
+            'ID_KAJUR' => '123', 'NAMA_KAJUR' => 'Budi Santoso',
+        ]]);
+
+        $a = $this->buatDokumen(['nomor_dokumen' => 'A-001', 'dibuat_oleh_user_id' => $pemilikLain->id, 'unit_prodi_id' => $jurusanTI->id]);
+        $b = $this->buatDokumen(['nomor_dokumen' => 'B-001', 'dibuat_oleh_user_id' => $pemilikLain->id, 'unit_prodi_id' => $prodiTI->id]);
+        $c = $this->buatDokumen(['nomor_dokumen' => 'C-001', 'dibuat_oleh_user_id' => $pemilikLain->id, 'unit_prodi_id' => $jurusanTM->id]);
+
+        $response = $this->actingAs($kajur)->getJson('/api/dokumen-kerjasama?per_page=50');
+        $response->assertOk();
+        $ids = collect($response->json('data.data'))->pluck('id')->all();
+
+        $this->assertContains($a->id, $ids);
+        $this->assertContains($b->id, $ids);
+        $this->assertNotContains($c->id, $ids);
+
+        $this->actingAs($kajur)->getJson("/api/dokumen-kerjasama/{$a->id}")->assertOk();
+        $this->actingAs($kajur)->getJson("/api/dokumen-kerjasama/{$c->id}")->assertStatus(404);
+    }
 }

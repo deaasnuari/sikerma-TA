@@ -7,6 +7,7 @@ use App\Models\DokumenLog;
 use App\Models\DokumenKerjasama;
 use App\Models\Pengajuan;
 use App\Models\PengajuanAktivitas;
+use App\Services\StructuralAccessService;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -109,11 +110,26 @@ class DokumenKerjasamaController extends Controller
         }
 
         if ($normalizedRole === 'internal') {
-            $query->whereHas('pengajuan', function ($builder) use ($user) {
-                $builder->where(function ($inner) use ($user) {
-                    $inner->where('user_pengusul_id', $user->id)
-                        ->orWhereJsonContains('distribusi_user_ids', $user->id);
+            // Ketua Jurusan/Ketua Prodi/Kepala Unit (role tetap 'internal' — lihat
+            // StructuralAccessService) ikut boleh lihat dokumen kerjasama dalam cakupan
+            // jurusan/prodi/unit yang dia pimpin, selain dokumen milik sendiri.
+            $scopedUnitProdiIds = null;
+            if ($user && Schema::hasColumn('dokumen_kerjasama', 'unit_prodi_id')) {
+                $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
+                $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
+            }
+
+            $query->where(function ($builder) use ($user, $scopedUnitProdiIds) {
+                $builder->whereHas('pengajuan', function ($inner) use ($user) {
+                    $inner->where(function ($q) use ($user) {
+                        $q->where('user_pengusul_id', $user->id)
+                            ->orWhereJsonContains('distribusi_user_ids', $user->id);
+                    });
                 });
+
+                if ($scopedUnitProdiIds) {
+                    $builder->orWhereIn('unit_prodi_id', $scopedUnitProdiIds);
+                }
             });
         }
 
@@ -147,20 +163,45 @@ class DokumenKerjasamaController extends Controller
     public function show(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
     {
         //ini guard untuk memastikan dokumen kerjasama yang diakses user memang bisa dilihat oleh user tersebut
-        if ($dokumen_kerjasama->dihapus_admin_pada || $dokumen_kerjasama->dihapus_user_pada) {
-            $user = $request->user();
-            $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
-            $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
-            $isOwner = $user && (
-                (int) $dokumen_kerjasama->dibuat_oleh_user_id === (int) $user->id
-                || (int) $dokumen_kerjasama->pengajuan?->user_pengusul_id === (int) $user->id
-            );
+        $user = $request->user();
+        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+        $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
+        $isOwner = $user && (
+            (int) $dokumen_kerjasama->dibuat_oleh_user_id === (int) $user->id
+            || (int) $dokumen_kerjasama->pengajuan?->user_pengusul_id === (int) $user->id
+        );
 
+        if ($dokumen_kerjasama->dihapus_admin_pada || $dokumen_kerjasama->dihapus_user_pada) {
             $visible = $isAdmin
                 ? !$dokumen_kerjasama->dihapus_admin_pada
                 : (!$dokumen_kerjasama->dihapus_admin_pada || $isOwner) && !$dokumen_kerjasama->dihapus_user_pada;
 
             if (!$visible) {
+                return response([
+                    'success' => false,
+                    'message' => 'Dokumen kerjasama tidak ditemukan.',
+                ], 404);
+            }
+        }
+
+        // Otorisasi kepemilikan/struktural untuk dokumen yang TIDAK dihapus — cerminan
+        // dari index(). admin/admin-humas & pimpinan tetap akses penuh (tidak diubah).
+        // Sebelumnya endpoint ini cuma cek kepemilikan untuk dokumen yang sudah dihapus —
+        // dokumen normal bisa dibuka siapa saja yang login; ini menutup celah itu.
+        if (!$isAdmin && $normalizedRole !== 'pimpinan') {
+            $isDistribusi = $user
+                && is_array($dokumen_kerjasama->pengajuan?->distribusi_user_ids)
+                && in_array($user->id, $dokumen_kerjasama->pengajuan->distribusi_user_ids, false);
+
+            $isInStructuralScope = false;
+            if (!$isOwner && !$isDistribusi && $normalizedRole === 'internal' && $user) {
+                $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
+                $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
+                $isInStructuralScope = $scopedUnitProdiIds
+                    && in_array($dokumen_kerjasama->unit_prodi_id, $scopedUnitProdiIds, false);
+            }
+
+            if (!$isOwner && !$isDistribusi && !$isInStructuralScope) {
                 return response([
                     'success' => false,
                     'message' => 'Dokumen kerjasama tidak ditemukan.',

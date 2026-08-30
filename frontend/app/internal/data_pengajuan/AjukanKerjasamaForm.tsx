@@ -6,7 +6,6 @@ import { getMasterMitra, type MasterMitra as MasterMitraRow } from '@/services/m
 import { useEffect, useMemo, useState } from 'react';
 import {
   pengajuanJurusanOptions,
-  pengajuanUnitOptions,
   type PengajuanFileAttachment,
 } from '@/services/adminPengajuanService';
 import {
@@ -58,8 +57,6 @@ const defaultTemplateDokumenMap: Record<string, TemplateDokumenConfig> = {
 };
 
 const jurusanOptions = pengajuanJurusanOptions;
-
-const unitOptions = pengajuanUnitOptions;
 
 const normalizeText = (value: string) => value.trim().toLowerCase();
 
@@ -321,7 +318,6 @@ export default function InternalAjukanKerjasamaForm({
   const [selectedMitraId, setSelectedMitraId] = useState<number | null>(null);
 
   const allJurusanOptions = [...jurusanOptions, ...customJurusanOpts];
-  const allUnitOptions = [...unitOptions, ...customUnitOpts];
   // Daftar negara sepenuhnya dari master data (master_negara di database, dikelola admin lewat
   // Data Pengajuan > Tambah Negara) — tidak ada lagi daftar default yang di-hardcode di sini.
   const allNegaraOptions = Array.from(new Set(customNegaraOpts));
@@ -339,6 +335,12 @@ export default function InternalAjukanKerjasamaForm({
       item.aktif &&
       !hiddenJurusanAliases.has(item.nama.trim().toUpperCase()),
   );
+  // Sumbernya sama dengan Data Master (bukan lagi daftar hardcode pengajuanUnitOptions) —
+  // supaya kalau nama unit di Data Master diubah/disinkron ulang, pilihan di sini ikut berubah.
+  const allUnitRows = masterUnitProdiTree.filter(
+    (item) => item.jenis_node === 'unit' && item.kategori_unit === 'unit_kerja' && item.aktif,
+  );
+  const allUnitOptions = [...allUnitRows.map((item) => item.nama), ...customUnitOpts];
   const selectedJurusanNode = allJurusanRows.find((item) => item.id === selectedJurusanId) ?? null;
   const jurusanSelectValue = selectedJurusanNode?.id ?? '';
   const prodiOptionsForJurusan = (selectedJurusanNode?.children ?? []).filter((child) => child.jenis_node === 'prodi' && child.aktif);

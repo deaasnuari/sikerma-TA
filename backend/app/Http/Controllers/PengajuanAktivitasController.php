@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Pengajuan;
 use App\Models\PengajuanAktivitas;
+use App\Services\StructuralAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
@@ -37,8 +38,11 @@ class PengajuanAktivitasController extends Controller
     }
 
     /**
-     * ID pengajuan yang boleh DILIHAT (pemilik ATAU yang di-CC admin lewat distribusi_user_ids).
-     * Null berarti tidak ada batasan (admin/admin-humas).
+     * ID pengajuan yang boleh DILIHAT — pemilik, yang di-CC admin lewat distribusi_user_ids,
+     * ATAU (khusus internal yang terdeteksi Ketua Jurusan/Ketua Prodi/Kepala Unit lewat
+     * StructuralAccessService) pengajuan dalam cakupan jurusan/prodi/unit yang dia pimpin.
+     * Null berarti tidak ada batasan (admin/admin-humas) — cerminan dari
+     * PengajuanController::index() supaya "Story & Aktivitas" konsisten dengan Data Pengajuan.
      */
     private function viewablePengajuanIds(Request $request): ?array
     {
@@ -51,13 +55,21 @@ class PengajuanAktivitasController extends Controller
             return [];
         }
 
-        return Pengajuan::query()
-            ->where(function ($builder) use ($user) {
-                $builder->where('user_pengusul_id', $user->id)
-                    ->orWhereJsonContains('distribusi_user_ids', $user->id);
-            })
-            ->pluck('id')
-            ->all();
+        $query = Pengajuan::query()->where(function ($builder) use ($user) {
+            $builder->where('user_pengusul_id', $user->id)
+                ->orWhereJsonContains('distribusi_user_ids', $user->id);
+        });
+
+        if ($this->normalizedRole($request) === 'internal') {
+            $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
+            $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
+
+            if ($scopedUnitProdiIds) {
+                $query->orWhereIn('unit_prodi_id', $scopedUnitProdiIds);
+            }
+        }
+
+        return $query->pluck('id')->all();
     }
 
     /**

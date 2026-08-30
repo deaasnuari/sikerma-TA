@@ -5,7 +5,6 @@ import { CalendarDays, CheckCircle, ChevronDown, Download, MessageCircle, Paperc
 import { useEffect, useMemo, useState } from 'react';
 import {
   pengajuanJurusanOptions,
-  pengajuanUnitOptions,
   submitPengajuanApi,
   type PengajuanFileAttachment,
 } from '@/services/adminPengajuanService';
@@ -58,8 +57,6 @@ const defaultTemplateDokumenMap: Record<string, TemplateDokumenConfig> = {
 };
 
 const jurusanOptions = pengajuanJurusanOptions;
-
-const unitOptions = pengajuanUnitOptions;
 
 
 const normalizeText = (value: string) => value.trim().toLowerCase();
@@ -317,7 +314,6 @@ export default function AdminAjukanKerjasamaForm({
   const [mitraOpen, setMitraOpen] = useState(false);
   const [mitraSearch, setMitraSearch] = useState('');
   const allJurusanOptions = [...jurusanOptions, ...customJurusanOpts];
-  const allUnitOptions = [...unitOptions, ...customUnitOpts];
   const hiddenJurusanAliases = new Set(['EL', 'TM', 'MB']);
   const allJurusanRows = masterUnitProdiTree.filter(
     (item) =>
@@ -326,6 +322,12 @@ export default function AdminAjukanKerjasamaForm({
       item.aktif &&
       !hiddenJurusanAliases.has(item.nama.trim().toUpperCase()),
   );
+  // Sumbernya sama dengan Data Master (bukan lagi daftar hardcode pengajuanUnitOptions) —
+  // supaya kalau nama unit di Data Master diubah/disinkron ulang, pilihan di sini ikut berubah.
+  const allUnitRows = masterUnitProdiTree.filter(
+    (item) => item.jenis_node === 'unit' && item.kategori_unit === 'unit_kerja' && item.aktif,
+  );
+  const allUnitOptions = [...allUnitRows.map((item) => item.nama), ...customUnitOpts];
   const selectedJurusanNode = allJurusanRows.find((item) => item.id === selectedJurusanId) ?? null;
   const jurusanSelectValue = selectedJurusanNode?.id ?? '';
   const prodiOptionsForJurusan = (selectedJurusanNode?.children ?? []).filter((child) => child.jenis_node === 'prodi' && child.aktif);

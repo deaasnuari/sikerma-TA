@@ -1,10 +1,109 @@
 <?php
 
+use App\Models\MasterUnitProdi;
+use App\Services\CivitasStructureService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+
+Artisan::command('civitas:sync-struktur {--apply : Terapkan perubahan ke database (default hanya preview/dry-run)}', function (CivitasStructureService $civitas) {
+    // Isi kolom master_unit_prodi.kode_kampus (ID_JURUSAN/ID_PROGRAM_STUDI/ID_UNIT dari
+    // Civitas API) berdasarkan pencocokan nama — sekali jalan, aman diulang (idempotent),
+    // TIDAK menghapus/mengubah baris master_unit_prodi apa pun, cuma mengisi 1 kolom.
+    // Baris yang gagal dicocokkan otomatis dilaporkan supaya bisa diisi manual oleh admin.
+    $normalize = function (?string $nama): string {
+        $nama = (string) $nama;
+        $nama = preg_replace('/[\x{00A0}\x{FEFF}\t\n\r]+/u', ' ', $nama) ?? $nama;
+
+        return mb_strtolower(trim($nama));
+    };
+
+    $findMatch = function (string $namaKampus, string $jenisNode, ?string $kategoriUnit) use ($normalize) {
+        $target = $normalize($namaKampus);
+        if ($target === '') {
+            return null;
+        }
+
+        $query = MasterUnitProdi::query()->where('jenis_node', $jenisNode);
+        if ($kategoriUnit !== null) {
+            $query->where('kategori_unit', $kategoriUnit);
+        }
+
+        foreach ($query->get(['id', 'nama']) as $candidate) {
+            $namaCandidate = $normalize($candidate->nama);
+            if ($namaCandidate === $target || str_contains($namaCandidate, $target) || str_contains($target, $namaCandidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    };
+
+    $apply = (bool) $this->option('apply');
+    $matched = [];
+    $unmatched = [];
+
+    foreach ($civitas->getJurusan() as $row) {
+        $found = $findMatch($row['NAMA_JURUSAN'] ?? '', 'unit', 'jurusan');
+        if ($found) {
+            $matched[] = ['tipe' => 'Jurusan', 'kampus' => $row['NAMA_JURUSAN'], 'kode_kampus' => $row['ID_JURUSAN'], 'sikerma_id' => $found->id, 'sikerma_nama' => $found->nama];
+        } else {
+            $unmatched[] = ['tipe' => 'Jurusan', 'kampus' => $row['NAMA_JURUSAN'] ?? '-', 'kode_kampus' => $row['ID_JURUSAN'] ?? '-'];
+        }
+    }
+
+    foreach ($civitas->getProgramStudi() as $row) {
+        $found = $findMatch($row['NAMA_PROGRAM_STUDI'] ?? '', 'prodi', null);
+        if ($found) {
+            $matched[] = ['tipe' => 'Prodi', 'kampus' => $row['NAMA_PROGRAM_STUDI'], 'kode_kampus' => $row['ID_PROGRAM_STUDI'], 'sikerma_id' => $found->id, 'sikerma_nama' => $found->nama];
+        } else {
+            $unmatched[] = ['tipe' => 'Prodi', 'kampus' => $row['NAMA_PROGRAM_STUDI'] ?? '-', 'kode_kampus' => $row['ID_PROGRAM_STUDI'] ?? '-'];
+        }
+    }
+
+    foreach ($civitas->getUnit() as $row) {
+        $found = $findMatch($row['NAMA_UNIT'] ?? '', 'unit', 'unit_kerja');
+        if ($found) {
+            $matched[] = ['tipe' => 'Unit', 'kampus' => $row['NAMA_UNIT'], 'kode_kampus' => $row['ID_UNIT'], 'sikerma_id' => $found->id, 'sikerma_nama' => $found->nama];
+        } else {
+            $unmatched[] = ['tipe' => 'Unit', 'kampus' => $row['NAMA_UNIT'] ?? '-', 'kode_kampus' => $row['ID_UNIT'] ?? '-'];
+        }
+    }
+
+    if (empty($matched) && empty($unmatched)) {
+        $this->error('Tidak ada data dari Civitas API (cek koneksi/credentials) — tidak ada yang diproses.');
+        return;
+    }
+
+    $this->info(count($matched) . ' baris berhasil dicocokkan otomatis:');
+    $this->table(['Tipe', 'Nama (Kampus)', 'kode_kampus', 'master_unit_prodi.id', 'Nama (SIKERMA)'], array_map(
+        fn ($m) => [$m['tipe'], $m['kampus'], $m['kode_kampus'], $m['sikerma_id'], $m['sikerma_nama']],
+        $matched
+    ));
+
+    if (!empty($unmatched)) {
+        $this->warn(count($unmatched) . ' baris GAGAL dicocokkan otomatis (perlu diisi manual kode_kampus-nya):');
+        $this->table(['Tipe', 'Nama (Kampus)', 'kode_kampus'], array_map(
+            fn ($m) => [$m['tipe'], $m['kampus'], $m['kode_kampus']],
+            $unmatched
+        ));
+    }
+
+    if (!$apply) {
+        $this->warn('Ini baru preview (dry-run). Jalankan ulang dengan --apply untuk benar-benar mengisi kode_kampus.');
+        return;
+    }
+
+    DB::transaction(function () use ($matched) {
+        foreach ($matched as $m) {
+            MasterUnitProdi::whereKey($m['sikerma_id'])->update(['kode_kampus' => (string) $m['kode_kampus']]);
+        }
+    });
+
+    $this->info(count($matched) . ' baris kode_kampus berhasil diisi.');
+})->purpose('Sinkronkan kode_kampus (ID_JURUSAN/ID_PROGRAM_STUDI/ID_UNIT) dari Civitas API berdasarkan pencocokan nama');
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

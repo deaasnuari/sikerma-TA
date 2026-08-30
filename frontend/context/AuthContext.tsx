@@ -11,7 +11,18 @@ import {
   persistUser,
   verifyCurrentUser,
 } from '@/services/authService';
+import { invalidateRekapCache } from '@/services/dokumenKerjasamaApiService';
+import { invalidateMonitoringCache } from '@/services/adminMonitoringService';
 import type { AuthUser } from '@/types/auth';
+
+// Rekap Data & Monitoring punya cache singkat di memori (module-level, bukan per-user) —
+// harus dikosongkan tiap kali identitas yang login berubah (login/login-kampus/logout).
+// Kalau tidak, ganti akun dalam jendela cache (60 detik) bisa nampilin data hasil scope
+// akses user SEBELUMNYA (mis. Kepala Unit login abis admin buka Rekap Data duluan).
+function invalidateUserScopedCaches() {
+  invalidateRekapCache();
+  invalidateMonitoringCache();
+}
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -53,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     try {
       const loggedInUser = await loginUser({ email, password });
+      invalidateUserScopedCaches();
       setUser(loggedInUser);
       persistUser(loggedInUser);
       return loggedInUser;
@@ -65,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     try {
       const loggedInUser = await loginWithCampusAccount({ username, password });
+      invalidateUserScopedCaches();
       setUser(loggedInUser);
       persistUser(loggedInUser);
       return loggedInUser;
@@ -75,6 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     void logoutUser();
+    invalidateUserScopedCaches();
     setUser(null);
     clearStoredUser();
   };

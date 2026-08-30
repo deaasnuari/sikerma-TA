@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { FileText, Clock, CheckCircle, XCircle, Search, Filter, Plus, Eye, MessageSquare, X, ThumbsUp, ThumbsDown, CalendarDays, ChevronLeft, ChevronRight, Pencil, Trash2, ExternalLink, Paperclip, Download, Upload, Bell, CheckSquare, Square } from 'lucide-react';
 import { addAdminNotification, markNotificationsByHrefPrefixAsRead } from '@/services/adminService';
 import AdminAjukanKerjasamaForm from './AjukanKerjasamaForm';
+import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import InternalAjukanKerjasamaForm from '@/app/internal/data_pengajuan/AjukanKerjasamaForm';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 import {
@@ -44,8 +45,6 @@ import {
   accFinalBerkasApi,
   uploadAccFileApi,
   updatePengajuanItemApi,
-  pengajuanJurusanOptions,
-  pengajuanUnitOptions,
   type PengajuanItem,
   type PengajuanStatus,
   type PengajuanFileAttachment,
@@ -786,12 +785,20 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const [yearRangeStart, setYearRangeStart] = useState(defaultYearRangeStart);
   const yearGrid = Array.from({ length: 12 }, (_, index) => yearRangeStart + index);
 
-  // Opsi Jurusan/Unit/Prodi untuk filter, digabung dari master data + nilai yang benar-benar dipakai di data pengajuan.
-  const unitProdiOptions = useMemo(() => {
-    const fromMaster = [...masterJurusanRows, ...masterUnitRows, ...masterProdiRows].map((item) => item.nama);
-    const fromData = pengajuanData.map((item) => item.namaUnitProdi);
-    const merged = Array.from(new Set([...fromMaster, ...fromData].filter(Boolean)));
-    return ['Semua Jurusan/unit', ...merged];
+  // Opsi Jurusan/Unit/Prodi untuk filter — dipisah per kategori supaya dropdown bisa
+  // dikelompokkan pakai <optgroup> (sama seperti dropdown "Semua Unit" di landing page).
+  // "Lainnya" nampung nama yang benar-benar dipakai di data pengajuan tapi tidak cocok ke
+  // master data aktif mana pun (unit/prodi lama/nonaktif).
+  const unitProdiGroups = useMemo(() => {
+    const jurusan = Array.from(new Set(masterJurusanRows.map((item) => item.nama).filter(Boolean)));
+    const prodi = Array.from(new Set(masterProdiRows.map((item) => item.nama).filter(Boolean)));
+    const unit = Array.from(new Set(masterUnitRows.map((item) => item.nama).filter(Boolean)));
+    const known = new Set([...jurusan, ...prodi, ...unit]);
+    const lainnya = Array.from(
+      new Set(pengajuanData.map((item) => item.namaUnitProdi).filter((nama) => nama && !known.has(nama)))
+    );
+
+    return { jurusan, prodi, unit, lainnya };
   }, [masterJurusanRows, masterUnitRows, masterProdiRows, pengajuanData]);
 
   // Deduplikasi data berdasarkan id sebelum render
@@ -832,7 +839,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
     if (!editingItem) return undefined;
     return {
       nomorPengajuan: editingItem.nomorPengajuan,
-      asal: (pengajuanUnitOptions.includes(editingItem.namaUnitProdi) ? 'Unit' : 'Jurusan') as 'Jurusan' | 'Unit',
+      asal: (masterUnitRows.some((row) => row.nama === editingItem.namaUnitProdi) ? 'Unit' : 'Jurusan') as 'Jurusan' | 'Unit',
       namaMitra: editingItem.namaMitra,
       jenisMitra: editingItem.mitraKategori || '',
       bidangUsaha: editingItem.mitraBidangUsaha || '',
@@ -856,8 +863,8 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingItem?.id]);
 
-  const editAllJurusanOptions = [...pengajuanJurusanOptions, ...editCustomJurusanOpts];
-  const editAllUnitOptions = [...pengajuanUnitOptions, ...editCustomUnitOpts];
+  const editAllJurusanOptions = [...masterJurusanRows.map((row) => row.nama), ...editCustomJurusanOpts];
+  const editAllUnitOptions = [...masterUnitRows.map((row) => row.nama), ...editCustomUnitOpts];
   const editAsalOptions = editAsal === 'Jurusan' ? editAllJurusanOptions : editAllUnitOptions;
   const editAllRlOptions = Array.from(new Set([...ruangLingkupRows.map((item) => item.nama_ruang_lingkup), ...editCustomRlOpts]));
   const editTemplateUrl = editForm ? (templatePreviewUrlByJenis[editForm.jenisDokumen] || '') : '';
@@ -1083,7 +1090,7 @@ async function saveReview() {
   }
 
   function openEditLegacy(item: PengajuanItem) {
-    const asalDefault: 'Jurusan' | 'Unit' = pengajuanUnitOptions.includes(item.namaUnitProdi) ? 'Unit' : 'Jurusan';
+    const asalDefault: 'Jurusan' | 'Unit' = masterUnitRows.some((row) => row.nama === item.namaUnitProdi) ? 'Unit' : 'Jurusan';
 
     setEditForm({
       id: item.id,
@@ -1719,26 +1726,23 @@ function addEditJurusanUnitOption() {
             <Filter size={15} />
             Filter:
           </div>
-          <select
+          <GroupedFilterSelect
             value={filterJurusan}
-            onChange={(e) => setFilterJurusan(e.target.value)}
-            className="input-field px-3 py-2 text-[12px] text-gray-700 cursor-pointer"
-          >
-            <option>Semua Kategori Kerjasama</option>
-            <option>Internal</option>
-            <option>Eksternal</option>
-          </select>
-          <select
+            onChange={setFilterJurusan}
+            allLabel="Semua Kategori Kerjasama"
+            groups={[{ label: '', options: ['Internal', 'Eksternal'] }]}
+          />
+          <GroupedFilterSelect
             value={filterUnitProdi}
-            onChange={(e) => setFilterUnitProdi(e.target.value)}
-            className="input-field px-3 py-2 text-[12px] text-gray-700 cursor-pointer"
-          >
-            {unitProdiOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            onChange={setFilterUnitProdi}
+            allLabel="Semua Jurusan/unit"
+            groups={[
+              { label: 'Jurusan', options: unitProdiGroups.jurusan },
+              { label: 'Program Studi', options: unitProdiGroups.prodi },
+              { label: 'Unit Kerja', options: unitProdiGroups.unit },
+              { label: 'Lainnya', options: unitProdiGroups.lainnya },
+            ]}
+          />
           <div className="relative">
             <button
               type="button"
@@ -1815,17 +1819,12 @@ function addEditJurusanUnitOption() {
               </div>
             )}
           </div>
-          <select
+          <GroupedFilterSelect
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="input-field px-3 py-2 text-[12px] text-gray-700 cursor-pointer"
-          >
-            <option>Semua Status</option>
-            <option>Menunggu</option>
-            <option>Diproses</option>
-            <option>Disetujui</option>
-            <option>Ditolak</option>
-          </select>
+            onChange={setFilterStatus}
+            allLabel="Semua Status"
+            groups={[{ label: '', options: ['Menunggu', 'Diproses', 'Disetujui', 'Ditolak'] }]}
+          />
           <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input

@@ -9,6 +9,7 @@ use App\Models\MasterMitra;
 use App\Models\MasterRuangLingkup;
 use App\Models\MasterUnitProdi;
 use App\Models\Pengajuan;
+use App\Services\StructuralAccessService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -1024,18 +1025,34 @@ class PengajuanController extends Controller
         // admin lewat distribusi_user_ids). Admin/admin-humas tetap lihat semua.
         // Catatan: role user eksternal tersimpan sebagai 'external' (Inggris) di kolom
         // users.role, beda dari 'eksternal' (Indonesia) yang dipakai untuk kategori_pengajuan.
+        //
+        // Untuk role internal yang terdeteksi sebagai Ketua Jurusan/Ketua Prodi/Kepala Unit
+        // (lihat StructuralAccessService — role di database TETAP 'internal', ini cuma
+        // level akses tambahan berdasarkan data struktur dari Civitas API), scope-nya
+        // diperluas ke seluruh pengajuan dalam jurusan/prodi/unit yang dia pimpin, di luar
+        // pengajuan milik sendiri.
         if (in_array($normalizedRole, ['internal', 'external'], true)) {
             $ownerColumn = $this->hasPengajuanColumn('user_pengusul_id')
                 ? 'user_pengusul_id'
                 : ($this->hasPengajuanColumn('dibuat_oleh_user_id') ? 'dibuat_oleh_user_id' : null);
             $hasDistribusiColumn = $this->hasPengajuanColumn('distribusi_user_ids');
 
+            $scopedUnitProdiIds = null;
+            if ($normalizedRole === 'internal' && $user && $this->hasPengajuanColumn('unit_prodi_id')) {
+                $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
+                $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
+            }
+
             if ($ownerColumn) {
-                $query->where(function ($builder) use ($ownerColumn, $hasDistribusiColumn, $user) {
+                $query->where(function ($builder) use ($ownerColumn, $hasDistribusiColumn, $user, $scopedUnitProdiIds) {
                     $builder->where($ownerColumn, $user->id);
 
                     if ($hasDistribusiColumn) {
                         $builder->orWhereJsonContains('distribusi_user_ids', $user->id);
+                    }
+
+                    if ($scopedUnitProdiIds) {
+                        $builder->orWhereIn('unit_prodi_id', $scopedUnitProdiIds);
                     }
                 });
             }
@@ -1096,20 +1113,48 @@ class PengajuanController extends Controller
 
     public function show(Request $request, Pengajuan $pengajuan): Response
     {
+        $user = $request->user();
+        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+        $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
+        $isOwner = $user && (int) $pengajuan->user_pengusul_id === (int) $user->id;
+
         // Cerminan persis dari filter visibilitas di index(): pengajuan yang sudah "dihapus"
         // admin tetap bisa diakses lewat detail HANYA oleh pemiliknya sendiri (bukan admin lain);
         // yang "dihapus" pemiliknya sendiri cuma bisa diakses lewat admin — selain itu 404.
         if ($pengajuan->dihapus_admin_pada || $pengajuan->dihapus_user_pada) {
-            $user = $request->user();
-            $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
-            $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
-            $isOwner = $user && (int) $pengajuan->user_pengusul_id === (int) $user->id;
-
             $visible = $isAdmin
                 ? !$pengajuan->dihapus_admin_pada
                 : (!$pengajuan->dihapus_admin_pada || $isOwner) && !$pengajuan->dihapus_user_pada;
 
             if (!$visible) {
+                return response([
+                    'success' => false,
+                    'message' => 'Pengajuan tidak ditemukan.',
+                ], 404);
+            }
+        }
+
+        // Kepemilikan/otorisasi untuk detail — cerminan dari index(): admin/admin-humas &
+        // pimpinan tetap akses penuh (tidak diubah). internal/external cuma boleh buka
+        // pengajuan miliknya sendiri, yang di-CC lewat distribusi_user_ids, ATAU (khusus
+        // internal yang terdeteksi Ketua Jurusan/Ketua Prodi/Kepala Unit) pengajuan dalam
+        // cakupan jurusan/prodi/unit yang dia pimpin. Sebelumnya endpoint ini TIDAK punya
+        // pengecekan ini sama sekali — siapa pun yang login bisa buka pengajuan siapa saja
+        // asal tahu ID-nya; ini menutup celah itu sekaligus menerapkan aturan struktural.
+        if (!$isAdmin && $normalizedRole !== 'pimpinan') {
+            $isDistribusi = $user
+                && is_array($pengajuan->distribusi_user_ids)
+                && in_array($user->id, $pengajuan->distribusi_user_ids, false);
+
+            $isInStructuralScope = false;
+            if (!$isOwner && !$isDistribusi && $normalizedRole === 'internal' && $user) {
+                $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
+                $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
+                $isInStructuralScope = $scopedUnitProdiIds
+                    && in_array($pengajuan->unit_prodi_id, $scopedUnitProdiIds, false);
+            }
+
+            if (!$isOwner && !$isDistribusi && !$isInStructuralScope) {
                 return response([
                     'success' => false,
                     'message' => 'Pengajuan tidak ditemukan.',

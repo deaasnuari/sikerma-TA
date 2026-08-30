@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Activity, CalendarDays, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2, Upload, Eye, Building2, FileText, Hash, Phone, User, CheckCircle2, Clock, XCircle, Download, Paperclip, RefreshCw, CheckSquare, Square, Tag, MapPin, Globe2, Target, Timer, ListChecks } from 'lucide-react';
 import TambahDokumenModal from './TambahDokumenModal';
+import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import {
   createDokumenFormData,
   deleteRekapDokumen,
@@ -114,7 +115,11 @@ export default function RekapDataPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [feedbackModal, setFeedbackModal] = useState<{ title: string; message: string } | null>(null);
-  const [masterUnitOptions, setMasterUnitOptions] = useState<string[]>([]);
+  // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) supaya dropdown filter bisa
+  // dikelompokkan pakai <optgroup>, sama seperti dropdown "Semua Unit" di landing page.
+  const [masterJurusanOptions, setMasterJurusanOptions] = useState<string[]>([]);
+  const [masterProdiOptions, setMasterProdiOptions] = useState<string[]>([]);
+  const [masterUnitKerjaOptions, setMasterUnitKerjaOptions] = useState<string[]>([]);
   const [renewalHistory, setRenewalHistory] = useState<RenewalRequestItem[]>([]);
   const [isEditingManfaat, setIsEditingManfaat] = useState(false);
   const [manfaatDraft, setManfaatDraft] = useState('');
@@ -215,13 +220,9 @@ export default function RekapDataPage() {
           return;
         }
 
-        const mergedFromMaster = Array.from(
-          new Set(
-            [...jurusanRows, ...unitRows, ...prodiRows].map((item) => item.nama).filter(Boolean)
-          )
-        );
-
-        setMasterUnitOptions(mergedFromMaster);
+        setMasterJurusanOptions(Array.from(new Set(jurusanRows.map((item) => item.nama).filter(Boolean))));
+        setMasterUnitKerjaOptions(Array.from(new Set(unitRows.map((item) => item.nama).filter(Boolean))));
+        setMasterProdiOptions(Array.from(new Set(prodiRows.map((item) => item.nama).filter(Boolean))));
       } catch {
         // fallback tetap dari service lokal bila API belum siap.
       }
@@ -235,16 +236,21 @@ export default function RekapDataPage() {
   }, []);
 
   const jenisOptions = getRekapJenisOptions(rekapData);
-  const unitOptions = useMemo(() => {
-    const localOptions = getRekapUnitOptions(rekapData);
-    const merged = Array.from(new Set([...localOptions, ...masterUnitOptions]));
+  // Nama dari dokumen yang ter-load tapi tidak cocok ke Jurusan/Prodi/Unit Kerja aktif mana pun
+  // (unit lama/nonaktif yang masih dipakai dokumen) — ditampilkan di grup "Lainnya" biar tetap
+  // bisa difilter, bukan hilang begitu saja.
+  const unitGroups = useMemo(() => {
+    const docDerived = getRekapUnitOptions(rekapData).filter((o) => o !== 'Semua Jurusan/unit');
+    const known = new Set([...masterJurusanOptions, ...masterProdiOptions, ...masterUnitKerjaOptions]);
+    const lainnya = docDerived.filter((nama) => !known.has(nama));
 
-    if (!merged.includes('Semua Jurusan/unit')) {
-      return ['Semua Jurusan/unit', ...merged];
-    }
-
-    return merged;
-  }, [rekapData, masterUnitOptions]);
+    return {
+      jurusan: masterJurusanOptions,
+      prodi: masterProdiOptions,
+      unit: masterUnitKerjaOptions,
+      lainnya,
+    };
+  }, [rekapData, masterJurusanOptions, masterProdiOptions, masterUnitKerjaOptions]);
   const statusOptions = rekapStatusOptions;
   const jenisMitraOptions = useMemo(() => getRekapJenisMitraOptions(rekapData), [rekapData]);
   const tingkatPerusahaanOptions = useMemo(() => getRekapTingkatPerusahaanOptions(rekapData), [rekapData]);
@@ -540,65 +546,45 @@ export default function RekapDataPage() {
               Filter:
             </span>
 
-            <select
+            <GroupedFilterSelect
               value={filterJenis}
-              onChange={(event) => setFilterJenis(event.target.value)}
-              className="input-field px-3 py-2 text-[12px] text-gray-700"
-            >
-              {jenisOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              onChange={setFilterJenis}
+              allLabel={jenisOptions[0]}
+              groups={[{ label: '', options: jenisOptions.slice(1) }]}
+            />
 
-            <select
+            <GroupedFilterSelect
               value={filterUnit}
-              onChange={(event) => setFilterUnit(event.target.value)}
-              className="input-field px-3 py-2 text-[12px] text-gray-700"
-            >
-              {unitOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              onChange={setFilterUnit}
+              allLabel="Semua Jurusan/unit"
+              groups={[
+                { label: 'Jurusan', options: unitGroups.jurusan },
+                { label: 'Program Studi', options: unitGroups.prodi },
+                { label: 'Unit Kerja', options: unitGroups.unit },
+                { label: 'Lainnya', options: unitGroups.lainnya },
+              ]}
+            />
 
-            <select
+            <GroupedFilterSelect
               value={filterStatus}
-              onChange={(event) => setFilterStatus(event.target.value)}
-              className="input-field px-3 py-2 text-[12px] text-gray-700"
-            >
-              {statusOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              onChange={setFilterStatus}
+              allLabel={statusOptions[0]}
+              groups={[{ label: '', options: statusOptions.slice(1) }]}
+            />
 
-            <select
+            <GroupedFilterSelect
               value={filterJenisMitra}
-              onChange={(event) => setFilterJenisMitra(event.target.value)}
-              className="input-field px-3 py-2 text-[12px] text-gray-700"
-            >
-              {jenisMitraOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              onChange={setFilterJenisMitra}
+              allLabel={jenisMitraOptions[0]}
+              groups={[{ label: '', options: jenisMitraOptions.slice(1) }]}
+            />
 
-            <select
+            <GroupedFilterSelect
               value={filterTingkatPerusahaan}
-              onChange={(event) => setFilterTingkatPerusahaan(event.target.value)}
-              className="input-field px-3 py-2 text-[12px] text-gray-700"
-            >
-              {tingkatPerusahaanOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              onChange={setFilterTingkatPerusahaan}
+              allLabel={tingkatPerusahaanOptions[0]}
+              groups={[{ label: '', options: tingkatPerusahaanOptions.slice(1) }]}
+            />
 
             <div className="relative">
               <button
