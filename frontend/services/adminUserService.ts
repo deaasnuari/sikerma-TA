@@ -1,9 +1,10 @@
 import { apiRequest } from '@/lib/api';
 
-type ApiRole = 'admin' | 'pimpinan' | 'internal' | 'external';
+//ini
+type ApiRole = 'admin' | 'pimpinan' | 'internal' | 'external' | 'unit';
 type ApiApprovalStatus = 'active' | 'pending' | 'rejected';
 
-export type UiRole = 'Admin' | 'Jurusan' | 'Prodi' | 'Pimpinan' | 'Mitra';
+export type UiRole = 'Admin' | 'Jurusan' | 'Prodi' | 'Pimpinan' | 'Mitra' | 'Unit';
 export type UiStatus = 'Aktif' | 'NonAktif' | 'Ditolak';
 
 export interface UserListItem {
@@ -64,6 +65,8 @@ function toApiRole(role: UiRole): ApiRole {
       return 'pimpinan';
     case 'Mitra':
       return 'external';
+    case 'Unit':
+      return 'unit';
     case 'Jurusan':
     case 'Prodi':
     default:
@@ -75,6 +78,7 @@ function toUiRole(user: ApiUser): UiRole {
   if (user.role === 'admin') return 'Admin';
   if (user.role === 'pimpinan') return 'Pimpinan';
   if (user.role === 'external') return 'Mitra';
+  if (user.role === 'unit') return 'Unit';
 
   if (user.account_type === 'Jurusan') return 'Jurusan';
   if (user.account_type === 'Prodi') return 'Prodi';

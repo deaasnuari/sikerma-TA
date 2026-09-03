@@ -117,6 +117,24 @@ class AdminUserTest extends TestCase
             ->assertJsonValidationErrors(['role']);
     }
 
+    public function test_admin_dapat_buat_dan_update_user_role_unit(): void
+    {
+        //ini
+        $admin = $this->admin();
+
+        $response = $this->actingAs($admin)->postJson('/api/admin/users', $this->dataUser([
+            'email' => 'unit-test@polibatam.ac.id',
+            'username' => 'unittest',
+            'role' => 'unit',
+        ]));
+        $response->assertStatus(201)->assertJsonPath('user.role', 'unit');
+
+        $userId = $response->json('user.id');
+        $this->actingAs($admin)->putJson("/api/admin/users/{$userId}", [
+            'name' => 'John Doe', 'email' => 'unit-test@polibatam.ac.id', 'role' => 'unit',
+        ])->assertOk()->assertJsonPath('user.role', 'unit');
+    }
+
     public function test_bukan_admin_tidak_bisa_membuat_user(): void
     {
         $user = $this->internal();

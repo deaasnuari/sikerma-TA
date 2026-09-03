@@ -16,7 +16,8 @@ class AdminUserController extends Controller
 
     private function allowedRoles(): array
     {
-        return ['admin', 'pimpinan', 'internal', 'external'];
+        //ini 
+        return ['admin', 'pimpinan', 'internal', 'external', 'unit'];
     }
 
     private function ensureAdminAccess(Request $request): void

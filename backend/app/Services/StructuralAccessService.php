@@ -6,20 +6,7 @@ use App\Models\MasterUnitProdi;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Menentukan jabatan struktural (Ketua Jurusan / Ketua Prodi / Kepala Unit / Dosen biasa)
- * untuk user role `internal`, berdasarkan data dari Civitas API (Jurusan/Prodi/Unit) —
- * BUKAN dengan menambah role database baru. Role tetap `internal`; ini cuma level akses
- * di dalamnya (lihat instruksi user: "Ketua Jurusan, Ketua Prodi, Kepala Unit, Dosen biasa
- * adalah level akses/scoping di dalam role internal").
- *
- * CATATAN PENTING (sementara, sampai UPA TIK kasih ID yang konsisten — lihat pesan yang
- * sudah disiapkan untuk ditanyakan): field ID_KAJUR/ID_KPS/ID_KEPALA_UNIT dari Civitas API
- * TERBUKTI beda ID-space dari NIK yang dikembalikan saat login (dicek dengan akun nyata:
- * NIK login Ridwan Purwanto = 210084, tapi ID_KEPALA_UNIT dia = 179). Karena itu pencocokan
- * di sini SEMENTARA pakai NAMA (case-insensitive), bukan ID — punya risiko salah kalau ada
- * nama kembar/beda ejaan. Ganti ke pencocokan by-ID begitu field yang konsisten tersedia.
- */
+//ini adalah service untuk mengatur akses structural user (ketua jurusan, ketua prodi, kepala unit) ke pengajuan_v2 & dokumen_kerjasama.
 class StructuralAccessService
 {
     public function __construct(private CivitasStructureService $civitas)

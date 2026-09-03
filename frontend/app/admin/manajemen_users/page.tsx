@@ -17,6 +17,7 @@ import {
   X,
   RefreshCw,
   ClockAlert,
+  Layers,
 } from 'lucide-react';
 import {
   createAdminUser,
@@ -89,6 +90,7 @@ const roleColor: Record<string, { bg: string; text: string }> = {
   Prodi: { bg: 'bg-orange-400', text: 'text-white' },
   Pimpinan: { bg: 'bg-red-500', text: 'text-white' },
   Mitra: { bg: 'bg-purple-500', text: 'text-white' },
+  Unit: { bg: 'bg-cyan-500', text: 'text-white' },
 };
 
 const statusStyle: Record<string, { bg: string; text: string; dot: string }> = {
@@ -356,6 +358,7 @@ export default function ManajemenUserPage() {
   const totalProdi = users.filter((u) => u.role === 'Prodi').length;
   const totalPimpinan = users.filter((u) => u.role === 'Pimpinan').length;
   const totalMitra = users.filter((u) => u.role === 'Mitra').length;
+  const totalUnit = users.filter((u) => u.role === 'Unit').length;
 
   return (
     <div className="space-y-4">
@@ -419,7 +422,7 @@ export default function ManajemenUserPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+      <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
         <div className="bg-white rounded-lg border border-gray-100 shadow-sm p-3">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-7 h-7 rounded-md bg-blue-100 flex items-center justify-center">
@@ -479,6 +482,16 @@ export default function ManajemenUserPage() {
           </div>
           <p className="text-[17px] font-bold text-gray-900">{totalMitra}</p>
         </div>
+
+        <div className="bg-white rounded-lg border border-gray-100 shadow-sm p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 rounded-md bg-cyan-100 flex items-center justify-center">
+              <Layers size={14} className="text-cyan-600" />
+            </div>
+            <p className="text-[10px] text-gray-500 font-medium">Unit</p>
+          </div>
+          <p className="text-[17px] font-bold text-gray-900">{totalUnit}</p>
+        </div>
       </div>
 
       {/* Search & Filter */}
@@ -509,6 +522,7 @@ export default function ManajemenUserPage() {
             <option>Prodi</option>
             <option>Pimpinan</option>
             <option>Mitra</option>
+            <option>Unit</option>
           </select>
           <ChevronDown
             size={14}
@@ -769,6 +783,7 @@ export default function ManajemenUserPage() {
                       <option value="Prodi">Prodi</option>
                       <option value="Pimpinan">Pimpinan</option>
                       <option value="Mitra">Mitra</option>
+                      <option value="Unit">Unit</option>
                     </select>
                     <ChevronDown
                       size={14}
@@ -865,6 +880,7 @@ export default function ManajemenUserPage() {
                       <option value="Prodi">Prodi</option>
                       <option value="Pimpinan">Pimpinan</option>
                       <option value="Mitra">Mitra</option>
+                      <option value="Unit">Unit</option>
                     </select>
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
