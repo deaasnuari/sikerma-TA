@@ -626,12 +626,12 @@ class DokumenKerjasamaTest extends TestCase
         $jurusanTM = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'Teknik Mesin', 'aktif' => true]);
 
         $kajur = $this->internal();
-        $kajur->update(['name' => 'Budi Santoso']);
+        $kajur->update(['nik' => '221316']);
         $pemilikLain = $this->internal();
 
         $this->mockCivitasStruktur(jurusan: [[
             'ID_JURUSAN' => '1', 'NAMA_JURUSAN' => 'TEKNIK INFORMATIKA', 'NAMA_JURUSAN_INGGRIS' => '-',
-            'ID_KAJUR' => '123', 'NAMA_KAJUR' => 'Budi Santoso',
+            'NIK_KAJUR' => '221316', 'NAMA_KAJUR' => 'Budi Santoso',
         ]]);
 
         $a = $this->buatDokumen(['nomor_dokumen' => 'A-001', 'dibuat_oleh_user_id' => $pemilikLain->id, 'unit_prodi_id' => $jurusanTI->id]);

@@ -1021,24 +1021,23 @@ class PengajuanController extends Controller
             }
         }
 
-        // Internal & external cuma boleh lihat pengajuan milik sendiri (atau yang di-CC
-        // admin lewat distribusi_user_ids). Admin/admin-humas tetap lihat semua.
+        // Internal, unit, & external cuma boleh lihat pengajuan milik sendiri (atau yang
+        // di-CC admin lewat distribusi_user_ids). Admin/admin-humas tetap lihat semua.
         // Catatan: role user eksternal tersimpan sebagai 'external' (Inggris) di kolom
         // users.role, beda dari 'eksternal' (Indonesia) yang dipakai untuk kategori_pengajuan.
         //
-        // Untuk role internal yang terdeteksi sebagai Ketua Jurusan/Ketua Prodi/Kepala Unit
-        // (lihat StructuralAccessService — role di database TETAP 'internal', ini cuma
-        // level akses tambahan berdasarkan data struktur dari Civitas API), scope-nya
-        // diperluas ke seluruh pengajuan dalam jurusan/prodi/unit yang dia pimpin, di luar
-        // pengajuan milik sendiri.
-        if (in_array($normalizedRole, ['internal', 'external'], true)) {
+        // Untuk role internal ATAU unit yang terdeteksi sebagai Ketua Jurusan/Ketua
+        // Prodi/Kepala Unit (lihat StructuralAccessService — deteksi jabatan struktural
+        // berdasarkan NIK, tidak mengubah role) scope-nya diperluas ke seluruh pengajuan
+        // dalam jurusan/prodi/unit yang dia pimpin, di luar pengajuan milik sendiri.
+        if (in_array($normalizedRole, ['internal', 'external', 'unit', 'jurusan', 'prodi'], true)) {
             $ownerColumn = $this->hasPengajuanColumn('user_pengusul_id')
                 ? 'user_pengusul_id'
                 : ($this->hasPengajuanColumn('dibuat_oleh_user_id') ? 'dibuat_oleh_user_id' : null);
             $hasDistribusiColumn = $this->hasPengajuanColumn('distribusi_user_ids');
 
             $scopedUnitProdiIds = null;
-            if ($normalizedRole === 'internal' && $user && $this->hasPengajuanColumn('unit_prodi_id')) {
+            if (in_array($normalizedRole, ['internal', 'unit', 'jurusan', 'prodi'], true) && $user && $this->hasPengajuanColumn('unit_prodi_id')) {
                 $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
                 $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
             }
@@ -1135,19 +1134,20 @@ class PengajuanController extends Controller
         }
 
         // Kepemilikan/otorisasi untuk detail — cerminan dari index(): admin/admin-humas &
-        // pimpinan tetap akses penuh (tidak diubah). internal/external cuma boleh buka
-        // pengajuan miliknya sendiri, yang di-CC lewat distribusi_user_ids, ATAU (khusus
-        // internal yang terdeteksi Ketua Jurusan/Ketua Prodi/Kepala Unit) pengajuan dalam
-        // cakupan jurusan/prodi/unit yang dia pimpin. Sebelumnya endpoint ini TIDAK punya
-        // pengecekan ini sama sekali — siapa pun yang login bisa buka pengajuan siapa saja
-        // asal tahu ID-nya; ini menutup celah itu sekaligus menerapkan aturan struktural.
+        // pimpinan tetap akses penuh (tidak diubah). internal/external/unit cuma boleh
+        // buka pengajuan miliknya sendiri, yang di-CC lewat distribusi_user_ids, ATAU
+        // (khusus internal/unit yang terdeteksi Ketua Jurusan/Ketua Prodi/Kepala Unit)
+        // pengajuan dalam cakupan jurusan/prodi/unit yang dia pimpin. Sebelumnya endpoint
+        // ini TIDAK punya pengecekan ini sama sekali — siapa pun yang login bisa buka
+        // pengajuan siapa saja asal tahu ID-nya; ini menutup celah itu sekaligus
+        // menerapkan aturan struktural.
         if (!$isAdmin && $normalizedRole !== 'pimpinan') {
             $isDistribusi = $user
                 && is_array($pengajuan->distribusi_user_ids)
                 && in_array($user->id, $pengajuan->distribusi_user_ids, false);
 
             $isInStructuralScope = false;
-            if (!$isOwner && !$isDistribusi && $normalizedRole === 'internal' && $user) {
+            if (!$isOwner && !$isDistribusi && in_array($normalizedRole, ['internal', 'unit', 'jurusan', 'prodi'], true) && $user) {
                 $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
                 $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
                 $isInStructuralScope = $scopedUnitProdiIds

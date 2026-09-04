@@ -87,12 +87,12 @@ class Pengajuan extends Model
         'is_from_admin' => 'boolean',
 
         // New schema casts
-        // 'ruang_lingkup_ids' => PgArrayCast::class,
-        'ruang_lingkup_ids' => 'array',
+        'ruang_lingkup_ids' => PgArrayCast::class,
+        // 'ruang_lingkup_ids' => 'array',
         'tanggal_mulai' => 'date',
         'tanggal_berakhir' => 'date',
         'diajukan_pada' => 'datetime',
-        'email_terverifikasi_pada' => 'datetime',
+        'email_terv erifikasi_pada' => 'datetime',
         'acc_internal_at' => 'datetime',
         'acc_mitra_at' => 'datetime',
         'final_approved_at' => 'datetime',

@@ -39,7 +39,7 @@ class PengajuanAktivitasController extends Controller
 
     /**
      * ID pengajuan yang boleh DILIHAT — pemilik, yang di-CC admin lewat distribusi_user_ids,
-     * ATAU (khusus internal yang terdeteksi Ketua Jurusan/Ketua Prodi/Kepala Unit lewat
+     * ATAU (khusus internal/unit yang terdeteksi Ketua Jurusan/Ketua Prodi/Kepala Unit lewat
      * StructuralAccessService) pengajuan dalam cakupan jurusan/prodi/unit yang dia pimpin.
      * Null berarti tidak ada batasan (admin/admin-humas) — cerminan dari
      * PengajuanController::index() supaya "Story & Aktivitas" konsisten dengan Data Pengajuan.
@@ -60,7 +60,7 @@ class PengajuanAktivitasController extends Controller
                 ->orWhereJsonContains('distribusi_user_ids', $user->id);
         });
 
-        if ($this->normalizedRole($request) === 'internal') {
+        if (in_array($this->normalizedRole($request), ['internal', 'unit', 'jurusan', 'prodi'], true)) {
             $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
             $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
 

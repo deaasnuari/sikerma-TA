@@ -70,7 +70,7 @@ export default function InternalLayout({ children }: { children: React.ReactNode
   };
 
   return (
-    <ProtectedRoute requiredRole="internal">
+    <ProtectedRoute requiredRole={['internal', 'unit', 'jurusan', 'prodi']}>
       <div className="flex h-screen flex-col bg-gray-100">
         <div className="sticky top-0 z-50 px-1 pt-1">
           <div style={fixedChromeStyle}>

@@ -38,6 +38,8 @@ interface UserItem {
   status: UiStatus;
   username?: string;
   phone?: string;
+  structuralPositionLabel?: string | null;
+  structuralUnitName?: string | null;
 }
 
 const fallbackUsers: UserItem[] = [
@@ -600,6 +602,12 @@ export default function ManajemenUserPage() {
                       >
                         {item.role}
                       </span>
+                      {item.structuralPositionLabel && (
+                        <p className="mt-1 text-[10px] text-gray-500">
+                          {item.structuralPositionLabel}
+                          {item.structuralUnitName ? ` — ${item.structuralUnitName}` : ''}
+                        </p>
+                      )}
                     </td>
                     <td className="py-3.5 px-4">
                       <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-medium bg-gray-100 text-gray-700 border border-gray-200">

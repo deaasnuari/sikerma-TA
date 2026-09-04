@@ -250,6 +250,17 @@ class AuthTest extends TestCase
         });
     }
 
+    private function mockCivitasStrukturKosong(): void
+    {
+        // Dosen biasa: tidak ketemu jadi Kajur/KPS/Kepala Unit, dan UNIT_KERJA-nya juga
+        // tidak match jurusan/unit manapun -> role harus tetap 'internal' (fallback aman).
+        $this->mock(\App\Services\CivitasStructureService::class, function ($mock) {
+            $mock->shouldReceive('getJurusan')->andReturn([]);
+            $mock->shouldReceive('getProgramStudi')->andReturn([]);
+            $mock->shouldReceive('getUnit')->andReturn([]);
+        });
+    }
+
     public function test_login_ldap_berhasil_untuk_akun_yang_sudah_terdaftar(): void
     {
         $user = User::factory()->create([
@@ -263,6 +274,7 @@ class AuthTest extends TestCase
             'NAMA'  => $user->name,
             'EMAIL' => 'dosen@polibatam.ac.id',
         ]);
+        $this->mockCivitasStrukturKosong();
 
         $response = $this->postJson('/api/login-kampus', [
             'username' => 'dosen.polibatam',
@@ -272,6 +284,147 @@ class AuthTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('user.id', (string) $user->id)
             ->assertJsonPath('user.role', 'internal');
+    }
+
+    public function test_login_ldap_berhasil_untuk_akun_role_unit(): void
+    {
+        // Bug nyata: role 'unit' sempat tidak masuk ldapOnlyRoles(), jadi akun civitas
+        // asli yang role-nya di-set 'unit' oleh admin (mis. Ridwan Purwanto) ditolak
+        // login-kampus dengan pesan "Akun ini bukan akun civitas Polibatam...".
+        \App\Models\MasterUnitProdi::create([
+            'jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja',
+            'nama' => 'Kelompok Kerja Humas dan Kerjasama', 'aktif' => true,
+        ]);
+
+        $user = User::factory()->create([
+            'role' => 'unit',
+            'auth_provider' => 'ldap',
+            'nik'  => '210084',
+            'email' => 'purwanto@polibatam.ac.id',
+        ]);
+
+        $this->mockCivitas([
+            'NIK'   => '210084',
+            'NAMA'  => $user->name,
+            'EMAIL' => 'purwanto@polibatam.ac.id',
+        ]);
+        // NIK-nya cocok NIK_KEPALA_UNIT -> role dikonfirmasi ulang jadi 'unit' (bukan cuma
+        // dipertahankan apa adanya) sesuai mekanisme deteksi otomatis yang baru.
+        $this->mock(\App\Services\CivitasStructureService::class, function ($mock) {
+            $mock->shouldReceive('getJurusan')->andReturn([]);
+            $mock->shouldReceive('getProgramStudi')->andReturn([]);
+            $mock->shouldReceive('getUnit')->andReturn([[
+                'ID_UNIT' => '104', 'NAMA_UNIT' => 'Kelompok Kerja Humas dan Kerjasama',
+                'NIK_KEPALA_UNIT' => '210084', 'NAMA_KEPALA_UNIT' => 'RIDWAN PURWANTO',
+            ]]);
+        });
+
+        $response = $this->postJson('/api/login-kampus', [
+            'username' => 'Purwanto',
+            'password' => 'PasswordKampus123',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('user.id', (string) $user->id)
+            ->assertJsonPath('user.role', 'unit');
+    }
+
+    public function test_login_ldap_role_otomatis_jadi_jurusan_kalau_nik_cocok_kajur(): void
+    {
+        $jurusan = \App\Models\MasterUnitProdi::create([
+            'jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'Teknik Informatika', 'aktif' => true,
+        ]);
+
+        $user = User::factory()->create([
+            'role' => 'internal',
+            'auth_provider' => 'ldap',
+            'nik'  => '115143',
+            'email' => 'kajur@polibatam.ac.id',
+        ]);
+
+        $this->mockCivitas([
+            'NIK'   => '115143',
+            'NAMA'  => $user->name,
+            'EMAIL' => 'kajur@polibatam.ac.id',
+        ]);
+        $this->mock(\App\Services\CivitasStructureService::class, function ($mock) {
+            $mock->shouldReceive('getJurusan')->andReturn([[
+                'ID_JURUSAN' => '9', 'NAMA_JURUSAN' => 'TEKNIK INFORMATIKA', 'NAMA_JURUSAN_INGGRIS' => '-',
+                'NIK_KAJUR' => '115143', 'NAMA_KAJUR' => 'AHMAD HAMIM THOHARI',
+            ]]);
+            $mock->shouldReceive('getProgramStudi')->andReturn([]);
+            $mock->shouldReceive('getUnit')->andReturn([]);
+        });
+
+        $response = $this->postJson('/api/login-kampus', [
+            'username' => 'kajur.if',
+            'password' => 'PasswordKampus123',
+        ]);
+
+        $response->assertStatus(200)->assertJsonPath('user.role', 'jurusan');
+        $this->assertEquals('jurusan', $user->fresh()->role);
+    }
+
+    public function test_login_ldap_dosen_biasa_tanpa_match_tetap_internal(): void
+    {
+        // Dosen yang bukan Kajur/KPS/Kepala Unit DAN UNIT_KERJA-nya tidak match apa pun
+        // harus tetap 'internal' (fallback aman), bukan dipaksa jadi jurusan/prodi/unit.
+        $user = User::factory()->create([
+            'role' => 'internal',
+            'auth_provider' => 'ldap',
+            'nik'  => '999999',
+            'email' => 'dosenbiasa@polibatam.ac.id',
+        ]);
+
+        $this->mockCivitas([
+            'NIK'   => '999999',
+            'NAMA'  => $user->name,
+            'EMAIL' => 'dosenbiasa@polibatam.ac.id',
+            'UNIT_KERJA' => 'Unit Yang Tidak Ada Di SIKERMA',
+        ]);
+        $this->mockCivitasStrukturKosong();
+
+        $response = $this->postJson('/api/login-kampus', [
+            'username' => 'dosenbiasa',
+            'password' => 'PasswordKampus123',
+        ]);
+
+        $response->assertStatus(200)->assertJsonPath('user.role', 'internal');
+        $this->assertEquals('internal', $user->fresh()->role);
+    }
+
+    public function test_login_ldap_dosen_biasa_ikut_prodi_kalau_unit_kerja_cocok_persis(): void
+    {
+        // Dosen biasa (bukan KPS) yang UNIT_KERJA-nya (dari Civitas) persis sama dengan
+        // nama sebuah Prodi -> role jadi 'prodi'. Beda dari Kajur/KPS/Kepala Unit, ini
+        // BUKAN jabatan struktural — cuma label afiliasi, TIDAK dapat scope seluas KPS
+        // (dicek terpisah lewat NIK di getUserStructuralAccess()).
+        \App\Models\MasterUnitProdi::create([
+            'jenis_node' => 'prodi', 'nama' => 'Diploma 3 Teknik Informatika', 'aktif' => true,
+        ]);
+
+        $user = User::factory()->create([
+            'role' => 'internal',
+            'auth_provider' => 'ldap',
+            'nik'  => '888888',
+            'email' => 'dosenprodi@polibatam.ac.id',
+        ]);
+
+        $this->mockCivitas([
+            'NIK'   => '888888',
+            'NAMA'  => $user->name,
+            'EMAIL' => 'dosenprodi@polibatam.ac.id',
+            'UNIT_KERJA' => 'Diploma 3 Teknik Informatika',
+        ]);
+        $this->mockCivitasStrukturKosong();
+
+        $response = $this->postJson('/api/login-kampus', [
+            'username' => 'dosenprodi',
+            'password' => 'PasswordKampus123',
+        ]);
+
+        $response->assertStatus(200)->assertJsonPath('user.role', 'prodi');
+        $this->assertEquals('prodi', $user->fresh()->role);
     }
 
     public function test_login_ldap_membuat_akun_baru_jika_belum_terdaftar(): void
@@ -284,6 +437,7 @@ class AuthTest extends TestCase
             'UNIT_KERJA' => 'Teknik Informatika',
             'STAFF'      => 'Dosen',
         ]);
+        $this->mockCivitasStrukturKosong();
 
         $response = $this->postJson('/api/login-kampus', [
             'username' => 'dosenbaru',

@@ -26,20 +26,29 @@ class StructuralAccessService
             'unit_id' => null,
         ];
 
-        // Fitur ini cuma berlaku untuk role internal (dosen/staf civitas) — role lain
-        // (admin/pimpinan/external) tetap pakai mekanisme akses existing mereka masing-masing.
-        if (strtolower(trim((string) $user->role)) !== 'internal') {
+        // Fitur ini berlaku untuk role internal/unit/jurusan/prodi — role turunan hasil
+        // deteksi otomatis (lihat determineCivitasRole()) atau yang di-set manual admin.
+        // Deteksi Kajur/KPS/Kepala-Unit-nya sama untuk semuanya: dicocokkan by NIK, tidak
+        // bergantung role spesifik apa. Role lain (admin/pimpinan/external) tetap pakai
+        // mekanisme akses existing mereka masing-masing.
+        if (!in_array(strtolower(trim((string) $user->role)), ['internal', 'unit', 'jurusan', 'prodi'], true)) {
             return $default;
         }
 
-        $namaUser = $this->normalizeNama($user->name);
-        if ($namaUser === '') {
+        // Identifier-nya NIK (bukan nama) — NIK didapat dari login LDAP (data.NIK, lihat
+        // AuthController::loginLdap()) dan dicocokkan ke NIK_KAJUR/NIK_KPS/NIK_KEPALA_UNIT
+        // dari API struktur kampus. NIK unik & stabil, beda dari nama yang bisa kembar/beda
+        // ejaan. (Sebelumnya sempat pakai nama sebagai workaround karena versi API lama
+        // punya field ID kepala yang beda id-space dari NIK login — sudah diperbaiki
+        // UPA TIK, NIK_KAJUR/NIK_KPS/NIK_KEPALA_UNIT sekarang konsisten dengan NIK login.)
+        $nikUser = $this->normalizeNik($user->nik);
+        if ($nikUser === '') {
             return $default;
         }
 
         // Ketua Jurusan
         foreach ($this->civitas->getJurusan() as $row) {
-            if ($this->normalizeNama($row['NAMA_KAJUR'] ?? '') === $namaUser && $namaUser !== '') {
+            if ($this->normalizeNik($row['NIK_KAJUR'] ?? '') === $nikUser) {
                 $jurusanId = $this->resolveMasterUnitProdiId(
                     kodeKampus: (string) ($row['ID_JURUSAN'] ?? ''),
                     jenisNode: 'unit',
@@ -66,7 +75,7 @@ class StructuralAccessService
 
         // Ketua Program Studi
         foreach ($this->civitas->getProgramStudi() as $row) {
-            if ($this->normalizeNama($row['NAMA_KPS'] ?? '') === $namaUser) {
+            if ($this->normalizeNik($row['NIK_KPS'] ?? '') === $nikUser) {
                 $prodiId = $this->resolveMasterUnitProdiId(
                     kodeKampus: (string) ($row['ID_PROGRAM_STUDI'] ?? ''),
                     jenisNode: 'prodi',
@@ -93,7 +102,7 @@ class StructuralAccessService
 
         // Kepala Unit
         foreach ($this->civitas->getUnit() as $row) {
-            if ($this->normalizeNama($row['NAMA_KEPALA_UNIT'] ?? '') === $namaUser) {
+            if ($this->normalizeNik($row['NIK_KEPALA_UNIT'] ?? '') === $nikUser) {
                 $unitId = $this->resolveMasterUnitProdiId(
                     kodeKampus: (string) ($row['ID_UNIT'] ?? ''),
                     jenisNode: 'unit',
@@ -119,6 +128,97 @@ class StructuralAccessService
         }
 
         return $default;
+    }
+
+    /**
+     * Tentukan role civitas yang seharusnya dipasang ke user (dipanggil tiap login LDAP
+     * berhasil, lihat AuthController::loginLdap()) — 'jurusan'/'prodi'/'unit' kalau dia
+     * ketua/kepala (dicocokkan by NIK, sama seperti getUserStructuralAccess()), atau
+     * best-effort dari UNIT_KERJA (teks bebas dari Civitas) kalau bukan ketua tapi
+     * "rumahnya" ketemu di Jurusan/Prodi/Unit tertentu (lihat resolveAffiliationFromFreeText()
+     * — Prodi cuma dicocokkan exact, bukan longgar, karena nama-nama Prodi sering mirip
+     * satu sama lain, mis. "Diploma 3 Teknik Informatika" vs prodi lain di jurusan yang
+     * sama — matching longgar berisiko salah pilih di antara keduanya). Gagal match sama
+     * sekali -> tetap 'internal', tidak dipaksakan.
+     *
+     * PENTING: ini cuma menentukan LABEL role, bukan hak akses — hak akses/scope tetap
+     * dihitung live oleh getUserStructuralAccess() tiap request berdasarkan NIK, jadi
+     * dosen yang "rumahnya" di Jurusan X (role jadi 'jurusan') TIDAK otomatis dapat akses
+     * seluas Ketua Jurusan X kalau dia sendiri bukan Kajur-nya (NIK-nya tidak cocok
+     * NIK_KAJUR) — getUserStructuralAccess() tetap akan balikin 'dosen' buat dia.
+     */
+    public function determineCivitasRole(User $user, ?string $unitKerjaFreeText): string
+    {
+        $access = $this->getUserStructuralAccess($user);
+
+        $roleFromPosition = match ($access['structural_position']) {
+            'ketua_jurusan' => 'jurusan',
+            'ketua_prodi'   => 'prodi',
+            'kepala_unit'   => 'unit',
+            default         => null,
+        };
+
+        if ($roleFromPosition !== null) {
+            return $roleFromPosition;
+        }
+
+        return $this->resolveAffiliationFromFreeText($unitKerjaFreeText) ?? 'internal';
+    }
+
+    /**
+     * Cocokkan teks bebas (UNIT_KERJA dari Civitas) ke nama Prodi/Jurusan/Unit Kerja yang
+     * ada di master_unit_prodi — best-effort, bukan pencarian ID resmi (tidak ada
+     * kode_kampus buat dicocokkan di sini, cuma nama).
+     *
+     * Urutan: Prodi (EXACT match saja) dicoba duluan — kalau UNIT_KERJA persis sama
+     * dengan nama sebuah Prodi (mis. "Diploma 3 Teknik Informatika"), itu sinyal paling
+     * spesifik & akurat. Prodi SENGAJA tidak dicoba dengan matching longgar (substring) —
+     * nama-nama Prodi sering mirip satu sama lain/dengan nama Jurusan induknya (mis.
+     * Jurusan "Teknik Informatika" vs Prodi "Diploma 3 Teknik Informatika"), matching
+     * longgar berisiko salah pilih Prodi. Kalau tidak ketemu exact match Prodi, baru coba
+     * Jurusan (longgar), lalu Unit Kerja (longgar) — sama seperti sebelumnya. Null kalau
+     * tidak ketemu match sama sekali — sengaja tidak dipaksakan.
+     */
+    private function resolveAffiliationFromFreeText(?string $unitKerjaFreeText): ?string
+    {
+        $target = $this->normalizeNama($unitKerjaFreeText);
+        if ($target === '') {
+            return null;
+        }
+
+        $adaProdiCocokPersis = MasterUnitProdi::query()
+            ->where('jenis_node', 'prodi')
+            ->pluck('nama')
+            ->contains(fn ($nama) => $this->normalizeNama($nama) === $target);
+        if ($adaProdiCocokPersis) {
+            return 'prodi';
+        }
+
+        $matchesTarget = function (string $nama) use ($target): bool {
+            $candidate = $this->normalizeNama($nama);
+
+            return $candidate === $target
+                || str_contains($candidate, $target)
+                || str_contains($target, $candidate);
+        };
+
+        $adaJurusanCocok = MasterUnitProdi::query()
+            ->where('jenis_node', 'unit')->where('kategori_unit', 'jurusan')
+            ->pluck('nama')
+            ->contains($matchesTarget);
+        if ($adaJurusanCocok) {
+            return 'jurusan';
+        }
+
+        $adaUnitCocok = MasterUnitProdi::query()
+            ->where('jenis_node', 'unit')->where('kategori_unit', 'unit_kerja')
+            ->pluck('nama')
+            ->contains($matchesTarget);
+        if ($adaUnitCocok) {
+            return 'unit';
+        }
+
+        return null;
     }
 
     /**
@@ -203,5 +303,18 @@ class StructuralAccessService
         $nama = preg_replace('/[\x{00A0}\x{FEFF}\t\n\r]+/u', ' ', $nama) ?? $nama;
 
         return mb_strtolower(trim($nama));
+    }
+
+    /**
+     * NIK dibandingkan apa adanya (bukan lowercase — NIK cuma angka), tapi tetap dibuang
+     * whitespace tak standar di pinggirnya (kasus yang sama seperti nama_mitra: sebagian
+     * data dari API/DB bisa kebawa spasi/tab nyempil).
+     */
+    private function normalizeNik(?string $nik): string
+    {
+        $nik = (string) $nik;
+        $nik = preg_replace('/[\x{00A0}\x{FEFF}\t\n\r]+/u', ' ', $nik) ?? $nik;
+
+        return trim($nik);
     }
 }

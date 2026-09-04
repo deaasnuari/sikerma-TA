@@ -109,9 +109,10 @@ class DokumenKerjasamaController extends Controller
             }
         }
 
-        if ($normalizedRole === 'internal') {
-            // Ketua Jurusan/Ketua Prodi/Kepala Unit (role tetap 'internal' — lihat
-            // StructuralAccessService) ikut boleh lihat dokumen kerjasama dalam cakupan
+        if (in_array($normalizedRole, ['internal', 'unit', 'jurusan', 'prodi'], true)) {
+            // Ketua Jurusan/Ketua Prodi/Kepala Unit (role internal ATAU unit — lihat
+            // StructuralAccessService, deteksi jabatan berdasarkan NIK bukan role
+            // spesifik) ikut boleh lihat dokumen kerjasama dalam cakupan
             // jurusan/prodi/unit yang dia pimpin, selain dokumen milik sendiri.
             $scopedUnitProdiIds = null;
             if ($user && Schema::hasColumn('dokumen_kerjasama', 'unit_prodi_id')) {
@@ -194,7 +195,7 @@ class DokumenKerjasamaController extends Controller
                 && in_array($user->id, $dokumen_kerjasama->pengajuan->distribusi_user_ids, false);
 
             $isInStructuralScope = false;
-            if (!$isOwner && !$isDistribusi && $normalizedRole === 'internal' && $user) {
+            if (!$isOwner && !$isDistribusi && in_array($normalizedRole, ['internal', 'unit', 'jurusan', 'prodi'], true) && $user) {
                 $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
                 $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
                 $isInStructuralScope = $scopedUnitProdiIds

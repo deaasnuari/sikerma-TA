@@ -642,11 +642,11 @@ class PengajuanTest extends TestCase
         $jurusanTM = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'Teknik Mesin', 'aktif' => true]);
 
         $kajur = $this->internal();
-        $kajur->update(['name' => 'Budi Santoso']);
+        $kajur->update(['nik' => '221316']);
 
         $this->mockCivitasStruktur(jurusan: [[
             'ID_JURUSAN' => '1', 'NAMA_JURUSAN' => 'TEKNIK INFORMATIKA', 'NAMA_JURUSAN_INGGRIS' => '-',
-            'ID_KAJUR' => '123', 'NAMA_KAJUR' => 'Budi Santoso',
+            'NIK_KAJUR' => '221316', 'NAMA_KAJUR' => 'Budi Santoso',
         ]]);
 
         $pemilikLain = $this->internal();
@@ -698,12 +698,12 @@ class PengajuanTest extends TestCase
         $prodiMek = MasterUnitProdi::create(['jenis_node' => 'prodi', 'nama' => 'Sarjana Terapan Teknik Mekatronika', 'aktif' => true]);
 
         $kps = $this->internal();
-        $kps->update(['name' => 'Siti Aminah']);
+        $kps->update(['nik' => '221317']);
         $pemilikLain = $this->internal();
 
         $this->mockCivitasStruktur(prodi: [[
             'ID_PROGRAM_STUDI' => '10', 'JENJANG' => 'D3', 'NAMA_PROGRAM_STUDI' => 'TEKNIK INFORMATIKA',
-            'NAMA_PROGRAM_STUDI_INGGRIS' => '-', 'ID_KPS' => '456', 'NAMA_KPS' => 'Siti Aminah',
+            'NAMA_PROGRAM_STUDI_INGGRIS' => '-', 'NIK_KPS' => '221317', 'NAMA_KPS' => 'Siti Aminah',
         ]]);
 
         $a = $this->buatPengajuan(['judul_pengajuan' => 'A - Prodi TI', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $prodiTI->id]);
@@ -726,11 +726,11 @@ class PengajuanTest extends TestCase
         $upaLain = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA Perpustakaan', 'aktif' => true]);
 
         $kepalaUnit = $this->internal();
-        $kepalaUnit->update(['name' => 'Agus Prasetyo']);
+        $kepalaUnit->update(['nik' => '221318']);
         $pemilikLain = $this->internal();
 
         $this->mockCivitasStruktur(unit: [[
-            'ID_UNIT' => '18', 'NAMA_UNIT' => 'UPA TIK', 'ID_KEPALA_UNIT' => '789', 'NAMA_KEPALA_UNIT' => 'Agus Prasetyo',
+            'ID_UNIT' => '18', 'NAMA_UNIT' => 'UPA TIK', 'NIK_KEPALA_UNIT' => '221318', 'NAMA_KEPALA_UNIT' => 'Agus Prasetyo',
         ]]);
 
         $a = $this->buatPengajuan(['judul_pengajuan' => 'A - UPA TIK', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $upaTik->id]);
@@ -751,12 +751,12 @@ class PengajuanTest extends TestCase
         $jurusanTI = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'Teknik Informatika', 'aktif' => true]);
 
         $kajur = $this->internal();
-        $kajur->update(['name' => 'Ahmad Hamim Thohari']);
+        $kajur->update(['nik' => '115143']);
 
         $this->mockCivitasStruktur(
             jurusan: [[
                 'ID_JURUSAN' => '9', 'NAMA_JURUSAN' => 'TEKNIK INFORMATIKA', 'NAMA_JURUSAN_INGGRIS' => '-',
-                'ID_KAJUR' => '182', 'NAMA_KAJUR' => 'Ahmad Hamim Thohari',
+                'NIK_KAJUR' => '115143', 'NAMA_KAJUR' => 'Ahmad Hamim Thohari',
             ]],
         );
 
@@ -765,5 +765,54 @@ class PengajuanTest extends TestCase
         $this->assertEquals('ketua_jurusan', $access['structural_position']);
         $this->assertEquals($jurusanTI->id, $access['jurusan_id']);
         $this->assertNull($access['unit_id']);
+    }
+
+    public function test_kepala_unit_role_unit_tetap_terdeteksi_via_nik_bukan_cuma_role_internal(): void
+    {
+        // Role 'unit' juga dipakai admin untuk sebagian akun struktural (bukan cuma
+        // 'internal') — deteksi Kajur/KPS/Kepala Unit berdasarkan NIK harus tetap jalan
+        // biarpun role-nya 'unit', bukan 'internal'.
+        $upaTik = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA TIK', 'aktif' => true]);
+        $upaLain = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA Perpustakaan', 'aktif' => true]);
+
+        $kepalaUnit = User::factory()->create(['role' => 'unit', 'nik' => '221318']);
+        $pemilikLain = $this->internal();
+
+        $this->mockCivitasStruktur(unit: [[
+            'ID_UNIT' => '18', 'NAMA_UNIT' => 'UPA TIK', 'NIK_KEPALA_UNIT' => '221318', 'NAMA_KEPALA_UNIT' => 'Agus Prasetyo',
+        ]]);
+
+        $a = $this->buatPengajuan(['judul_pengajuan' => 'A - UPA TIK', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $upaTik->id]);
+        $b = $this->buatPengajuan(['judul_pengajuan' => 'B - Unit lain', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $upaLain->id]);
+
+        $response = $this->actingAs($kepalaUnit)->getJson('/api/pengajuan?per_page=50');
+        $ids = collect($response->json('data.data'))->pluck('id')->all();
+
+        $this->assertContains($a->id, $ids);
+        $this->assertNotContains($b->id, $ids);
+    }
+
+    public function test_role_unit_tanpa_jabatan_struktural_hanya_lihat_pengajuan_sendiri(): void
+    {
+        // Sebelum perbaikan ini, role 'unit' TIDAK kena filter kepemilikan sama sekali
+        // di index()/show() — bisa lihat SEMUA pengajuan siapa pun (seperti admin).
+        // Ini regression guard supaya celah itu tidak balik lagi.
+        $prodi = MasterUnitProdi::create(['jenis_node' => 'prodi', 'nama' => 'D3 Teknik Informatika', 'aktif' => true]);
+
+        $userUnit = User::factory()->create(['role' => 'unit', 'nik' => '999888']);
+        $pemilikLain = $this->internal();
+
+        $this->mockCivitasStruktur(); // tidak ada jabatan struktural apa pun
+
+        $pengajuanSendiri = $this->buatPengajuan(['judul_pengajuan' => 'Punya sendiri', 'user_pengusul_id' => $userUnit->id, 'unit_prodi_id' => $prodi->id]);
+        $pengajuanOrang = $this->buatPengajuan(['judul_pengajuan' => 'Punya orang lain', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $prodi->id]);
+
+        $response = $this->actingAs($userUnit)->getJson('/api/pengajuan?per_page=50');
+        $ids = collect($response->json('data.data'))->pluck('id')->all();
+
+        $this->assertContains($pengajuanSendiri->id, $ids);
+        $this->assertNotContains($pengajuanOrang->id, $ids);
+
+        $this->actingAs($userUnit)->getJson("/api/pengajuan/{$pengajuanOrang->id}")->assertStatus(404);
     }
 }

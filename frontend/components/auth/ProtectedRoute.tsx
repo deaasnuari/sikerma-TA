@@ -7,8 +7,22 @@ import type { UserRole } from '@/types/auth';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: UserRole;
+  requiredRole?: UserRole | UserRole[];
 }
+
+// Kemana tiap role diarahkan kalau ternyata bukan role yang diminta halaman ini —
+// 'unit'/'jurusan'/'prodi' (role civitas/LDAP hasil deteksi otomatis, lihat
+// StructuralAccessService::determineCivitasRole()) semuanya diarahkan ke dashboard
+// internal yang sama, persis seperti role 'internal' polos.
+const roleRouteMap: Record<string, string> = {
+  admin: '/admin',
+  pimpinan: '/pimpinan',
+  internal: '/internal/dashboard',
+  unit: '/internal/dashboard',
+  jurusan: '/internal/dashboard',
+  prodi: '/internal/dashboard',
+  external: '/eksternal',
+};
 
 export default function ProtectedRoute({ children, requiredRole = 'admin' }: ProtectedRouteProps) {
   const router = useRouter();
@@ -22,14 +36,9 @@ export default function ProtectedRoute({ children, requiredRole = 'admin' }: Pro
       return;
     }
 
-    if (requiredRole && user.role !== requiredRole) {
-      const roleRouteMap: Record<string, string> = {
-        admin: '/admin',
-        pimpinan: '/pimpinan',
-        internal: '/internal/dashboard',
-        external: '/eksternal',
-      };
+    const allowedRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
 
+    if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
       router.replace(roleRouteMap[user.role] || '/login');
     }
   }, [isLoading, isAuthenticated, user, requiredRole, router]);

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\MasterUnitProdi;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -49,6 +50,41 @@ class AdminUserTest extends TestCase
 
         $response->assertOk()->assertJsonStructure(['data']);
         $this->assertGreaterThanOrEqual(4, count($response->json('data')));
+    }
+
+    public function test_daftar_user_menampilkan_jabatan_struktural_dan_nama_unit(): void
+    {
+        // Manajemen User harus langsung nampilin bagian/jabatan struktural user (Ketua
+        // Jurusan/Ketua Prodi/Kepala Unit) hasil deteksi NIK vs data Civitas — bukan cuma
+        // role mentah. Dicek untuk role 'unit' juga, bukan cuma 'internal'.
+        $admin = $this->admin();
+
+        $upaTik = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA TIK', 'aktif' => true]);
+        $kepalaUnit = User::factory()->create(['role' => 'unit', 'nik' => '221318']);
+        $dosenBiasa = User::factory()->create(['role' => 'internal', 'nik' => '000000']);
+
+        $this->mock(\App\Services\CivitasStructureService::class, function ($mock) {
+            $mock->shouldReceive('getJurusan')->andReturn([]);
+            $mock->shouldReceive('getProgramStudi')->andReturn([]);
+            $mock->shouldReceive('getUnit')->andReturn([[
+                'ID_UNIT' => '18', 'NAMA_UNIT' => 'UPA TIK', 'NIK_KEPALA_UNIT' => '221318', 'NAMA_KEPALA_UNIT' => 'Agus Prasetyo',
+            ]]);
+        });
+
+        $response = $this->actingAs($admin)->getJson('/api/admin/users');
+        $response->assertOk();
+
+        $data = collect($response->json('data'));
+        $kepalaUnitPayload = $data->firstWhere('id', (string) $kepalaUnit->id);
+        $dosenPayload = $data->firstWhere('id', (string) $dosenBiasa->id);
+
+        $this->assertEquals('kepala_unit', $kepalaUnitPayload['structural_position']);
+        $this->assertEquals('Kepala Unit', $kepalaUnitPayload['structural_position_label']);
+        $this->assertEquals($upaTik->id, $kepalaUnitPayload['structural_unit_id']);
+        $this->assertEquals('UPA TIK', $kepalaUnitPayload['structural_unit_name']);
+
+        $this->assertNull($dosenPayload['structural_position']);
+        $this->assertNull($dosenPayload['structural_unit_name']);
     }
 
     public function test_bukan_admin_ditolak_melihat_daftar_user(): void
@@ -119,7 +155,6 @@ class AdminUserTest extends TestCase
 
     public function test_admin_dapat_buat_dan_update_user_role_unit(): void
     {
-        //ini
         $admin = $this->admin();
 
         $response = $this->actingAs($admin)->postJson('/api/admin/users', $this->dataUser([

@@ -1,7 +1,7 @@
 import { apiRequest } from '@/lib/api';
 
-//ini
-type ApiRole = 'admin' | 'pimpinan' | 'internal' | 'external' | 'unit';
+//ini adalah service untuk mengelola user admin, termasuk mendapatkan daftar user, membuat user baru, memperbarui user, menghapus user, dan memperbarui status user. Service ini menggunakan tipe data yang sesuai dengan API backend dan juga mengubah data dari API menjadi format yang sesuai untuk UI.
+type ApiRole = 'admin' | 'pimpinan' | 'internal' | 'external' | 'unit' | 'jurusan' | 'prodi';
 type ApiApprovalStatus = 'active' | 'pending' | 'rejected';
 
 export type UiRole = 'Admin' | 'Jurusan' | 'Prodi' | 'Pimpinan' | 'Mitra' | 'Unit';
@@ -16,6 +16,11 @@ export interface UserListItem {
   status: UiStatus;
   username: string;
   phone: string;
+  // Jabatan struktural (Ketua Jurusan/Ketua Prodi/Kepala Unit) + nama unit/jurusan/
+  // prodi-nya — dihitung backend dari NIK vs data Civitas, bukan dari role. Null kalau
+  // dosen/staff biasa (tidak terdeteksi jabatan struktural apa pun).
+  structuralPositionLabel: string | null;
+  structuralUnitName: string | null;
 }
 
 interface ApiUser {
@@ -29,6 +34,10 @@ interface ApiUser {
   account_type?: string;
   approval_status?: ApiApprovalStatus;
   role: ApiRole;
+  structural_position?: string | null;
+  structural_position_label?: string | null;
+  structural_unit_id?: number | null;
+  structural_unit_name?: string | null;
 }
 
 interface UserResponse {
@@ -68,7 +77,9 @@ function toApiRole(role: UiRole): ApiRole {
     case 'Unit':
       return 'unit';
     case 'Jurusan':
+      return 'jurusan';
     case 'Prodi':
+      return 'prodi';
     default:
       return 'internal';
   }
@@ -78,6 +89,8 @@ function toUiRole(user: ApiUser): UiRole {
   if (user.role === 'admin') return 'Admin';
   if (user.role === 'pimpinan') return 'Pimpinan';
   if (user.role === 'external') return 'Mitra';
+  if (user.role === 'jurusan') return 'Jurusan';
+  if (user.role === 'prodi') return 'Prodi';
   if (user.role === 'unit') return 'Unit';
 
   if (user.account_type === 'Jurusan') return 'Jurusan';
@@ -119,6 +132,8 @@ function mapApiUser(user: ApiUser): UserListItem {
     status: toUiStatus(user.approval_status),
     username: user.username ?? '',
     phone: user.phone ?? '',
+    structuralPositionLabel: user.structural_position_label ?? null,
+    structuralUnitName: user.structural_unit_name ?? null,
   };
 }
 

@@ -74,10 +74,16 @@ function LoginPageContent() {
           ? await loginWithCampus(campusUsername, campusPassword)
           : await login(email, password);
 
+      // 'unit'/'jurusan'/'prodi' — role civitas/LDAP hasil deteksi otomatis (lihat
+      // StructuralAccessService::determineCivitasRole() di backend), diarahkan ke
+      // dashboard internal yang sama seperti role 'internal' polos.
       const roleRouteMap: Record<string, string> = {
         admin: '/admin',
         pimpinan: '/pimpinan',
         internal: '/internal/dashboard',
+        unit: '/internal/dashboard',
+        jurusan: '/internal/dashboard',
+        prodi: '/internal/dashboard',
         external: '/eksternal',
       };
 

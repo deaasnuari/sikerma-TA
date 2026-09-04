@@ -7,6 +7,7 @@ use App\Models\MasterMitra;
 use App\Models\OtpCode;
 use App\Models\User;
 use App\Services\CivitasAuthService;
+use App\Services\StructuralAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,10 @@ class AuthController extends Controller
             'account_type' => $user->account_type,
             'approval_status' => $user->approval_status,
             'role' => $user->role,
+            // Unit kerja apa adanya dari data Civitas (data.UNIT_KERJA saat login LDAP) —
+            // dipakai frontend buat nampilin "Unit — <nama unit kerjanya>" di navbar,
+            // bukan cuma label role generik.
+            'unit_kerja' => $user->unit_kerja,
         ];
     }
 
@@ -107,10 +112,30 @@ class AuthController extends Controller
     /**
      * Role yang wajib login lewat LDAP (tombol "Login dengan Akun Kampus"),
      * tidak boleh lagi login manual pakai email + password di sini.
+     *
+     * 'unit'/'jurusan'/'prodi' ikut di sini karena role-role ini dipakai akun civitas asli
+     * hasil login LDAP — begitu login berhasil, role di-set otomatis (lihat
+     * determineLdapRole()/StructuralAccessService::determineCivitasRole()) jadi salah satu
+     * dari internal/jurusan/prodi/unit tergantung NIK-nya cocok Kajur/KPS/Kepala-Unit atau
+     * tidak. Tidak berdampak ke akun dummy migrasi lama yang role-nya juga 'unit' — mereka
+     * auth_provider='local', bukan 'ldap', jadi baris login() di bawah (yang mensyaratkan
+     * KEDUANYA role masuk daftar ini DAN auth_provider='ldap') tidak ikut memblokir mereka.
      */
     private function ldapOnlyRoles(): array
     {
-        return ['internal', 'pimpinan'];
+        return ['internal', 'pimpinan', 'unit', 'jurusan', 'prodi'];
+    }
+
+    /**
+     * Role yang otomatis di-refresh tiap kali login LDAP berhasil (lihat loginLdap()) —
+     * supaya kalau ada pergantian Kajur/KPS/Kepala Unit di kampus, role user langsung ikut
+     * update begitu dia login lagi, tanpa perlu admin ubah manual. 'pimpinan' SENGAJA tidak
+     * ikut — itu jabatan pimpinan institusi (bukan struktural jurusan/prodi/unit), murni
+     * ditentukan manual oleh admin, tidak boleh ketimpa oleh deteksi NIK di sini.
+     */
+    private function autoRefreshableCivitasRoles(): array
+    {
+        return ['internal', 'jurusan', 'prodi', 'unit'];
     }
 
     public function login(Request $request): JsonResponse
@@ -209,6 +234,40 @@ class AuthController extends Controller
             throw ValidationException::withMessages([
                 'password' => ['Akun ini bukan akun civitas Polibatam. Silakan login lewat form Email & Password biasa.'],
             ]);
+        }
+
+        // Sinkronkan unit_kerja/jabatan/NIP tiap login berhasil, biar navbar dkk selalu
+        // nampilin data terbaru dari Civitas (bukan cuma snapshot pas akun pertama dibuat).
+        $freshProfile = array_filter([
+            'unit_kerja' => $civitasData['UNIT_KERJA'] ?? null,
+            'position' => $civitasData['STAFF'] ?? null,
+            'nip' => $civitasData['NIP'] ?? null,
+        ], fn ($value) => $value !== null && $value !== '');
+
+        $profileChanges = [];
+        foreach ($freshProfile as $field => $value) {
+            if ($user->{$field} !== $value) {
+                $profileChanges[$field] = $value;
+            }
+        }
+
+        if ($profileChanges) {
+            $user->update($profileChanges);
+        }
+
+        // Refresh role struktural (jurusan/prodi/unit/internal) tiap login berhasil,
+        // berdasarkan NIK vs data Civitas terbaru — supaya pergantian Kajur/KPS/Kepala
+        // Unit langsung kepakai tanpa admin perlu ubah manual. 'pimpinan' tidak disentuh
+        // (lihat autoRefreshableCivitasRoles()).
+        if (in_array($user->role, $this->autoRefreshableCivitasRoles(), true)) {
+            $newRole = app(StructuralAccessService::class)->determineCivitasRole(
+                $user,
+                $civitasData['UNIT_KERJA'] ?? null,
+            );
+
+            if ($newRole !== $user->role) {
+                $user->update(['role' => $newRole]);
+            }
         }
 
         $token = $user->createToken('web-login-ldap')->plainTextToken;

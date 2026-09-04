@@ -15,6 +15,16 @@ function normalizeRole(role?: string): UserRole {
       return 'internal';
     case 'external':
       return 'external';
+    // Role civitas/LDAP hasil deteksi otomatis (lihat
+    // StructuralAccessService::determineCivitasRole() di backend) — diteruskan apa
+    // adanya, BUKAN dijatuhkan ke 'user' generik (itu bikin ProtectedRoute/roleRouteMap
+    // tidak kenal role-nya dan malah nendang balik ke /login).
+    case 'unit':
+      return 'unit';
+    case 'jurusan':
+      return 'jurusan';
+    case 'prodi':
+      return 'prodi';
     default:
       return 'user';
   }
@@ -101,6 +111,7 @@ export async function loginUser(payload: LoginPayload): Promise<AuthUser> {
         approval_status: userData.approval_status as 'active' | 'pending' | 'rejected' | undefined,
         accessToken: typeof token === 'string' ? token : undefined,
         role: normalizeRole(userData.role),
+        unit_kerja: userData.unit_kerja,
       };
     }
   } catch (error) {
@@ -197,6 +208,7 @@ export async function loginWithCampusAccount(payload: {
     approval_status: userData.approval_status as 'active' | 'pending' | 'rejected' | undefined,
     accessToken: typeof token === 'string' ? token : undefined,
     role: normalizeRole(userData.role),
+    unit_kerja: userData.unit_kerja,
   };
 }
 

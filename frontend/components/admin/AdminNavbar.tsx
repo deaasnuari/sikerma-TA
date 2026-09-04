@@ -42,15 +42,31 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
   };
 
   const unreadCount = notifications.filter((notification) => !notification.read).length;
+  // 'unit'/'jurusan'/'prodi' — role civitas/LDAP hasil deteksi otomatis (lihat
+  // StructuralAccessService::determineCivitasRole() di backend).
   const roleLabelMap: Record<string, string> = {
     admin: 'Admin/Kerjasama',
     pimpinan: 'Pimpinan',
     internal: 'Internal',
+    unit: 'Unit',
+    jurusan: 'Jurusan',
+    prodi: 'Program Studi',
     external: 'Eksternal',
     user: 'Pengguna',
   };
   const userDisplayName = user?.name?.split(' ')[0] || 'User';
   const userRoleLabel = roleLabelMap[user?.role || 'user'] || 'Pengguna';
+
+  // Civitas ngasih UNIT_KERJA dalam huruf kapital semua ("KELOMPOK KERJA HUMAS DAN
+  // KERJASAMA") — dirapikan jadi Title Case biar enak dibaca di navbar.
+  const toTitleCase = (text: string) =>
+    text.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const unitKerjaLabel = user?.unit_kerja?.trim() ? toTitleCase(user.unit_kerja.trim()) : null;
+  const userSubLabel =
+    ['unit', 'jurusan', 'prodi'].includes(user?.role ?? '') && unitKerjaLabel
+      ? `${userRoleLabel} — ${unitKerjaLabel}`
+      : userRoleLabel;
 
   const refreshNotifications = () => {
     const allNotifications = getAdminNotifications();
@@ -347,27 +363,27 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
             <div className="relative flex-shrink-0" ref={userMenuRef}>
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center gap-1.5 text-gray-700 hover:bg-gray-100 rounded-lg px-1.5 py-1 transition-all duration-200"
+                className="flex items-center gap-2 text-gray-700 hover:bg-gray-100 rounded-lg px-2 py-1.5 transition-all duration-200"
               >
                 <div className="text-right hidden sm:block">
-                  <p className="text-xs font-medium text-gray-900">{userDisplayName}</p>
-                  <p className="text-[10px] text-gray-600">{userRoleLabel}</p>
+                  <p className="text-[13px] font-medium leading-tight text-gray-900">{userDisplayName}</p>
+                  <p className="text-[11px] leading-tight text-gray-600">{userSubLabel}</p>
                 </div>
-                <div className="w-6 h-6 bg-[#091222] border border-slate-700 rounded-full flex items-center justify-center text-white hover:bg-[#173B82] transition-all">
-                  <User size={13} />
+                <div className="w-9 h-9 flex-shrink-0 bg-[#091222] border border-slate-700 rounded-full flex items-center justify-center text-white hover:bg-[#173B82] transition-all">
+                  <User size={17} />
                 </div>
               </button>
 
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-lg shadow-xl py-0 z-50 overflow-hidden">
-                  <div className="bg-slate-50 px-3 py-2.5 border-b border-slate-100">
-                    <p className="text-xs font-semibold text-gray-900">{user?.email}</p>
-                    <p className="text-[11px] text-gray-600">{userRoleLabel}</p>
+                <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-100 rounded-lg shadow-xl py-0 z-50 overflow-hidden">
+                  <div className="bg-slate-50 px-4 py-3 border-b border-slate-100">
+                    <p className="text-[13px] font-semibold text-gray-900 break-all">{user?.email}</p>
+                    <p className="mt-0.5 text-[12px] leading-snug text-gray-600">{userSubLabel}</p>
                   </div>
                   <div className="p-2">
                     <button
                       onClick={handleLogout}
-                      className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors rounded font-medium"
+                      className="w-full text-left px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors rounded font-medium"
                     >
                       <LogOut size={16} />
                       Logout

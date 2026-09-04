@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MasterUnitProdi;
 use App\Models\User;
+use App\Services\StructuralAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -14,10 +16,15 @@ class AdminUserController extends Controller
 {
     private const APPROVAL_STATUSES = ['active', 'pending', 'rejected'];
 
+    private const STRUCTURAL_POSITION_LABELS = [
+        'ketua_jurusan' => 'Ketua Jurusan',
+        'ketua_prodi'   => 'Ketua Program Studi',
+        'kepala_unit'   => 'Kepala Unit',
+    ];
+
     private function allowedRoles(): array
     {
-        //ini 
-        return ['admin', 'pimpinan', 'internal', 'external', 'unit'];
+        return ['admin', 'pimpinan', 'internal', 'external', 'unit', 'jurusan', 'prodi'];
     }
 
     private function ensureAdminAccess(Request $request): void
@@ -29,9 +36,49 @@ class AdminUserController extends Controller
         }
     }
 
+    /**
+     * Jabatan struktural (Ketua Jurusan/Ketua Prodi/Kepala Unit) + nama unit/jurusan/
+     * prodi-nya, buat ditampilkan di Manajemen User — dihitung dari NIK vs data Civitas
+     * (StructuralAccessService), BUKAN dari role. Cuma dihitung untuk role internal/unit
+     * (role lain sudah punya mekanisme akses sendiri, tidak relevan di sini).
+     *
+     * @return array{structural_position: ?string, structural_position_label: ?string, structural_unit_id: ?int, structural_unit_name: ?string}
+     */
+    private function resolveStructuralInfo(User $user): array
+    {
+        $empty = [
+            'structural_position' => null,
+            'structural_position_label' => null,
+            'structural_unit_id' => null,
+            'structural_unit_name' => null,
+        ];
+
+        if (! in_array(strtolower(trim((string) $user->role)), ['internal', 'unit', 'jurusan', 'prodi'], true)) {
+            return $empty;
+        }
+
+        $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
+        $position = $access['structural_position'];
+
+        if (! isset(self::STRUCTURAL_POSITION_LABELS[$position])) {
+            // 'dosen' (tidak terdeteksi jabatan struktural apa pun) — tetap internal/unit
+            // biasa, tidak ada unit yang perlu ditampilkan.
+            return $empty;
+        }
+
+        $unitProdiId = $access['jurusan_id'] ?? $access['program_studi_id'] ?? $access['unit_id'] ?? null;
+
+        return [
+            'structural_position' => $position,
+            'structural_position_label' => self::STRUCTURAL_POSITION_LABELS[$position],
+            'structural_unit_id' => $unitProdiId,
+            'structural_unit_name' => $unitProdiId ? MasterUnitProdi::find($unitProdiId)?->nama : null,
+        ];
+    }
+
     private function toUserPayload(User $user): array
     {
-        return [
+        return array_merge([
             'id' => (string) $user->id,
             'name' => $user->name,
             'username' => $user->username,
@@ -42,7 +89,7 @@ class AdminUserController extends Controller
             'account_type' => $user->account_type,
             'approval_status' => $user->approval_status,
             'role' => $user->role,
-        ];
+        ], $this->resolveStructuralInfo($user));
     }
 
     private function ensureAtLeastOneAdmin(?User $targetUser = null, ?string $nextRole = null): void

@@ -24,7 +24,7 @@ class CivitasStructureService
     }
 
     /**
-     * @return array<int, array{ID_JURUSAN: string, NAMA_JURUSAN: string, NAMA_JURUSAN_INGGRIS: string, ID_KAJUR: ?string, NAMA_KAJUR: ?string}>
+     * @return array<int, array{ID_JURUSAN: string, NAMA_JURUSAN: string, NAMA_JURUSAN_INGGRIS: string, NIK_KAJUR: ?string, NAMA_KAJUR: ?string}>
      */
     public function getJurusan(): array
     {
@@ -34,7 +34,7 @@ class CivitasStructureService
     }
 
     /**
-     * @return array<int, array{ID_PROGRAM_STUDI: string, JENJANG: string, NAMA_PROGRAM_STUDI: string, NAMA_PROGRAM_STUDI_INGGRIS: string, ID_KPS: ?string, NAMA_KPS: ?string}>
+     * @return array<int, array{ID_PROGRAM_STUDI: string, JENJANG: string, NAMA_PROGRAM_STUDI: string, NAMA_PROGRAM_STUDI_INGGRIS: string, NIK_KPS: ?string, NAMA_KPS: ?string}>
      */
     public function getProgramStudi(): array
     {
@@ -45,10 +45,10 @@ class CivitasStructureService
 
     /**
      * Baris yang sebenarnya representasi Jurusan (nama diawali "JURUSAN ") sengaja dibuang —
-     * jabatan itu sudah tercakup lewat getJurusan()/ID_KAJUR, supaya Kajur tidak juga
+     * jabatan itu sudah tercakup lewat getJurusan()/NIK_KAJUR, supaya Kajur tidak juga
      * terdeteksi dobel sebagai "Kepala Unit" untuk unit bernama "JURUSAN ...".
      *
-     * @return array<int, array{ID_UNIT: string, NAMA_UNIT: string, ID_KEPALA_UNIT: ?string, NAMA_KEPALA_UNIT: ?string}>
+     * @return array<int, array{ID_UNIT: string, NAMA_UNIT: string, NIK_KEPALA_UNIT: ?string, NAMA_KEPALA_UNIT: ?string}>
      */
     public function getUnit(): array
     {

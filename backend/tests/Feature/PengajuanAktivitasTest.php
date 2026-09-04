@@ -360,11 +360,11 @@ class PengajuanAktivitasTest extends TestCase
         $unitLain = \App\Models\MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA Perpustakaan', 'aktif' => true]);
 
         $kepalaUnit = $this->user();
-        $kepalaUnit->update(['name' => 'Agus Prasetyo']);
+        $kepalaUnit->update(['nik' => '221318']);
         $pemilikLain = $this->user();
 
         $this->mockCivitasStruktur(unit: [[
-            'ID_UNIT' => '18', 'NAMA_UNIT' => 'UPA TIK', 'ID_KEPALA_UNIT' => '789', 'NAMA_KEPALA_UNIT' => 'Agus Prasetyo',
+            'ID_UNIT' => '18', 'NAMA_UNIT' => 'UPA TIK', 'NIK_KEPALA_UNIT' => '221318', 'NAMA_KEPALA_UNIT' => 'Agus Prasetyo',
         ]]);
 
         $pengajuanDalamUnit = Pengajuan::create([
