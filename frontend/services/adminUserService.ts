@@ -13,6 +13,7 @@ export interface UserListItem {
   email: string;
   role: UiRole;
   unitInstansi: string;
+  unitProdiId: number | null;
   status: UiStatus;
   username: string;
   phone: string;
@@ -34,6 +35,8 @@ interface ApiUser {
   account_type?: string;
   approval_status?: ApiApprovalStatus;
   role: ApiRole;
+  unit_prodi_id?: number | null;
+  unit_prodi_nama?: string | null;
   structural_position?: string | null;
   structural_position_label?: string | null;
   structural_unit_id?: number | null;
@@ -55,6 +58,7 @@ export interface CreateUserPayload {
   password: string;
   role: UiRole;
   unitInstansi: string;
+  unitProdiId?: number | null;
   phone: string;
 }
 
@@ -63,6 +67,7 @@ export interface UpdateUserPayload {
   email: string;
   role: UiRole;
   unitInstansi: string;
+  unitProdiId?: number | null;
   status: UiStatus;
 }
 
@@ -128,7 +133,8 @@ function mapApiUser(user: ApiUser): UserListItem {
     nama: user.name,
     email: user.email,
     role: toUiRole(user),
-    unitInstansi: user.institution_name ?? '-',
+    unitInstansi: user.unit_prodi_nama ?? user.institution_name ?? '-',
+    unitProdiId: user.unit_prodi_id ?? null,
     status: toUiStatus(user.approval_status),
     username: user.username ?? '',
     phone: user.phone ?? '',
@@ -155,6 +161,7 @@ export async function createAdminUser(payload: CreateUserPayload): Promise<UserL
       account_type: payload.role,
       role: toApiRole(payload.role),
       approval_status: 'active',
+      unit_prodi_id: payload.unitProdiId ?? null,
       password: payload.password,
     }),
   });
@@ -177,6 +184,7 @@ export async function updateAdminUser(id: number, payload: UpdateUserPayload): P
       account_type: payload.role,
       role: toApiRole(payload.role),
       approval_status: toApiStatus(payload.status),
+      unit_prodi_id: payload.unitProdiId ?? null,
     }),
   });
 

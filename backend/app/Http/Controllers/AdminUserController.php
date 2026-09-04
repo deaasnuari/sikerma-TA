@@ -89,7 +89,34 @@ class AdminUserController extends Controller
             'account_type' => $user->account_type,
             'approval_status' => $user->approval_status,
             'role' => $user->role,
+            // Unit yang di-assign ADMIN secara manual (beda dari structural_unit_name di
+            // atas, yang itu Kepala Unit resmi terdeteksi via NIK) — ini yang ditampilkan
+            // & di-prefill di form Manajemen User untuk role 'unit'.
+            'unit_prodi_id' => $user->unit_prodi_id,
+            'unit_prodi_nama' => $user->unitProdi?->nama,
         ], $this->resolveStructuralInfo($user));
+    }
+
+    // Rule tambahan untuk unit_prodi_id: kalau diisi, node yang direferensikan wajib
+    // unit kerja (jenis_node=unit & kategori_unit=unit_kerja) — mencegah akun role
+    // 'unit' salah ditautkan ke node Jurusan/Prodi.
+    private function unitProdiMustBeUnitKerja(): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) {
+            if ($value === null) {
+                return;
+            }
+
+            $isUnitKerja = MasterUnitProdi::query()
+                ->where('id', $value)
+                ->where('jenis_node', 'unit')
+                ->where('kategori_unit', 'unit_kerja')
+                ->exists();
+
+            if (!$isUnitKerja) {
+                $fail('Unit yang dipilih tidak valid. Pilih salah satu Unit kerja.');
+            }
+        };
     }
 
     private function ensureAtLeastOneAdmin(?User $targetUser = null, ?string $nextRole = null): void
@@ -135,6 +162,13 @@ class AdminUserController extends Controller
             'account_type' => ['nullable', 'string', 'max:100'],
             'approval_status' => ['required', 'string', Rule::in(self::APPROVAL_STATUSES)],
             'role' => ['required', 'string', Rule::in($this->allowedRoles())],
+            'unit_prodi_id' => [
+                Rule::requiredIf($request->input('role') === 'unit'),
+                'nullable',
+                'integer',
+                'exists:master_unit_prodi,id',
+                $this->unitProdiMustBeUnitKerja(),
+            ],
             'password' => ['required', 'string', Password::min(8)],
         ]);
 
@@ -148,6 +182,7 @@ class AdminUserController extends Controller
             'role' => $validated['role'],
             'account_type' => $validated['account_type'] ?? null,
             'approval_status' => $validated['approval_status'],
+            'unit_prodi_id' => $validated['unit_prodi_id'] ?? null,
             'password' => Hash::make($validated['password']),
         ]);
 
@@ -178,6 +213,13 @@ class AdminUserController extends Controller
             'position' => ['sometimes', 'nullable', 'string', 'max:100'],
             'account_type' => ['sometimes', 'nullable', 'string', 'max:100'],
             'role' => ['sometimes', 'required', 'string', Rule::in($this->allowedRoles())],
+            'unit_prodi_id' => [
+                Rule::requiredIf(($request->input('role') ?? $user->role) === 'unit'),
+                'nullable',
+                'integer',
+                'exists:master_unit_prodi,id',
+                $this->unitProdiMustBeUnitKerja(),
+            ],
             'password' => ['sometimes', 'required', 'string', Password::min(8)],
         ]);
 
