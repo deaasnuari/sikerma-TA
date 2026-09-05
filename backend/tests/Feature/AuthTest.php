@@ -329,6 +329,44 @@ class AuthTest extends TestCase
             ->assertJsonPath('user.role', 'unit');
     }
 
+    public function test_login_ldap_tidak_reset_role_unit_yang_ditugaskan_admin_manual(): void
+    {
+        // Bug nyata: akun role 'unit' yang unit_prodi_id-nya di-assign MANUAL oleh admin
+        // (fitur dari Syahnaz — lihat resolveAssignedUnitFallback()), tapi NIK-nya BUKAN
+        // Kepala Unit resmi di Civitas & UNIT_KERJA-nya tidak match apa pun — sebelum
+        // fix ini, determineCivitasRole() tidak kenal status 'unit_ditugaskan', jadi
+        // login ulang lewat kampus bikin role-nya ke-reset jadi 'internal' dan
+        // assignment manual admin jadi tidak berlaku lagi.
+        $unit = \App\Models\MasterUnitProdi::create([
+            'jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'Kelompok Kerja Test', 'aktif' => true,
+        ]);
+
+        $user = User::factory()->create([
+            'role' => 'unit',
+            'auth_provider' => 'ldap',
+            'nik'  => '777777',
+            'email' => 'unitditugaskan@polibatam.ac.id',
+            'unit_prodi_id' => $unit->id,
+        ]);
+
+        $this->mockCivitas([
+            'NIK'   => '777777',
+            'NAMA'  => $user->name,
+            'EMAIL' => 'unitditugaskan@polibatam.ac.id',
+            'UNIT_KERJA' => 'Unit Yang Tidak Ada Di SIKERMA',
+        ]);
+        $this->mockCivitasStrukturKosong();
+
+        $response = $this->postJson('/api/login-kampus', [
+            'username' => 'unitditugaskan',
+            'password' => 'PasswordKampus123',
+        ]);
+
+        $response->assertStatus(200)->assertJsonPath('user.role', 'unit');
+        $this->assertEquals('unit', $user->fresh()->role);
+        $this->assertEquals($unit->id, $user->fresh()->unit_prodi_id);
+    }
+
     public function test_login_ldap_role_otomatis_jadi_jurusan_kalau_nik_cocok_kajur(): void
     {
         $jurusan = \App\Models\MasterUnitProdi::create([

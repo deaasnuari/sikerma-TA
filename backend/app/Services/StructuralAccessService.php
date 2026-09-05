@@ -186,7 +186,13 @@ class StructuralAccessService
         $roleFromPosition = match ($access['structural_position']) {
             'ketua_jurusan' => 'jurusan',
             'ketua_prodi'   => 'prodi',
-            'kepala_unit'   => 'unit',
+            // 'unit_ditugaskan' = unit_prodi_id di-assign manual admin (lihat
+            // StructuralAccessService::resolveAssignedUnitFallback()) — kalau tidak ikut
+            // dianggap valid di sini, akun yang kebetulan juga login LDAP bisa "ke-reset"
+            // rolenya balik ke 'internal' tiap login ulang, bikin assignment manual admin
+            // jadi tidak berlaku lagi (resolveAssignedUnitFallback mensyaratkan role tetap
+            // 'unit').
+            'kepala_unit', 'unit_ditugaskan' => 'unit',
             default         => null,
         };
 
