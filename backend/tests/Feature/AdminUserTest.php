@@ -153,21 +153,78 @@ class AdminUserTest extends TestCase
             ->assertJsonValidationErrors(['role']);
     }
 
+    private function unitKerja(string $nama = 'UPA TIK'): MasterUnitProdi
+    {
+        return MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => $nama, 'aktif' => true]);
+    }
+
     public function test_admin_dapat_buat_dan_update_user_role_unit(): void
     {
         $admin = $this->admin();
+        $unit = $this->unitKerja();
 
         $response = $this->actingAs($admin)->postJson('/api/admin/users', $this->dataUser([
             'email' => 'unit-test@polibatam.ac.id',
             'username' => 'unittest',
             'role' => 'unit',
+            'unit_prodi_id' => $unit->id,
         ]));
-        $response->assertStatus(201)->assertJsonPath('user.role', 'unit');
+        $response->assertStatus(201)
+            ->assertJsonPath('user.role', 'unit')
+            ->assertJsonPath('user.unit_prodi_id', $unit->id)
+            ->assertJsonPath('user.unit_prodi_nama', $unit->nama);
 
         $userId = $response->json('user.id');
         $this->actingAs($admin)->putJson("/api/admin/users/{$userId}", [
-            'name' => 'John Doe', 'email' => 'unit-test@polibatam.ac.id', 'role' => 'unit',
+            'name' => 'John Doe', 'email' => 'unit-test@polibatam.ac.id', 'role' => 'unit', 'unit_prodi_id' => $unit->id,
         ])->assertOk()->assertJsonPath('user.role', 'unit');
+    }
+
+    public function test_buat_user_role_unit_gagal_tanpa_unit_prodi_id(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->postJson('/api/admin/users', $this->dataUser([
+            'email' => 'unit-wajib@polibatam.ac.id',
+            'username' => 'unitwajib',
+            'role' => 'unit',
+        ]))->assertUnprocessable()->assertJsonValidationErrors(['unit_prodi_id']);
+    }
+
+    public function test_buat_user_role_unit_gagal_unit_prodi_id_menunjuk_prodi(): void
+    {
+        $admin = $this->admin();
+        $prodi = MasterUnitProdi::create(['jenis_node' => 'prodi', 'nama' => 'D3 Teknik Informatika', 'aktif' => true]);
+
+        $this->actingAs($admin)->postJson('/api/admin/users', $this->dataUser([
+            'email' => 'unit-salah-node@polibatam.ac.id',
+            'username' => 'unitsalahnode',
+            'role' => 'unit',
+            'unit_prodi_id' => $prodi->id,
+        ]))->assertUnprocessable()->assertJsonValidationErrors(['unit_prodi_id']);
+    }
+
+    public function test_buat_user_role_selain_unit_tidak_wajib_isi_unit_prodi_id(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->postJson('/api/admin/users', $this->dataUser([
+            'email' => 'internal-tanpa-unit@polibatam.ac.id',
+            'username' => 'internaltanpaunit',
+            'role' => 'internal',
+        ]))->assertStatus(201)->assertJsonPath('user.unit_prodi_id', null);
+    }
+
+    public function test_update_user_role_unit_gagal_ganti_role_lain_tanpa_unit_prodi_id(): void
+    {
+        // Kalau role user diubah JADI 'unit' lewat update(), Unit tetap wajib diisi —
+        // bukan cuma dicek pas create.
+        $admin = $this->admin();
+        $target = User::factory()->create(['role' => 'internal']);
+
+        $this->actingAs($admin)->putJson("/api/admin/users/{$target->id}", [
+            'name' => $target->name, 'email' => $target->email, 'role' => 'unit',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['unit_prodi_id']);
     }
 
     public function test_bukan_admin_tidak_bisa_membuat_user(): void

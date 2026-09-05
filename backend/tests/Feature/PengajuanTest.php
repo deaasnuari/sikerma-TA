@@ -815,4 +815,72 @@ class PengajuanTest extends TestCase
 
         $this->actingAs($userUnit)->getJson("/api/pengajuan/{$pengajuanOrang->id}")->assertStatus(404);
     }
+
+    public function test_user_unit_yang_di_assign_admin_melihat_pengajuan_unitnya_walau_bukan_kepala_unit_resmi(): void
+    {
+        // Beda dari test_kepala_unit_role_unit_tetap_terdeteksi_via_nik_bukan_cuma_role_internal:
+        // di sini user role 'unit' BUKAN Kepala Unit resmi (NIK-nya tidak cocok data Civitas
+        // sama sekali) — dia cuma akun yang di-assign admin lewat Manajemen User
+        // (users.unit_prodi_id) untuk mewakili sebuah unit kerja. Tetap harus dapat scope
+        // ke unitnya, bukan cuma lihat punya sendiri.
+        $unitA = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA TIK', 'aktif' => true]);
+        $unitB = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA Perpustakaan', 'aktif' => true]);
+
+        $userUnitA = User::factory()->create(['role' => 'unit', 'unit_prodi_id' => $unitA->id]);
+        $pemilikLain = $this->internal();
+
+        $this->mockCivitasStruktur(); // tidak ada jabatan struktural resmi apa pun
+
+        $a = $this->buatPengajuan(['judul_pengajuan' => 'A - Unit A', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $unitA->id]);
+        $b = $this->buatPengajuan(['judul_pengajuan' => 'B - Unit B', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $unitB->id]);
+
+        $response = $this->actingAs($userUnitA)->getJson('/api/pengajuan?per_page=50');
+        $response->assertOk();
+        $ids = collect($response->json('data.data'))->pluck('id')->all();
+
+        $this->assertContains($a->id, $ids);
+        $this->assertNotContains($b->id, $ids);
+
+        $this->actingAs($userUnitA)->getJson("/api/pengajuan/{$a->id}")->assertOk();
+        $this->actingAs($userUnitA)->getJson("/api/pengajuan/{$b->id}")->assertStatus(404);
+    }
+
+    public function test_user_unit_yang_di_assign_admin_tidak_bisa_bypass_scope_lewat_query_param(): void
+    {
+        $unitA = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA TIK', 'aktif' => true]);
+        $unitB = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA Perpustakaan', 'aktif' => true]);
+
+        $userUnitA = User::factory()->create(['role' => 'unit', 'unit_prodi_id' => $unitA->id]);
+        $pemilikLain = $this->internal();
+
+        $this->mockCivitasStruktur();
+
+        $b = $this->buatPengajuan(['judul_pengajuan' => 'B - Unit B', 'user_pengusul_id' => $pemilikLain->id, 'unit_prodi_id' => $unitB->id]);
+
+        $response = $this->actingAs($userUnitA)->getJson("/api/pengajuan?per_page=50&unit_prodi_id={$unitB->id}");
+        $response->assertOk();
+        $ids = collect($response->json('data.data'))->pluck('id')->all();
+
+        $this->assertNotContains($b->id, $ids);
+    }
+
+    public function test_admin_yang_assign_unit_kepada_kepala_unit_resmi_tidak_mengubah_hasil_deteksi_nik(): void
+    {
+        // NIK-match tetap prioritas di atas unit_prodi_id yang di-assign admin — kalau
+        // orangnya memang Kepala Unit resmi (NIK cocok), assignment admin (kalau ada &
+        // beda) tidak menggantikan/mempersempit scope dari deteksi NIK.
+        $unitResmi = MasterUnitProdi::create(['jenis_node' => 'unit', 'kategori_unit' => 'unit_kerja', 'nama' => 'UPA TIK', 'aktif' => true]);
+
+        $kepalaUnit = User::factory()->create(['role' => 'unit', 'nik' => '221318', 'unit_prodi_id' => $unitResmi->id]);
+        $pemilikLain = $this->internal();
+
+        $this->mockCivitasStruktur(unit: [[
+            'ID_UNIT' => '18', 'NAMA_UNIT' => 'UPA TIK', 'NIK_KEPALA_UNIT' => '221318', 'NAMA_KEPALA_UNIT' => 'Agus Prasetyo',
+        ]]);
+
+        $access = app(\App\Services\StructuralAccessService::class)->getUserStructuralAccess($kepalaUnit->fresh());
+
+        $this->assertEquals('kepala_unit', $access['structural_position']);
+        $this->assertEquals($unitResmi->id, $access['unit_id']);
+    }
 }

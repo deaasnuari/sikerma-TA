@@ -28,6 +28,7 @@ import {
   updateAdminUser,
   updateAdminUserStatus,
 } from '@/services/adminUserService';
+import { getUnits, type MasterUnitProdi } from '@/services/masterUnitProdiService';
 
 interface UserItem {
   id: number;
@@ -35,6 +36,7 @@ interface UserItem {
   email: string;
   role: UiRole;
   unitInstansi: string;
+  unitProdiId: number | null;
   status: UiStatus;
   username?: string;
   phone?: string;
@@ -49,6 +51,7 @@ const fallbackUsers: UserItem[] = [
     email: 'ahmad.fauzi@polibatam.ac.id',
     role: 'Admin',
     unitInstansi: 'Sistem Informasi',
+    unitProdiId: null,
     status: 'Aktif',
   },
   {
@@ -57,6 +60,7 @@ const fallbackUsers: UserItem[] = [
     email: 'siti.nur@polibatam.ac.id',
     role: 'Jurusan',
     unitInstansi: 'Jurusan Teknik',
+    unitProdiId: null,
     status: 'NonAktif',
   },
   {
@@ -65,6 +69,7 @@ const fallbackUsers: UserItem[] = [
     email: 'budi.santoso@polibatam.ac.id',
     role: 'Prodi',
     unitInstansi: 'Teknik Informatika',
+    unitProdiId: null,
     status: 'Aktif',
   },
   {
@@ -73,6 +78,7 @@ const fallbackUsers: UserItem[] = [
     email: 'hendra.g@polibatam.ac.id',
     role: 'Pimpinan',
     unitInstansi: 'Direktur',
+    unitProdiId: null,
     status: 'Aktif',
   },
   {
@@ -81,6 +87,7 @@ const fallbackUsers: UserItem[] = [
     email: 'info@teknologimaju.co.id',
     role: 'Mitra',
     unitInstansi: 'Perusahaan Swasta',
+    unitProdiId: null,
     status: 'Aktif',
   },
 
@@ -115,9 +122,10 @@ export default function ManajemenUserPage() {
   const [deleteError, setDeleteError] = useState('');
   const [isFallback, setIsFallback] = useState(false);
   const [isReloading, setIsReloading] = useState(false);
+  const [unitOptions, setUnitOptions] = useState<MasterUnitProdi[]>([]);
 
   // Form state shared by add & edit
-  const emptyForm = { nama: '', email: '', role: '' as string, unitInstansi: '', status: 'Aktif' as string, phone: '', username: '', password: '' };
+  const emptyForm = { nama: '', email: '', role: '' as string, unitInstansi: '', unitProdiId: null as number | null, status: 'Aktif' as string, phone: '', username: '', password: '' };
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState('');
@@ -164,6 +172,23 @@ export default function ManajemenUserPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+
+    getUnits()
+      .then((units) => {
+        if (mounted) setUnitOptions(units);
+      })
+      .catch(() => {
+        // Dropdown Unit cukup kosong kalau gagal dimuat — tidak menghalangi
+        // pengelolaan user role lain.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleReload = async () => {
     setIsReloading(true);
     setLoadError('');
@@ -194,7 +219,7 @@ export default function ManajemenUserPage() {
   };
 
   const openEdit = (item: UserItem) => {
-    setForm({ nama: item.nama, email: item.email, role: item.role, unitInstansi: item.unitInstansi, status: item.status, phone: '', username: '', password: '' });
+    setForm({ nama: item.nama, email: item.email, role: item.role, unitInstansi: item.unitInstansi, unitProdiId: item.unitProdiId, status: item.status, phone: '', username: '', password: '' });
     setEditUser(item);
     setFormErrors({});
     setServerError('');
@@ -209,7 +234,11 @@ export default function ManajemenUserPage() {
     if (!form.password) errors.password = 'Password wajib diisi.';
     else if (form.password.length < 8) errors.password = 'Password minimal 8 karakter.';
     if (!form.role) errors.role = 'Role wajib dipilih.';
-    if (!form.unitInstansi.trim()) errors.unitInstansi = 'Unit/Instansi wajib diisi.';
+    if (form.role === 'Unit') {
+      if (!form.unitProdiId) errors.unitProdiId = 'Unit wajib dipilih.';
+    } else if (!form.unitInstansi.trim()) {
+      errors.unitInstansi = 'Unit/Instansi wajib diisi.';
+    }
     if (!form.phone.trim()) errors.phone = 'No. Telepon wajib diisi.';
 
     if (Object.keys(errors).length > 0) {
@@ -227,6 +256,7 @@ export default function ManajemenUserPage() {
         password: form.password,
         role: form.role as UiRole,
         unitInstansi: form.unitInstansi,
+        unitProdiId: form.unitProdiId,
         phone: form.phone,
       });
 
@@ -248,7 +278,11 @@ export default function ManajemenUserPage() {
     if (!form.nama.trim()) errors.nama = 'Nama lengkap wajib diisi.';
     if (!form.email.trim()) errors.email = 'Email wajib diisi.';
     if (!form.role) errors.role = 'Role wajib dipilih.';
-    if (!form.unitInstansi.trim()) errors.unitInstansi = 'Unit/Instansi wajib diisi.';
+    if (form.role === 'Unit') {
+      if (!form.unitProdiId) errors.unitProdiId = 'Unit wajib dipilih.';
+    } else if (!form.unitInstansi.trim()) {
+      errors.unitInstansi = 'Unit/Instansi wajib diisi.';
+    }
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -263,6 +297,7 @@ export default function ManajemenUserPage() {
         email: form.email,
         role: form.role as UiRole,
         unitInstansi: form.unitInstansi,
+        unitProdiId: form.unitProdiId,
         status: form.status as UiStatus,
       });
 
@@ -802,16 +837,37 @@ export default function ManajemenUserPage() {
                 </div>
                 <div>
                   <label className="block text-[12px] font-semibold text-gray-700 mb-1.5">
-                    Unit/Instansi <span className="text-red-500">*</span>
+                    {form.role === 'Unit' ? 'Unit' : 'Unit/Instansi'} <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={form.unitInstansi}
-                    onChange={(e) => { setForm({ ...form, unitInstansi: e.target.value }); setFormErrors((p) => ({ ...p, unitInstansi: '' })); }}
-                    className={`w-full border ${formErrors.unitInstansi ? 'border-red-400' : 'border-gray-300'} rounded-lg px-4 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-blue-500 bg-white`}
-                    placeholder="Nama unit/instansi"
-                  />
+                  {form.role === 'Unit' ? (
+                    <div className="relative">
+                      <select
+                        value={form.unitProdiId ?? ''}
+                        onChange={(e) => {
+                          const selected = unitOptions.find((u) => u.id === Number(e.target.value));
+                          setForm({ ...form, unitProdiId: selected ? selected.id : null, unitInstansi: selected ? selected.nama : '' });
+                          setFormErrors((p) => ({ ...p, unitProdiId: '' }));
+                        }}
+                        className={`appearance-none w-full border ${formErrors.unitProdiId ? 'border-red-400' : 'border-gray-300'} rounded-lg px-4 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-blue-500 bg-white`}
+                      >
+                        <option value="">Pilih Unit</option>
+                        {unitOptions.map((u) => (
+                          <option key={u.id} value={u.id}>{u.nama}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={form.unitInstansi}
+                      onChange={(e) => { setForm({ ...form, unitInstansi: e.target.value }); setFormErrors((p) => ({ ...p, unitInstansi: '' })); }}
+                      className={`w-full border ${formErrors.unitInstansi ? 'border-red-400' : 'border-gray-300'} rounded-lg px-4 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-blue-500 bg-white`}
+                      placeholder="Nama unit/instansi"
+                    />
+                  )}
                   {formErrors.unitInstansi && <p className="text-red-500 text-[10px] mt-1">{formErrors.unitInstansi}</p>}
+                  {formErrors.unitProdiId && <p className="text-red-500 text-[10px] mt-1">{formErrors.unitProdiId}</p>}
                 </div>
               </div>
 
@@ -895,9 +951,30 @@ export default function ManajemenUserPage() {
                   {formErrors.role && <p className="text-red-500 text-[10px] mt-1">{formErrors.role}</p>}
                 </div>
                 <div>
-                  <label className="block text-[12px] font-semibold text-gray-700 mb-1.5">Unit/Instansi</label>
-                  <input type="text" value={form.unitInstansi} onChange={(e) => { setForm({ ...form, unitInstansi: e.target.value }); setFormErrors((p) => ({ ...p, unitInstansi: '' })); }} className={`w-full border ${formErrors.unitInstansi ? 'border-red-400' : 'border-gray-300'} rounded-lg px-4 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-blue-500 bg-white`} />
+                  <label className="block text-[12px] font-semibold text-gray-700 mb-1.5">{form.role === 'Unit' ? 'Unit' : 'Unit/Instansi'}</label>
+                  {form.role === 'Unit' ? (
+                    <div className="relative">
+                      <select
+                        value={form.unitProdiId ?? ''}
+                        onChange={(e) => {
+                          const selected = unitOptions.find((u) => u.id === Number(e.target.value));
+                          setForm({ ...form, unitProdiId: selected ? selected.id : null, unitInstansi: selected ? selected.nama : '' });
+                          setFormErrors((p) => ({ ...p, unitProdiId: '' }));
+                        }}
+                        className={`appearance-none w-full border ${formErrors.unitProdiId ? 'border-red-400' : 'border-gray-300'} rounded-lg px-4 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-blue-500 bg-white`}
+                      >
+                        <option value="">Pilih Unit</option>
+                        {unitOptions.map((u) => (
+                          <option key={u.id} value={u.id}>{u.nama}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                  ) : (
+                    <input type="text" value={form.unitInstansi} onChange={(e) => { setForm({ ...form, unitInstansi: e.target.value }); setFormErrors((p) => ({ ...p, unitInstansi: '' })); }} className={`w-full border ${formErrors.unitInstansi ? 'border-red-400' : 'border-gray-300'} rounded-lg px-4 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-blue-500 bg-white`} />
+                  )}
                   {formErrors.unitInstansi && <p className="text-red-500 text-[10px] mt-1">{formErrors.unitInstansi}</p>}
+                  {formErrors.unitProdiId && <p className="text-red-500 text-[10px] mt-1">{formErrors.unitProdiId}</p>}
                 </div>
               </div>
 

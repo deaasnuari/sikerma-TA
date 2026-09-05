@@ -42,8 +42,13 @@ class StructuralAccessService
         // punya field ID kepala yang beda id-space dari NIK login — sudah diperbaiki
         // UPA TIK, NIK_KAJUR/NIK_KPS/NIK_KEPALA_UNIT sekarang konsisten dengan NIK login.)
         $nikUser = $this->normalizeNik($user->nik);
+
+        // Kalau NIK kosong (mis. akun 'unit' dibuat admin manual lewat Manajemen User,
+        // bukan lewat login LDAP), tidak ada yang bisa dicocokkan ke Civitas — langsung
+        // lompat ke fallback unit_prodi_id di bawah, jangan return $default di sini
+        // (itu akan melewatkan fallback-nya sama sekali).
         if ($nikUser === '') {
-            return $default;
+            return $this->resolveAssignedUnitFallback($user) ?? $default;
         }
 
         // Ketua Jurusan
@@ -127,7 +132,34 @@ class StructuralAccessService
             }
         }
 
-        return $default;
+        // Tidak terdeteksi jabatan struktural apa pun via NIK (bukan Kajur/KPS/Kepala Unit
+        // beneran di data resmi Civitas) — fallback ke Unit yang di-assign ADMIN secara
+        // manual lewat Manajemen User (users.unit_prodi_id).
+        return $this->resolveAssignedUnitFallback($user) ?? $default;
+    }
+
+    /**
+     * Unit yang di-assign ADMIN secara manual lewat Manajemen User (users.unit_prodi_id) —
+     * cuma berlaku untuk role 'unit'. Ini melayani akun 'unit' yang memang sengaja dibuat
+     * admin untuk mewakili sebuah unit kerja (mis. akun bersama Pokja/UPA), bukan personel
+     * yang terverifikasi sebagai Kepala Unit resmi lewat NIK. Null kalau tidak ada
+     * assignment (pemanggil fallback ke $default).
+     *
+     * @return array{role: string, structural_position: string, jurusan_id: ?int, program_studi_id: ?int, unit_id: ?int}|null
+     */
+    private function resolveAssignedUnitFallback(User $user): ?array
+    {
+        if (strtolower(trim((string) $user->role)) !== 'unit' || $user->unit_prodi_id === null) {
+            return null;
+        }
+
+        return [
+            'role' => (string) $user->role,
+            'structural_position' => 'unit_ditugaskan',
+            'jurusan_id' => null,
+            'program_studi_id' => null,
+            'unit_id' => (int) $user->unit_prodi_id,
+        ];
     }
 
     /**
@@ -235,7 +267,7 @@ class StructuralAccessService
         return match ($access['structural_position']) {
             'ketua_jurusan' => $this->jurusanAndChildProdiIds((int) $access['jurusan_id']),
             'ketua_prodi' => [(int) $access['program_studi_id']],
-            'kepala_unit' => [(int) $access['unit_id']],
+            'kepala_unit', 'unit_ditugaskan' => [(int) $access['unit_id']],
             default => null,
         };
     }
