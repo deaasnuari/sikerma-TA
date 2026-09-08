@@ -167,11 +167,11 @@ class StructuralAccessService
      * berhasil, lihat AuthController::loginLdap()) — 'jurusan'/'prodi'/'unit' kalau dia
      * ketua/kepala (dicocokkan by NIK, sama seperti getUserStructuralAccess()), atau
      * best-effort dari UNIT_KERJA (teks bebas dari Civitas) kalau bukan ketua tapi
-     * "rumahnya" ketemu di Jurusan/Prodi/Unit tertentu (lihat resolveAffiliationFromFreeText()
-     * — Prodi cuma dicocokkan exact, bukan longgar, karena nama-nama Prodi sering mirip
-     * satu sama lain, mis. "Diploma 3 Teknik Informatika" vs prodi lain di jurusan yang
-     * sama — matching longgar berisiko salah pilih di antara keduanya). Gagal match sama
-     * sekali -> tetap 'internal', tidak dipaksakan.
+     * "rumahnya" ketemu di sebuah Jurusan / Unit Kerja (lihat resolveAffiliationFromFreeText()).
+     * Untuk dosen biasa, UNIT_KERJA di sistem kepegawaian kampus selalu mengikuti level
+     * JURUSAN (atau unit kerja non-akademik), TIDAK pernah dipetakan ke Prodi — jadi Prodi
+     * sengaja tidak pernah dicoba di sini. Gagal match sama sekali -> tetap 'internal',
+     * tidak dipaksakan.
      *
      * PENTING: ini cuma menentukan LABEL role, bukan hak akses — hak akses/scope tetap
      * dihitung live oleh getUserStructuralAccess() tiap request berdasarkan NIK, jadi
@@ -204,32 +204,24 @@ class StructuralAccessService
     }
 
     /**
-     * Cocokkan teks bebas (UNIT_KERJA dari Civitas) ke nama Prodi/Jurusan/Unit Kerja yang
+     * Cocokkan teks bebas (UNIT_KERJA dari Civitas) ke nama Jurusan / Unit Kerja yang
      * ada di master_unit_prodi — best-effort, bukan pencarian ID resmi (tidak ada
      * kode_kampus buat dicocokkan di sini, cuma nama).
      *
-     * Urutan: Prodi (EXACT match saja) dicoba duluan — kalau UNIT_KERJA persis sama
-     * dengan nama sebuah Prodi (mis. "Diploma 3 Teknik Informatika"), itu sinyal paling
-     * spesifik & akurat. Prodi SENGAJA tidak dicoba dengan matching longgar (substring) —
-     * nama-nama Prodi sering mirip satu sama lain/dengan nama Jurusan induknya (mis.
-     * Jurusan "Teknik Informatika" vs Prodi "Diploma 3 Teknik Informatika"), matching
-     * longgar berisiko salah pilih Prodi. Kalau tidak ketemu exact match Prodi, baru coba
-     * Jurusan (longgar), lalu Unit Kerja (longgar) — sama seperti sebelumnya. Null kalau
-     * tidak ketemu match sama sekali — sengaja tidak dipaksakan.
+     * Prodi SENGAJA tidak pernah dicoba di sini: menurut masukan dosen (8 Sept 2026),
+     * UNIT_KERJA di data kepegawaian kampus selalu di-set pada level JURUSAN (atau unit
+     * kerja non-akademik), tidak pernah per Prodi. Dulu (4 Sept) Prodi sempat dicoba
+     * dengan exact-match; itu sudah dihapus.
+     *
+     * Urutan: Jurusan (match longgar/substring) dicoba duluan, lalu Unit Kerja (match
+     * longgar). Null kalau tidak ketemu match sama sekali — sengaja tidak dipaksakan
+     * (pemanggil jadikan 'internal').
      */
     private function resolveAffiliationFromFreeText(?string $unitKerjaFreeText): ?string
     {
         $target = $this->normalizeNama($unitKerjaFreeText);
         if ($target === '') {
             return null;
-        }
-
-        $adaProdiCocokPersis = MasterUnitProdi::query()
-            ->where('jenis_node', 'prodi')
-            ->pluck('nama')
-            ->contains(fn ($nama) => $this->normalizeNama($nama) === $target);
-        if ($adaProdiCocokPersis) {
-            return 'prodi';
         }
 
         $matchesTarget = function (string $nama) use ($target): bool {

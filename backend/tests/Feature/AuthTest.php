@@ -431,12 +431,17 @@ class AuthTest extends TestCase
         $this->assertEquals('internal', $user->fresh()->role);
     }
 
-    public function test_login_ldap_dosen_biasa_ikut_prodi_kalau_unit_kerja_cocok_persis(): void
+    public function test_login_ldap_dosen_biasa_unit_kerja_dipetakan_ke_jurusan_bukan_prodi(): void
     {
-        // Dosen biasa (bukan KPS) yang UNIT_KERJA-nya (dari Civitas) persis sama dengan
-        // nama sebuah Prodi -> role jadi 'prodi'. Beda dari Kajur/KPS/Kepala Unit, ini
-        // BUKAN jabatan struktural — cuma label afiliasi, TIDAK dapat scope seluas KPS
-        // (dicek terpisah lewat NIK di getUserStructuralAccess()).
+        // Masukan dosen (8 Sept 2026): UNIT_KERJA dari Civitas selalu mengikuti level
+        // JURUSAN, bukan Prodi. Jadi walau UNIT_KERJA dosen biasa (bukan KPS) kebetulan
+        // persis sama dengan nama sebuah Prodi, dia TIDAK di-label 'prodi' — dia ikut
+        // Jurusan induk yang cocok longgar ("Teknik Informatika" adalah substring dari
+        // "Diploma 3 Teknik Informatika"). Tetap cuma label afiliasi, bukan jabatan
+        // struktural (scope dicek terpisah lewat NIK di getUserStructuralAccess()).
+        \App\Models\MasterUnitProdi::create([
+            'jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'Teknik Informatika', 'aktif' => true,
+        ]);
         \App\Models\MasterUnitProdi::create([
             'jenis_node' => 'prodi', 'nama' => 'Diploma 3 Teknik Informatika', 'aktif' => true,
         ]);
@@ -461,8 +466,41 @@ class AuthTest extends TestCase
             'password' => 'PasswordKampus123',
         ]);
 
-        $response->assertStatus(200)->assertJsonPath('user.role', 'prodi');
-        $this->assertEquals('prodi', $user->fresh()->role);
+        $response->assertStatus(200)->assertJsonPath('user.role', 'jurusan');
+        $this->assertEquals('jurusan', $user->fresh()->role);
+    }
+
+    public function test_login_ldap_dosen_biasa_unit_kerja_sama_nama_prodi_tanpa_jurusan_induk_tetap_internal(): void
+    {
+        // Lanjutan dari aturan di atas: kalau UNIT_KERJA cuma cocok ke nama Prodi dan
+        // tidak ada Jurusan/Unit Kerja yang cocok, role tetap 'internal' — Prodi tidak
+        // pernah dijadikan dasar label untuk dosen biasa.
+        \App\Models\MasterUnitProdi::create([
+            'jenis_node' => 'prodi', 'nama' => 'Diploma 3 Teknik Informatika', 'aktif' => true,
+        ]);
+
+        $user = User::factory()->create([
+            'role' => 'internal',
+            'auth_provider' => 'ldap',
+            'nik'  => '888889',
+            'email' => 'dosenprodi2@polibatam.ac.id',
+        ]);
+
+        $this->mockCivitas([
+            'NIK'   => '888889',
+            'NAMA'  => $user->name,
+            'EMAIL' => 'dosenprodi2@polibatam.ac.id',
+            'UNIT_KERJA' => 'Diploma 3 Teknik Informatika',
+        ]);
+        $this->mockCivitasStrukturKosong();
+
+        $response = $this->postJson('/api/login-kampus', [
+            'username' => 'dosenprodi2',
+            'password' => 'PasswordKampus123',
+        ]);
+
+        $response->assertStatus(200)->assertJsonPath('user.role', 'internal');
+        $this->assertEquals('internal', $user->fresh()->role);
     }
 
     public function test_login_ldap_membuat_akun_baru_jika_belum_terdaftar(): void
