@@ -87,8 +87,8 @@ class Pengajuan extends Model
         'is_from_admin' => 'boolean',
 
         // New schema casts
-        // 'ruang_lingkup_ids' => PgArrayCast::class,
-        'ruang_lingkup_ids' => 'array',
+        'ruang_lingkup_ids' => PgArrayCast::class,
+        // 'ruang_lingkup_ids' => 'array',
         'tanggal_mulai' => 'date',
         'tanggal_berakhir' => 'date',
         'diajukan_pada' => 'datetime',
@@ -143,5 +143,10 @@ class Pengajuan extends Model
     public function aktivitas(): HasMany
     {
         return $this->hasMany(PengajuanAktivitas::class, 'pengajuan_id', 'id');
+    }
+
+    public function laporanPelaksanaan(): HasMany
+    {
+        return $this->hasMany(LaporanPelaksanaan::class, 'pengajuan_id', 'id');
     }
 }

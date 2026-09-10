@@ -10,9 +10,16 @@ export interface LaporanPelaksanaanRecord {
   judulKerjasama?: string;
   referensiKerjasama?: string;
   unitPengaju?: string;
+  // Periode Monev (Jan-Mar=1 ... Okt-Des=4) — dipakai untuk mengelompokkan laporan
+  // ini ke Monev Triwulan di Rekap Data -> Detail Kerjasama.
+  tahun?: number;
+  triwulan?: number;
   kegiatan?: string;
   capaian?: string;
   hasil?: string;
+  // Monev manual: Catatan Monitoring = kegiatan, Hasil Evaluasi = hasil (di atas).
+  kendala?: string;
+  tindakLanjut?: string;
   tautanDokumentasi?: string;
   namaPenanggungJawab?: string;
   nipPenanggungJawab?: string;
@@ -44,9 +51,13 @@ type ApiLaporanRow = {
   judul_kerjasama?: string | null;
   referensi_kerjasama?: string | null;
   unit_pengaju?: string | null;
+  tahun?: number | null;
+  triwulan?: number | null;
   kegiatan?: string | null;
   capaian?: string | null;
   hasil?: string | null;
+  kendala?: string | null;
+  tindak_lanjut?: string | null;
   tautan_dokumentasi?: string | null;
   nama_penanggung_jawab?: string | null;
   nip_penanggung_jawab?: string | null;
@@ -84,9 +95,13 @@ function mapRow(row: ApiLaporanRow): LaporanPelaksanaanRecord {
     judulKerjasama: row.judul_kerjasama ?? undefined,
     referensiKerjasama: row.referensi_kerjasama ?? undefined,
     unitPengaju: row.unit_pengaju ?? undefined,
+    tahun: row.tahun ?? undefined,
+    triwulan: row.triwulan ?? undefined,
     kegiatan: row.kegiatan ?? undefined,
     capaian: row.capaian ?? undefined,
     hasil: row.hasil ?? undefined,
+    kendala: row.kendala ?? undefined,
+    tindakLanjut: row.tindak_lanjut ?? undefined,
     tautanDokumentasi: row.tautan_dokumentasi ?? undefined,
     namaPenanggungJawab: row.nama_penanggung_jawab ?? undefined,
     nipPenanggungJawab: row.nip_penanggung_jawab ?? undefined,
@@ -112,9 +127,13 @@ export interface SubmitLaporanPelaksanaanPayload {
   judulKerjasama?: string;
   referensiKerjasama?: string;
   unitPengaju?: string;
+  tahun?: number;
+  triwulan?: number;
   kegiatan?: string;
   capaian?: string;
   hasil?: string;
+  kendala?: string;
+  tindakLanjut?: string;
   tautanDokumentasi?: string;
   namaPenanggungJawab?: string;
   nipPenanggungJawab?: string;
@@ -136,9 +155,13 @@ export async function submitLaporanPelaksanaan(payload: SubmitLaporanPelaksanaan
   if (payload.judulKerjasama) formData.append('judul_kerjasama', payload.judulKerjasama);
   if (payload.referensiKerjasama) formData.append('referensi_kerjasama', payload.referensiKerjasama);
   if (payload.unitPengaju) formData.append('unit_pengaju', payload.unitPengaju);
+  if (payload.tahun) formData.append('tahun', String(payload.tahun));
+  if (payload.triwulan) formData.append('triwulan', String(payload.triwulan));
   if (payload.kegiatan) formData.append('kegiatan', payload.kegiatan);
   if (payload.capaian) formData.append('capaian', payload.capaian);
   if (payload.hasil) formData.append('hasil', payload.hasil);
+  if (payload.kendala) formData.append('kendala', payload.kendala);
+  if (payload.tindakLanjut) formData.append('tindak_lanjut', payload.tindakLanjut);
   if (payload.tautanDokumentasi) formData.append('tautan_dokumentasi', payload.tautanDokumentasi);
   if (payload.namaPenanggungJawab) formData.append('nama_penanggung_jawab', payload.namaPenanggungJawab);
   if (payload.nipPenanggungJawab) formData.append('nip_penanggung_jawab', payload.nipPenanggungJawab);

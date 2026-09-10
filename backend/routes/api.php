@@ -62,6 +62,7 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/documents/{dokumen_file}/view', [DokumenKerjasamaController::class, 'viewDocument'])
 		->whereNumber('dokumen_kerjasama')
 		->name('dokumen-kerjasama.documents.view');
+	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/monev', [DokumenKerjasamaController::class, 'monev']);
 	Route::post('/dokumen-kerjasama/manual', [DokumenKerjasamaController::class, 'storeManual']);
 	Route::get('/dokumen-kerjasama/perpanjangan/requests', [DokumenKerjasamaController::class, 'renewalRequests']);
 	Route::post('/dokumen-kerjasama/{dokumen_kerjasama}/perpanjangan', [DokumenKerjasamaController::class, 'submitRenewalRequest'])

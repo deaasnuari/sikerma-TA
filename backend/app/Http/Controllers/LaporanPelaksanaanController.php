@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\LaporanPelaksanaan;
 use App\Models\Pengajuan;
+use App\Support\Triwulan;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
@@ -113,6 +114,10 @@ class LaporanPelaksanaanController extends Controller
             'kegiatan' => ['nullable', 'string'],
             'capaian' => ['nullable', 'string'],
             'hasil' => ['nullable', 'string'],
+            // Monev manual (Rekap Data -> Detail Kerjasama -> Monev Triwulan): "Catatan
+            // Monitoring" dipetakan ke `kegiatan`, "Hasil Evaluasi" ke `hasil` di atas.
+            'kendala' => ['nullable', 'string'],
+            'tindak_lanjut' => ['nullable', 'string'],
             'tautan_dokumentasi' => ['nullable', 'string', 'max:255'],
             // Periode Hasil Monitoring (Triwulan 1: Jan-Mar, ..., 4: Okt-Des) untuk rekap.
             'tahun' => ['nullable', 'integer', 'min:2000', 'max:2100'],
@@ -181,7 +186,7 @@ class LaporanPelaksanaanController extends Controller
             $validated['tahun'] = (int) now()->format('Y');
         }
         if (empty($validated['triwulan'])) {
-            $validated['triwulan'] = (int) ceil(((int) now()->format('n')) / 3);
+            $validated['triwulan'] = Triwulan::fromMonth((int) now()->format('n'));
         }
 
         $user = $request->user();

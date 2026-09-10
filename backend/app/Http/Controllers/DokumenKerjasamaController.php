@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\DokumenFile;
 use App\Models\DokumenLog;
 use App\Models\DokumenKerjasama;
+use App\Models\LaporanPelaksanaan;
 use App\Models\Pengajuan;
 use App\Models\PengajuanAktivitas;
 use App\Services\StructuralAccessService;
+use App\Support\Triwulan;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -63,6 +65,101 @@ class DokumenKerjasamaController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Monev (Monitoring dan Evaluasi) Triwulan untuk satu kerjasama, dipakai di
+     * Rekap Data -> Detail Kerjasama -> Monev.
+     *
+     * Diikat ke DokumenKerjasama (bukan Pengajuan) karena itulah yang selalu ada untuk
+     * setiap baris di Detail Kerjasama — banyak dokumen (terutama data lama/import)
+     * tidak punya `sumber_pengajuan_id`, jadi Monev manual TIDAK BOLEH bergantung pada
+     * pengajuan sumbernya. Menggabungkan (bukan menyalin) dua sumber data, per
+     * tahun+triwulan:
+     * - Aktivitas dari Story (pengajuan_aktivitas) — read-only di sini, cuma tersedia
+     *   kalau dokumen ini punya pengajuan sumber (relasi `pengajuan()`); triwulannya
+     *   dihitung otomatis dari tanggal aktivitas lewat accessor di model
+     *   PengajuanAktivitas, jadi otomatis ikut berubah/hilang saat aktivitasnya
+     *   diedit/dihapus di Story, tanpa sinkronisasi manual.
+     * - Entri Monev manual (laporan_pelaksanaan) yang terhubung ke dokumen ini lewat
+     *   dokumen_kerjasama_id — SELALU tersedia untuk diisi apa pun status pengajuan
+     *   sumbernya.
+     */
+    public function monev(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        $pengajuan = $dokumen_kerjasama->sumber_pengajuan_id
+            ? Pengajuan::find($dokumen_kerjasama->sumber_pengajuan_id)
+            : null;
+
+        $aktivitas = $pengajuan
+            ? PengajuanAktivitas::query()->where('pengajuan_id', $pengajuan->id)->orderBy('tanggal')->get()
+            : collect();
+
+        $monevEntries = LaporanPelaksanaan::query()
+            ->where('dokumen_kerjasama_id', $dokumen_kerjasama->id)
+            ->when($pengajuan, fn ($builder) => $builder->orWhere('pengajuan_id', $pengajuan->id))
+            ->with('dikirimOleh:id,name,role')
+            ->orderByDesc('created_at')
+            ->get();
+
+        $buckets = [];
+
+        foreach ($aktivitas as $item) {
+            if (!$item->tahun || !$item->triwulan) {
+                continue;
+            }
+
+            $key = $item->tahun . '-' . $item->triwulan;
+            $buckets[$key] ??= ['tahun' => $item->tahun, 'triwulan' => $item->triwulan, 'aktivitas' => [], 'monev' => []];
+            $buckets[$key]['aktivitas'][] = $item;
+        }
+
+        foreach ($monevEntries as $entry) {
+            $periode = $entry->tahun && $entry->triwulan
+                ? ['tahun' => $entry->tahun, 'triwulan' => $entry->triwulan]
+                : Triwulan::fromDate($entry->created_at);
+
+            if (!$periode) {
+                continue;
+            }
+
+            $key = $periode['tahun'] . '-' . $periode['triwulan'];
+            $buckets[$key] ??= ['tahun' => $periode['tahun'], 'triwulan' => $periode['triwulan'], 'aktivitas' => [], 'monev' => []];
+            $buckets[$key]['monev'][] = $entry;
+        }
+
+        // Selalu sediakan Triwulan I-IV untuk tahun berjalan supaya UI tidak "kosong total"
+        // walau belum ada aktivitas/monev sama sekali untuk kerjasama ini.
+        $currentYear = (int) now()->format('Y');
+        for ($q = 1; $q <= 4; $q++) {
+            $key = $currentYear . '-' . $q;
+            $buckets[$key] ??= ['tahun' => $currentYear, 'triwulan' => $q, 'aktivitas' => [], 'monev' => []];
+        }
+
+        $quarters = collect($buckets)
+            ->map(fn (array $bucket) => [
+                'tahun' => $bucket['tahun'],
+                'triwulan' => $bucket['triwulan'],
+                'label' => Triwulan::label($bucket['triwulan']),
+                'aktivitas' => $bucket['aktivitas'],
+                'monev' => $bucket['monev'],
+            ])
+            ->sortBy([['tahun', 'desc'], ['triwulan', 'desc']])
+            ->values();
+
+        return response([
+            'success' => true,
+            'data' => [
+                'dokumen_kerjasama_id' => $dokumen_kerjasama->id,
+                'pengajuan_id' => $pengajuan?->id,
+                'quarters' => $quarters,
+            ],
+            'message' => 'Data monev berhasil diambil',
+        ]);
     }
 
     public function index(Request $request): Response

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Activity, CalendarDays, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2, Upload, Eye, Building2, FileText, Hash, Phone, User, CheckCircle2, Clock, XCircle, Download, Paperclip, RefreshCw, CheckSquare, Square, Tag, MapPin, Globe2, Target, Timer, ListChecks } from 'lucide-react';
 import TambahDokumenModal from './TambahDokumenModal';
+import MonevTriwulanSection from './MonevTriwulanSection';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import {
   createDokumenFormData,
@@ -1176,42 +1177,28 @@ export default function RekapDataPage() {
                 )}
               </div>
 
-              {/* Hasil Monitoring Triwulan */}
-              <div className="rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <ListChecks size={14} className="text-[#1E376C]" />
-                  <p className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide">Hasil Monitoring</p>
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {[
-                    { label: 'Triwulan 1 (Jan-Mar)', done: detailItem.triwulan1 },
-                    { label: 'Triwulan 2 (Apr-Jun)', done: detailItem.triwulan2 },
-                    { label: 'Triwulan 3 (Jul-Sep)', done: detailItem.triwulan3 },
-                    { label: 'Triwulan 4 (Okt-Des)', done: detailItem.triwulan4 },
-                  ].map((t) => (
-                    <div key={t.label} className={`rounded-lg border px-2.5 py-2 text-center ${t.done ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-white'}`}>
-                      <p className="text-[9.5px] text-gray-500">{t.label}</p>
-                      <p className={`mt-0.5 text-[11px] font-semibold ${t.done ? 'text-emerald-700' : 'text-gray-400'}`}>{t.done ? 'Sudah lapor' : 'Belum lapor'}</p>
-                    </div>
-                  ))}
-                </div>
-                {detailItem.laporanKegiatanLinks && detailItem.laporanKegiatanLinks.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-200 pt-3">
-                    {detailItem.laporanKegiatanLinks.map((url, idx) => (
-                      <a
-                        key={url + idx}
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E376C] px-3 py-1.5 text-[10px] font-semibold text-white hover:bg-[#2B4A93] transition-colors"
-                      >
-                        <FileText size={12} />
-                        Lihat Laporan Kegiatan {detailItem.laporanKegiatanLinks!.length > 1 ? `#${idx + 1}` : ''}
-                      </a>
-                    ))}
+              {/* Monev Triwulan — SELALU bisa diisi manual (kuncinya detailItem.id / dokumen
+                  kerjasama, bukan sourcePengajuanId, karena banyak dokumen tidak punya
+                  pengajuan sumber). Kalau dokumen ini punya sourcePengajuanId, aktivitas dari
+                  Story juga otomatis ikut muncul per triwulan berdasarkan tanggalnya.
+                  Menggantikan ringkasan "Hasil Monitoring" lama yang cuma menandai Triwulan
+                  1-4 lintas tahun; ringkasan lintas-tahun itu sendiri masih dipakai apa
+                  adanya oleh Export Excel (lihat handleExportExcel), jadi datanya tidak
+                  diubah, cuma tampilan detail di sini yang diganti supaya lebih lengkap dan
+                  per-tahun. */}
+              {detailItem.id ? (
+                <MonevTriwulanSection dokumenKerjasamaId={detailItem.id} pengajuanId={detailItem.sourcePengajuanId} />
+              ) : (
+                <div className="rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ListChecks size={14} className="text-[#1E376C]" />
+                    <p className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide">Monev (Monitoring dan Evaluasi)</p>
                   </div>
-                )}
-              </div>
+                  <p className="text-[12px] text-gray-500">
+                    Dokumen ini belum tersimpan, Monev baru bisa diisi setelah dokumen disimpan.
+                  </p>
+                </div>
+              )}
 
               {/* Follow Up */}
               <div className="rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
