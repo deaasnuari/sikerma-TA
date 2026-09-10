@@ -153,6 +153,39 @@ class DokumenKerjasamaTest extends TestCase
         }
     }
 
+    /**
+     * status_efektif adalah field tunggal yang HARUS dipakai semua halaman (Rekap Data,
+     * Monitoring, Status & Progres Kerjasama, Arsip Dokumen) untuk menghitung jumlah
+     * Kadaluarsa — bukan status_siklus mentah, yang bisa basi (tersimpan 'active' padahal
+     * tanggal_berakhir-nya sudah lewat karena tidak ada proses yang otomatis meng-update-nya).
+     */
+    public function test_index_menyertakan_status_efektif_yang_override_status_siklus_basi(): void
+    {
+        $user = $this->admin();
+
+        $this->buatDokumen([
+            'nomor_dokumen'   => 'BASI-001',
+            'status_siklus'   => 'active', // sengaja dibiarkan basi
+            'tanggal_berakhir' => now()->subMonth()->toDateString(),
+        ]);
+        $this->buatDokumen([
+            'nomor_dokumen'   => 'MASIHAKTIF-001',
+            'status_siklus'   => 'active',
+            'tanggal_berakhir' => now()->addYear()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($user)->getJson('/api/dokumen-kerjasama?per_page=50');
+        $response->assertOk();
+
+        $rows = collect($response->json('data.data'));
+        $basi = $rows->firstWhere('nomor_dokumen', 'BASI-001');
+        $masihAktif = $rows->firstWhere('nomor_dokumen', 'MASIHAKTIF-001');
+
+        $this->assertSame('active', $basi['status_siklus']); // kolom mentah tidak diubah
+        $this->assertSame('archived', $basi['status_efektif']); // tapi status efektifnya benar
+        $this->assertSame('active', $masihAktif['status_efektif']);
+    }
+
     public function test_cari_dokumen_berhasil(): void
     {
         $user = $this->admin();

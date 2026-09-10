@@ -20,6 +20,9 @@ interface ArsipDokumen {
   noDokumen: string;
   namaMitra: string;
   jenis: 'MoA' | 'MoU' | 'IA' | 'Lainnya';
+  // Status dari backend (status_efektif) — sumber yang sama dengan Rekap Data & Monitoring,
+  // supaya jumlah "Kadaluarsa" konsisten di semua halaman (lihat getDocumentStatus di bawah).
+  status: 'Akan Berakhir' | 'Kadaluarsa';
   tanggalMulai: string;
   berlakuHingga: string;
   alasanArsip: string | null;
@@ -56,35 +59,14 @@ export default function ArsipDokumenPage() {
     router.push('/admin/monitoring');
   };
 
-  // Helper function to determine document status
-  const getDocumentStatus = (berlakuHingga: string): 'akan-kadaluarsa' | 'kadaluarsa' | null => {
-    const dateStr = berlakuHingga.split('/').reverse().join('-');
-    const expiryDate = new Date(dateStr);
-    const today = new Date();
-    
-    // Reset time to compare only dates
-    today.setHours(0, 0, 0, 0);
-    expiryDate.setHours(0, 0, 0, 0);
-
-    if (isNaN(expiryDate.getTime())) {
-      return null;
-    }
-
-    // Jika sudah berlalu
-    if (expiryDate < today) {
-      return 'kadaluarsa'; // Already expired
-    }
-
-    // 3 months warning threshold
-    const threeMonthsFromNow = new Date(today);
-    threeMonthsFromNow.setMonth(threeMonthsFromNow.getMonth() + 3);
-
-    // Jika akan berakhir dalam 3 bulan ke depan
-    if (expiryDate <= threeMonthsFromNow) {
-      return 'akan-kadaluarsa'; // Will expire within 3 months
-    }
-
-    // Masih jauh dari masa berlaku, tidak perlu di arsip
+  // Pemetaan status -> tab Arsip. SENGAJA tidak dihitung ulang dari tanggal di sini lagi —
+  // sebelumnya fungsi ini punya aturan sendiri (jendela 3 bulan kalender) yang beda dari
+  // Rekap Data & Monitoring (90 hari tetap, dari status_efektif backend), jadi jumlah
+  // "Kadaluarsa" antar halaman bisa berbeda. Sekarang baca item.status yang sudah dihitung
+  // backend (DokumenKerjasama::status_efektif), sama persis dengan Rekap Data & Monitoring.
+  const getDocumentStatus = (status: ArsipDokumen['status']): 'akan-kadaluarsa' | 'kadaluarsa' | null => {
+    if (status === 'Kadaluarsa') return 'kadaluarsa';
+    if (status === 'Akan Berakhir') return 'akan-kadaluarsa';
     return null;
   };
 
@@ -104,6 +86,7 @@ export default function ArsipDokumenPage() {
             noDokumen: item.noDokumen,
             namaMitra: item.namaMitra,
             jenis: item.jenis,
+            status: item.status,
             tanggalMulai: item.tanggalMulai,
             berlakuHingga: item.berlakuHingga,
             alasanArsip: item.alasanArsip,
@@ -141,7 +124,7 @@ export default function ArsipDokumenPage() {
   const filtered = [];
   for (const item of filteredRaw) {
     if (!seen.has(item.id)) {
-      const status = getDocumentStatus(item.berlakuHingga);
+      const status = getDocumentStatus(item.status);
       if (status === activeTab && status !== null) {
         filtered.push(item);
       }
@@ -166,11 +149,11 @@ export default function ArsipDokumenPage() {
   };
 
   const totalArsip = data.filter((item) => {
-    const status = getDocumentStatus(item.berlakuHingga);
+    const status = getDocumentStatus(item.status);
     return status !== null;
   }).length;
-  const akanKadaluarsa = data.filter((item) => getDocumentStatus(item.berlakuHingga) === 'akan-kadaluarsa').length;
-  const sudahKadaluarsa = data.filter((item) => getDocumentStatus(item.berlakuHingga) === 'kadaluarsa').length;
+  const akanKadaluarsa = data.filter((item) => getDocumentStatus(item.status) === 'akan-kadaluarsa').length;
+  const sudahKadaluarsa = data.filter((item) => getDocumentStatus(item.status) === 'kadaluarsa').length;
   // const tidakDirespon = data.filter(
   //   (item) => item.statusFollowUp === 'Tidak Direspon'
   // ).length;
@@ -325,7 +308,7 @@ export default function ArsipDokumenPage() {
                 </tr>
               )}
               {filtered.map((item) => {
-                const isKadaluarsa = getDocumentStatus(item.berlakuHingga) === 'kadaluarsa';
+                const isKadaluarsa = getDocumentStatus(item.status) === 'kadaluarsa';
                 return (
                   <tr
                     key={item.id}

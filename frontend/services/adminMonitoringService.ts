@@ -368,22 +368,56 @@ function formatDisplayDate(dateValue?: string): string {
   return parsedDate.toLocaleDateString('id-ID');
 }
 
-function resolveStatusAndSisa(tanggalBerakhir?: string): { status: StatusKerjasama; sisaMasaBerlaku: string | null } {
+// Status SELALU diambil dari status_efektif yang dihitung backend (DokumenKerjasama,
+// lihat App\Support\KerjasamaStatus), BUKAN dihitung ulang di sini dari tanggal_berakhir.
+// Sebelumnya fungsi ini punya aturan sendiri yang independen dari status_siklus/Rekap
+// Data, sehingga jumlah "Kadaluarsa" di Monitoring & dashboard Pimpinan bisa beda dari
+// Rekap Data dan Arsip Dokumen — sekarang keempatnya baca sumber yang sama persis.
+// sisaMasaBerlaku tetap dihitung dari tanggal di sini karena itu cuma teks tampilan
+// ("N Bulan lagi"), bukan bagian dari perhitungan status/jumlah Kadaluarsa.
+function resolveStatusAndSisa(
+  statusEfektif: 'active' | 'expiring' | 'archived' | undefined,
+  tanggalBerakhir?: string
+): { status: StatusKerjasama; sisaMasaBerlaku: string | null } {
+  const status: StatusKerjasama =
+    statusEfektif === 'archived' ? 'Kadaluarsa' : statusEfektif === 'expiring' ? 'Akan Berakhir' : 'Aktif';
+
+  if (status === 'Kadaluarsa' || !tanggalBerakhir) {
+    return { status, sisaMasaBerlaku: null };
+  }
+
+  const endDate = new Date(tanggalBerakhir);
+  if (Number.isNaN(endDate.getTime())) {
+    return { status, sisaMasaBerlaku: null };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const diffMonths = Math.max(1, Math.ceil(diffDays / 30));
+
+  return { status, sisaMasaBerlaku: `${diffMonths} Bulan` };
+}
+
+// Dipakai HANYA oleh dua fungsi cache optimis di bawah (upsertMonitoringFromPengajuan,
+// applyApprovedRenewalToMonitoring) yang menyusun record Kerjasama dari payload
+// pengajuan/perpanjangan mentah sebelum sempat di-refresh dari API — jadi belum ada
+// status_efektif dari backend untuk dipakai. Aturan jendelanya SENGAJA disamakan persis
+// dengan KerjasamaStatus (90 hari tetap) supaya begitu data asli datang dari
+// fetchMonitoringDataFromApi(), angkanya tidak "lompat" karena beda aturan.
+function estimateStatusAndSisaFromTanggal(tanggalBerakhir?: string): { status: StatusKerjasama; sisaMasaBerlaku: string | null } {
   if (!tanggalBerakhir) {
     return { status: 'Aktif', sisaMasaBerlaku: null };
   }
 
   const endDate = new Date(tanggalBerakhir);
-
   if (Number.isNaN(endDate.getTime())) {
     return { status: 'Aktif', sisaMasaBerlaku: null };
   }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
-  const diffMs = endDate.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const diffDays = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) {
     return { status: 'Kadaluarsa', sisaMasaBerlaku: null };
@@ -392,11 +426,7 @@ function resolveStatusAndSisa(tanggalBerakhir?: string): { status: StatusKerjasa
   const diffMonths = Math.max(1, Math.ceil(diffDays / 30));
   const sisaMasaBerlaku = `${diffMonths} Bulan`;
 
-  if (diffDays <= 90) {
-    return { status: 'Akan Berakhir', sisaMasaBerlaku };
-  }
-
-  return { status: 'Aktif', sisaMasaBerlaku };
+  return { status: diffDays <= 90 ? 'Akan Berakhir' : 'Aktif', sisaMasaBerlaku };
 }
 
 // Ambil seluruh data kerjasama untuk monitoring.
@@ -453,7 +483,7 @@ export async function fetchMonitoringDataFromApi(options?: { forceRefresh?: bool
     const rlLookup = getCachedMasterRuangLingkup();
 
     const mapped = items.map((row: any) => {
-      const { status, sisaMasaBerlaku } = resolveStatusAndSisa(row.tanggal_berakhir);
+      const { status, sisaMasaBerlaku } = resolveStatusAndSisa(row.status_efektif, row.tanggal_berakhir);
       
       // Priority: mitra relation → pengajuan.nama_mitra → snap_nama_mitra → keterangan → legacy file name
       let namaMitra = row.mitra?.nama_mitra;
@@ -687,7 +717,7 @@ export function upsertMonitoringFromPengajuan(payload: PengajuanSyncPayload): Ke
     ? payload.jenisDokumen
     : 'MoU';
 
-  const { status, sisaMasaBerlaku } = resolveStatusAndSisa(payload.tanggalBerakhir);
+  const { status, sisaMasaBerlaku } = estimateStatusAndSisaFromTanggal(payload.tanggalBerakhir);
 
   const nextItem: Kerjasama = {
     id: payload.id,
@@ -740,7 +770,7 @@ export function applyApprovedRenewalToMonitoring(
   tanggalMulaiBaru: string,
   tanggalBerakhirBaru: string
 ): Kerjasama[] {
-  const { status, sisaMasaBerlaku } = resolveStatusAndSisa(tanggalBerakhirBaru);
+  const { status, sisaMasaBerlaku } = estimateStatusAndSisaFromTanggal(tanggalBerakhirBaru);
 
   const updated = getMonitoringData().map((item) => {
     if (item.id !== kerjasamaId) {

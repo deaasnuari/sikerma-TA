@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\DokumenFile;
+use App\Support\KerjasamaStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class DokumenKerjasama extends Model
 {
     protected $table = 'dokumen_kerjasama';
+
+    // status_efektif dihitung, BUKAN status_siklus mentah — lihat KerjasamaStatus untuk
+    // kenapa ini perlu (status_siklus tersimpan bisa basi/tidak sinkron dengan
+    // tanggal_berakhir). Semua halaman (Rekap Data, Monitoring, Status & Progres
+    // Kerjasama, Arsip Dokumen) HARUS baca field ini, bukan status_siklus langsung,
+    // supaya jumlah "Kadaluarsa" selalu konsisten di semua tempat.
+    protected $appends = ['status_efektif'];
 
     protected $fillable = [
         'nomor_dokumen',
@@ -84,5 +92,10 @@ class DokumenKerjasama extends Model
     public function laporanPelaksanaan(): HasMany
     {
         return $this->hasMany(LaporanPelaksanaan::class, 'dokumen_kerjasama_id');
+    }
+
+    public function getStatusEfektifAttribute(): string
+    {
+        return KerjasamaStatus::fromTanggalBerakhir($this->tanggal_berakhir, $this->status_siklus);
     }
 }

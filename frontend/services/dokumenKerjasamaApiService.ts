@@ -50,6 +50,12 @@ type ApiDokumenRow = {
   tanggal_mulai?: string | null;
   tanggal_berakhir?: string | null;
   status_siklus?: 'active' | 'expiring' | 'archived' | null;
+  // Status terhitung dari backend (DokumenKerjasama::status_efektif) — SATU-SATUNYA
+  // sumber kebenaran status kerjasama, dipakai bersama oleh Rekap Data, Monitoring,
+  // Status & Progres Kerjasama, dan Arsip Dokumen supaya jumlah Kadaluarsa selalu sama.
+  // status_siklus mentah tidak dipakai lagi untuk menentukan status tampilan karena bisa
+  // basi (tidak otomatis ikut berubah saat tanggal_berakhir lewat).
+  status_efektif?: 'active' | 'expiring' | 'archived' | null;
   ruang_lingkup_ids?: any[] | null;
   mitra?: {
     id: number;
@@ -119,7 +125,12 @@ function mapJenis(value?: string | null): 'MoA' | 'MoU' | 'IA' | 'Lainnya' {
   return 'MoU';
 }
 
-function mapStatus(value: ApiDokumenRow['status_siklus']): RekapDokumen['status'] {
+// Selalu pakai status_efektif (dihitung backend dari tanggal_berakhir, lihat
+// KerjasamaStatus) — fallback ke status_siklus mentah hanya kalau backend lama belum
+// mengirim status_efektif sama sekali (mis. baris publik/legacy yang tidak lewat
+// DokumenKerjasama::index()).
+function mapStatus(row: Pick<ApiDokumenRow, 'status_siklus' | 'status_efektif'>): RekapDokumen['status'] {
+  const value = row.status_efektif ?? row.status_siklus;
   if (value === 'archived') return 'Kadaluarsa';
   if (value === 'expiring') return 'Akan Berakhir';
   return 'Aktif';
@@ -311,7 +322,7 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       tanggalMulaiRaw: tanggalMulaiRaw || undefined,
       berlakuHinggaRaw: row.tanggal_berakhir || undefined,
       tahun: (tanggalMulaiRaw || new Date().toISOString()).slice(0, 4),
-      status: mapStatus(row.status_siklus),
+      status: mapStatus(row),
       whatsappNumber: row.pengajuan?.whatsapp_pengusul || row.snap_whatsapp_pengusul || undefined,
       dokumenTerkait,
       dokumenPendukungTerkait: dokumenPendukungTerkait.length > 0 ? dokumenPendukungTerkait : undefined,
@@ -492,6 +503,10 @@ export type ArsipDokumenApiItem = {
   noDokumen: string;
   namaMitra: string;
   jenis: 'MoA' | 'MoU' | 'IA' | 'Lainnya';
+  // Status yang SAMA dengan Rekap Data/Monitoring (dari status_efektif backend) — Arsip
+  // Dokumen HARUS baca ini, bukan menghitung ulang sendiri dari tanggal, supaya jumlah
+  // "Kadaluarsa" konsisten di semua halaman.
+  status: 'Akan Berakhir' | 'Kadaluarsa';
   tanggalMulai: string;
   berlakuHingga: string;
   alasanArsip: string | null;
@@ -506,6 +521,8 @@ export async function fetchArsipDokumenFromApi(): Promise<ArsipDokumenApiItem[]>
       id: index + 1,
       noDokumen: item.noDokumen,
       namaMitra: item.namaMitra,
+      // Sudah difilter di atas ke 'Akan Berakhir' | 'Kadaluarsa' saja.
+      status: item.status as 'Akan Berakhir' | 'Kadaluarsa',
       jenis: item.jenis,
       tanggalMulai: item.tanggalMulai,
       berlakuHingga: item.berlakuHingga,
