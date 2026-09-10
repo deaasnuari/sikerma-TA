@@ -168,66 +168,118 @@ export default function MonevTriwulanSection({ dokumenKerjasamaId, pengajuanId }
 
           return (
             <div key={key} className="rounded-lg border border-gray-200 bg-white p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] font-bold text-gray-800">{q.label}</p>
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[9.5px] font-medium text-gray-500">
-                  {q.aktivitas.length} aktivitas · {q.monev.length} catatan
-                </span>
-              </div>
+              {(() => {
+                const laporanEntries = q.monev.filter((m) => m.jenis === 'laporan');
+                const catatanEntries = q.monev.filter((m) => m.jenis === 'catatan');
+                const summary = [
+                  `${q.aktivitas.length} aktivitas`,
+                  `${laporanEntries.length} laporan`,
+                  `${catatanEntries.length} catatan`,
+                ].join(' · ');
 
-              {/* Aktivitas otomatis dari Story — read-only, edit/hapus lewat Story Aktivitas */}
-              {q.aktivitas.length > 0 ? (
-                <ul className="mt-2 space-y-1.5">
-                  {q.aktivitas.map((a) => (
-                    <li key={a.id} className="flex items-start gap-1.5 text-[10.5px] text-gray-700">
-                      <Activity size={11} className="mt-0.5 shrink-0 text-emerald-600" />
-                      <span>
-                        <span className="font-medium text-gray-800">{formatTanggal(a.tanggal)}</span> — {a.judul}
-                        <span className="ml-1 text-gray-400">({a.jenisAktivitas})</span>
+                return (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-bold text-gray-800">{q.label}</p>
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[9.5px] font-medium text-gray-500">
+                        {summary}
                       </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-2 text-[10.5px] italic text-gray-400">Belum ada aktivitas dari Story pada triwulan ini.</p>
-              )}
-
-              {/* Catatan Monev manual */}
-              {q.monev.length > 0 && (
-                <div className="mt-2 space-y-2 border-t border-gray-100 pt-2">
-                  {q.monev.map((m) => (
-                    <div key={m.id} className="rounded-md bg-slate-50 p-2 text-[10.5px] text-gray-700">
-                      {m.catatanMonitoring && (
-                        <p><span className="font-semibold">Catatan Monitoring:</span> {m.catatanMonitoring}</p>
-                      )}
-                      {m.hasilEvaluasi && (
-                        <p><span className="font-semibold">Hasil Evaluasi:</span> {m.hasilEvaluasi}</p>
-                      )}
-                      {m.kendala && <p><span className="font-semibold">Kendala:</span> {m.kendala}</p>}
-                      {m.tindakLanjut && <p><span className="font-semibold">Tindak Lanjut:</span> {m.tindakLanjut}</p>}
-                      {m.tautanDokumentasi && (
-                        <p>
-                          <span className="font-semibold">Dokumentasi:</span>{' '}
-                          <a href={m.tautanDokumentasi} target="_blank" rel="noreferrer" className="text-blue-600 underline">
-                            Lihat tautan
-                          </a>
-                        </p>
-                      )}
-                      <div className="mt-1 flex items-center justify-between text-[9.5px] text-gray-400">
-                        <span>{m.dikirimOlehNama ? `oleh ${m.dikirimOlehNama}` : ''}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteManual(m.id)}
-                          disabled={deletingId === m.id}
-                          className="font-semibold text-red-500 hover:underline disabled:opacity-50"
-                        >
-                          {deletingId === m.id ? 'Menghapus...' : 'Hapus'}
-                        </button>
-                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
+
+                    {/* Aktivitas otomatis dari Story — read-only, edit/hapus lewat Story Aktivitas */}
+                    {q.aktivitas.length > 0 ? (
+                      <ul className="mt-2 space-y-1.5">
+                        {q.aktivitas.map((a) => (
+                          <li key={a.id} className="flex items-start gap-1.5 text-[10.5px] text-gray-700">
+                            <Activity size={11} className="mt-0.5 shrink-0 text-emerald-600" />
+                            <span>
+                              <span className="font-medium text-gray-800">{formatTanggal(a.tanggal)}</span> — {a.judul}
+                              <span className="ml-1 text-gray-400">({a.jenisAktivitas})</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-2 text-[10.5px] italic text-gray-400">Belum ada aktivitas dari Story pada triwulan ini.</p>
+                    )}
+
+                    {/* Laporan Pelaksanaan formal — dikirim dari Story & Aktivitas -> Buat
+                        Laporan (selalu ada file). Ditampilkan terpisah dari catatan manual
+                        karena field kegiatan/hasil di sini berisi Ruang Lingkup/Output-Outcome
+                        dari form IA, bukan Catatan Monitoring/Hasil Evaluasi. */}
+                    {laporanEntries.length > 0 && (
+                      <div className="mt-2 space-y-2 border-t border-gray-100 pt-2">
+                        {laporanEntries.map((m) => (
+                          <div key={m.id} className="rounded-md bg-blue-50 p-2 text-[10.5px] text-gray-700">
+                            <p className="font-semibold text-[#1E376C]">
+                              Laporan Pelaksanaan{m.nomorDokumen ? ` — ${m.nomorDokumen}` : ''}
+                            </p>
+                            {m.judulKerjasama && <p className="mt-0.5">{m.judulKerjasama}</p>}
+                            {m.fileUrl && (
+                              <a
+                                href={m.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-1 inline-block text-blue-600 underline"
+                              >
+                                Lihat file{m.fileNama ? `: ${m.fileNama}` : ''}
+                              </a>
+                            )}
+                            <div className="mt-1 flex items-center justify-between text-[9.5px] text-gray-400">
+                              <span>{m.dikirimOlehNama ? `dikirim oleh ${m.dikirimOlehNama}` : ''}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteManual(m.id)}
+                                disabled={deletingId === m.id}
+                                className="font-semibold text-red-500 hover:underline disabled:opacity-50"
+                              >
+                                {deletingId === m.id ? 'Menghapus...' : 'Hapus'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Catatan Monev manual — ditambah langsung dari sini, tidak pernah punya file */}
+                    {catatanEntries.length > 0 && (
+                      <div className="mt-2 space-y-2 border-t border-gray-100 pt-2">
+                        {catatanEntries.map((m) => (
+                          <div key={m.id} className="rounded-md bg-slate-50 p-2 text-[10.5px] text-gray-700">
+                            {m.catatanMonitoring && (
+                              <p><span className="font-semibold">Catatan Monitoring:</span> {m.catatanMonitoring}</p>
+                            )}
+                            {m.hasilEvaluasi && (
+                              <p><span className="font-semibold">Hasil Evaluasi:</span> {m.hasilEvaluasi}</p>
+                            )}
+                            {m.kendala && <p><span className="font-semibold">Kendala:</span> {m.kendala}</p>}
+                            {m.tindakLanjut && <p><span className="font-semibold">Tindak Lanjut:</span> {m.tindakLanjut}</p>}
+                            {m.tautanDokumentasi && (
+                              <p>
+                                <span className="font-semibold">Dokumentasi:</span>{' '}
+                                <a href={m.tautanDokumentasi} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                                  Lihat tautan
+                                </a>
+                              </p>
+                            )}
+                            <div className="mt-1 flex items-center justify-between text-[9.5px] text-gray-400">
+                              <span>{m.dikirimOlehNama ? `oleh ${m.dikirimOlehNama}` : ''}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteManual(m.id)}
+                                disabled={deletingId === m.id}
+                                className="font-semibold text-red-500 hover:underline disabled:opacity-50"
+                              >
+                                {deletingId === m.id ? 'Menghapus...' : 'Hapus'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               {isFormOpen ? (
                 <div className="mt-2 space-y-2 border-t border-gray-100 pt-2">

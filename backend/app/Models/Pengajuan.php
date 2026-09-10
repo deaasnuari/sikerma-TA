@@ -87,10 +87,6 @@ class Pengajuan extends Model
         'is_from_admin' => 'boolean',
 
         // New schema casts
-        // JANGAN ganti ke 'array'. Kolom pengajuan_v2.ruang_lingkup_ids di Postgres
-        // (sikerma & sikerma_new) bertipe ARRAY asli (bigint[]), bukan json — jadi
-        // butuh PgArrayCast yang menulis format '{65}', bukan '[65]'. Cast 'array'
-        // hanya "lolos" di test karena SQLite. Lihat App\Casts\PgArrayCast.
         // 'ruang_lingkup_ids' => PgArrayCast::class,
         'ruang_lingkup_ids' => 'array',
         'tanggal_mulai' => 'date',

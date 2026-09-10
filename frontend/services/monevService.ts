@@ -23,6 +23,20 @@ export interface MonevAktivitasItem {
 
 export interface MonevManualEntry {
   id: number;
+  // 'laporan' = Laporan Pelaksanaan formal (dikirim dari Story & Aktivitas -> Buat
+  // Laporan, SELALU disertai file upload) — kolom kegiatan/hasil di sini berisi
+  // "Ruang Lingkup"/"Output-Outcome" dari form IA, BUKAN catatan monitoring biasa.
+  // 'catatan' = catatan Monev manual cepat (ditambah langsung dari Rekap Data ->
+  // Detail Kerjasama -> Monev, tidak pernah punya file) — kegiatan/hasil di sini
+  // memang diisi sebagai Catatan Monitoring/Hasil Evaluasi.
+  // Dibedakan dari ada-tidaknya file karena laporan formal mewajibkan upload file
+  // sebelum bisa dikirim, sedangkan catatan cepat tidak pernah punya opsi upload.
+  jenis: 'laporan' | 'catatan';
+  nomorDokumen?: string;
+  judulKerjasama?: string;
+  referensiKerjasama?: string;
+  unitPengaju?: string;
+  namaPenanggungJawab?: string;
   catatanMonitoring?: string; // kolom backend: kegiatan
   hasilEvaluasi?: string; // kolom backend: hasil
   kendala?: string;
@@ -62,6 +76,11 @@ type ApiAktivitasRow = {
 
 type ApiMonevRow = {
   id: number;
+  nomor_dokumen?: string | null;
+  judul_kerjasama?: string | null;
+  referensi_kerjasama?: string | null;
+  unit_pengaju?: string | null;
+  nama_penanggung_jawab?: string | null;
   kegiatan?: string | null;
   hasil?: string | null;
   kendala?: string | null;
@@ -108,8 +127,19 @@ function mapAktivitas(row: ApiAktivitasRow): MonevAktivitasItem {
 }
 
 function mapMonev(row: ApiMonevRow): MonevManualEntry {
+  // Laporan Pelaksanaan formal SELALU punya file (wajib diupload sebelum bisa dikirim
+  // lewat Story & Aktivitas -> Buat Laporan) — catatan Monev cepat tidak pernah punya
+  // opsi upload sama sekali, jadi ada/tidaknya file adalah pembeda yang bisa diandalkan.
+  const jenis: MonevManualEntry['jenis'] = row.file_path ? 'laporan' : 'catatan';
+
   return {
     id: row.id,
+    jenis,
+    nomorDokumen: row.nomor_dokumen ?? undefined,
+    judulKerjasama: row.judul_kerjasama ?? undefined,
+    referensiKerjasama: row.referensi_kerjasama ?? undefined,
+    unitPengaju: row.unit_pengaju ?? undefined,
+    namaPenanggungJawab: row.nama_penanggung_jawab ?? undefined,
     catatanMonitoring: row.kegiatan ?? undefined,
     hasilEvaluasi: row.hasil ?? undefined,
     kendala: row.kendala ?? undefined,

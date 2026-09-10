@@ -30,6 +30,12 @@ interface Props {
 type WorkflowStatus = 'draft' | 'dikirim_ke_pic' | 'selesai';
 
 interface FormState {
+  // Periode Monev yang jadi tujuan laporan ini — menentukan di Triwulan mana laporan
+  // muncul pada Rekap Data -> Detail Kerjasama -> Monev. Defaultnya triwulan berjalan,
+  // tapi HARUS bisa diganti manual supaya laporan bisa dikaitkan ke triwulan yang sama
+  // dengan aktivitas yang dilaporkan (mis. aktivitas Mei tapi laporan baru dikirim Agustus).
+  tahun: number;
+  triwulan: number;
   nomorIAPolibatam: string;
   nomorIAMitra: string;
   judulKerjasama: string;
@@ -59,6 +65,17 @@ interface FormState {
 
 const romanMonths = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 
+const triwulanOptions = [
+  { value: 1, label: 'Triwulan I (Jan-Mar)' },
+  { value: 2, label: 'Triwulan II (Apr-Jun)' },
+  { value: 3, label: 'Triwulan III (Jul-Sep)' },
+  { value: 4, label: 'Triwulan IV (Okt-Des)' },
+] as const;
+
+function currentTriwulan(): number {
+  return Math.ceil((new Date().getMonth() + 1) / 3);
+}
+
 const workflowSteps = [
   { key: 'draft',            label: 'Isi & Upload',             desc: 'Jurusan/unit mengisi dan mengupload laporan' },
   { key: 'dikirim_ke_pic',   label: 'Terkirim ke Admin',        desc: 'Laporan sudah dikirim dan langsung terlihat oleh admin/humas' },
@@ -70,6 +87,8 @@ function stepIndex(status: WorkflowStatus): number {
 }
 
 export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props) {
+  const [tahun, setTahun]                               = useState<number>(new Date().getFullYear());
+  const [triwulan, setTriwulan]                         = useState<number>(currentTriwulan());
   const [nomorIAPolibatam, setNomorIAPolibatam]         = useState('');
   const [nomorIAMitra, setNomorIAMitra]                 = useState('');
   const [judulKerjasama, setJudulKerjasama]             = useState('');
@@ -112,6 +131,8 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
     const tahun = now.getFullYear();
     const bulanRomawi = romanMonths[now.getMonth()];
     return {
+      tahun,
+      triwulan: currentTriwulan(),
       nomorIAPolibatam:    `${d.noDokumen}/IA.PL29/${bulanRomawi}/${tahun}`,
       nomorIAMitra:        '',
       judulKerjasama:      `Program ${d.ruangLingkup[0] || 'Kerja Sama'} dengan ${d.namaMitra}`,
@@ -143,6 +164,8 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
   }
 
   function applyState(s: FormState) {
+    setTahun(s.tahun ?? new Date().getFullYear());
+    setTriwulan(s.triwulan ?? currentTriwulan());
     setNomorIAPolibatam(s.nomorIAPolibatam);
     setNomorIAMitra(s.nomorIAMitra);
     setJudulKerjasama(s.judulKerjasama);
@@ -172,6 +195,7 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
 
   function currentState(): FormState {
     return {
+      tahun, triwulan,
       nomorIAPolibatam, nomorIAMitra, judulKerjasama, referensiKerjasama, mitraKerjasama, unitPengaju,
       kegiatanText, maksudTujuanText, capaianText, hasilText, timelineText, skemaPembiayaanText,
       jumlahPeserta, ringkasanCatatanText, tautanDokumentasi,
@@ -251,6 +275,8 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
       await submitLaporanPelaksanaan({
         pengajuanId: data.pengajuanId,
         dokumenKerjasamaId: data.dokumenKerjasamaId,
+        tahun,
+        triwulan,
         nomorDokumen: data.noDokumen,
         namaMitra: mitraKerjasama,
         jenisDokumen: data.jenis,
@@ -481,6 +507,39 @@ td.mitra-box{width:64px;height:64px;border:1px dashed #94a3b8;text-align:center;
             <div><p className="font-semibold text-slate-500">Mitra</p><p className="mt-0.5 font-medium">{data.namaMitra}</p></div>
             <div><p className="font-semibold text-slate-500">No. Dokumen</p><p className="mt-0.5 font-medium">{data.noDokumen}</p></div>
             <div><p className="font-semibold text-slate-500">Jenis</p><p className="mt-0.5 font-medium">{data.jenis}</p></div>
+          </div>
+
+          {/* Periode Monev — menentukan laporan ini muncul di Triwulan mana pada Rekap
+              Data -> Detail Kerjasama -> Monev. Default triwulan berjalan, tapi WAJIB bisa
+              diganti manual supaya laporan bisa disamakan triwulannya dengan aktivitas yang
+              dilaporkan (mis. aktivitas terjadi Mei tapi laporannya baru dikirim Agustus). */}
+          <div className="rounded-xl border border-[#1E376C]/20 bg-[#EEF2FF] p-4">
+            <p className="mb-2 text-xs font-bold text-[#1E376C]">Periode Monev</p>
+            <p className="mb-3 text-[11px] text-slate-600">
+              Pilih tahun &amp; triwulan sesuai periode aktivitas yang dilaporkan, supaya laporan ini muncul bersama aktivitasnya di Monev Triwulan pada Rekap Data.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Tahun</label>
+                <input
+                  type="number" value={tahun} disabled={!isDraftEditable}
+                  onChange={(e) => setTahun(Number(e.target.value) || new Date().getFullYear())}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1E376C] disabled:bg-slate-50 disabled:text-slate-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Triwulan</label>
+                <select
+                  value={triwulan} disabled={!isDraftEditable}
+                  onChange={(e) => setTriwulan(Number(e.target.value))}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1E376C] disabled:bg-slate-50 disabled:text-slate-500"
+                >
+                  {triwulanOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Langkah-langkah */}
