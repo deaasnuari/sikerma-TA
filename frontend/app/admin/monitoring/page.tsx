@@ -1,7 +1,7 @@
 'use client';
 
 import * as XLSX from 'xlsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Archive, Bell, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Eye, Filter, HandshakeIcon, Mail, MessageCircle, Phone, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
@@ -15,13 +15,12 @@ import NotificationHistoryModal from './NotificationHistoryModal';
 import NonactiveConfirmationModal from './NonactiveConfirmationModal';
 import {
   createNonactiveRecord,
-  createNotificationRecord,
   createRenewalRecord,
   createWhatsAppLink,
   deleteMonitoringItem,
+  fetchNotifikasiKerjasama,
   filterMonitoringData,
   findKerjasamaById,
-  getDefaultNotificationHistories,
   getFilteredMonitoringData,
   getMonitoringData,
   getMonitoringJenisMitraOptions,
@@ -55,7 +54,7 @@ export default function MonitoringdanstatusPage() {
   const [renewalModal, setRenewalModal] = useState<{ open: boolean; kerjasamaId: number | null }>({ open: false, kerjasamaId: null });
   const [renewalHistories, setRenewalHistories] = useState<Record<number, RenewalRecord[]>>({});
   const [notificationModal, setNotificationModal] = useState<{ open: boolean; kerjasamaId: number | null }>({ open: false, kerjasamaId: null });
-  const [notificationHistories, setNotificationHistories] = useState<Record<number, MonitoringNotification[]>>(getDefaultNotificationHistories());
+  const [notificationHistories, setNotificationHistories] = useState<Record<number, MonitoringNotification[]>>({});
   const [nonactiveModal, setNonactiveModal] = useState<{ open: boolean; kerjasamaId: number | null }>({ open: false, kerjasamaId: null });
   const [nonactiveHistories, setNonactiveHistories] = useState<Record<number, NonactiveRecord[]>>({});
   const [monitoringData, setMonitoringData] = useState<Kerjasama[]>([]);
@@ -153,6 +152,19 @@ export default function MonitoringdanstatusPage() {
       window.removeEventListener('monitoring-data-updated', syncMonitoringData);
     };
   }, []);
+
+  // Muat riwayat notifikasi asli (tabel notifikasi_kerjasama) tiap modal riwayat dibuka.
+  const muatRiwayatNotifikasi = useCallback(async (kerjasamaId: number) => {
+    if (!kerjasamaId) return;
+    const rows = await fetchNotifikasiKerjasama(kerjasamaId);
+    setNotificationHistories((prev) => ({ ...prev, [kerjasamaId]: rows }));
+  }, []);
+
+  useEffect(() => {
+    if (notificationModal.open && notificationModal.kerjasamaId) {
+      void muatRiwayatNotifikasi(notificationModal.kerjasamaId);
+    }
+  }, [notificationModal.open, notificationModal.kerjasamaId, muatRiwayatNotifikasi]);
 
   // Opsi Jurusan/Unit/Prodi untuk dropdown filter, sama seperti di halaman Rekap Data.
   useEffect(() => {
@@ -256,7 +268,9 @@ export default function MonitoringdanstatusPage() {
       return;
     }
 
-    deleteMonitoringItem(item.id);
+    // Langsung perbarui tampilan dari hasil hapus lokal — jangan nunggu refetch API
+    // (event 'monitoring-data-updated' tetap memicu sinkronisasi server di latar belakang).
+    setMonitoringData(deleteMonitoringItem(item.id));
   };
 
   return (
@@ -867,17 +881,12 @@ export default function MonitoringdanstatusPage() {
         emailMitra={selectedNotificationItem?.emailMitra || ''}
         notifications={notificationHistories[notificationModal.kerjasamaId || 0] || []}
         kerjasamaId={notificationModal.kerjasamaId || 0}
-        onSendNotification={(jenis: string) => {
-          if (!notificationModal.kerjasamaId || !selectedNotificationItem) return;
-          const newNotification = createNotificationRecord(
-            notificationModal.kerjasamaId,
-            jenis as 'reminder-3bulan' | 'reminder-1bulan' | 'urgent',
-            selectedNotificationItem.emailMitra
-          );
-          setNotificationHistories((prev) => ({
-            ...prev,
-            [notificationModal.kerjasamaId]: [...(prev[notificationModal.kerjasamaId] || []), newNotification],
-          }));
+        onSendNotification={() => {
+          // Pengiriman manual sudah dicatat backend ke tabel notifikasi_kerjasama —
+          // cukup muat ulang riwayatnya.
+          if (notificationModal.kerjasamaId) {
+            void muatRiwayatNotifikasi(notificationModal.kerjasamaId);
+          }
         }}
       />
 

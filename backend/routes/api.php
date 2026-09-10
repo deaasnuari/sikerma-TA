@@ -54,6 +54,8 @@ Route::middleware('auth:sanctum')->group(function () {
 		->whereNumber('dokumen_kerjasama');
 	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/documents', [DokumenKerjasamaController::class, 'documents'])
 		->whereNumber('dokumen_kerjasama');
+	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/notifikasi', [NotificationController::class, 'riwayat'])
+		->whereNumber('dokumen_kerjasama');
 	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/documents/{dokumen_file}/download', [DokumenKerjasamaController::class, 'downloadDocument'])
 		->whereNumber('dokumen_kerjasama')
 		->name('dokumen-kerjasama.documents.download');

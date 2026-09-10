@@ -2,12 +2,39 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DokumenKerjasama;
+use App\Models\NotifikasiKerjasama;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Mail\Message;
 
 class NotificationController extends Controller
 {
+    /**
+     * Riwayat notifikasi (otomatis + manual) untuk satu dokumen kerja sama.
+     * Dipakai halaman Monitoring — menggantikan data contoh yang dulu di localStorage.
+     */
+    public function riwayat(DokumenKerjasama $dokumen_kerjasama)
+    {
+        $riwayat = NotifikasiKerjasama::query()
+            ->where('dokumen_kerjasama_id', $dokumen_kerjasama->id)
+            ->orderByDesc('dikirim_pada')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (NotifikasiKerjasama $n) => [
+                'id'          => $n->id,
+                'jenis'       => $n->jenis,
+                'status'      => $n->status,
+                'email'       => $n->email_tujuan,
+                'keterangan'  => $n->keterangan,
+                'dikirim_pada' => optional($n->dikirim_pada)->toIso8601String(),
+                'dibuat_pada' => $n->created_at?->toIso8601String(),
+            ]);
+
+        return response()->json(['success' => true, 'data' => $riwayat]);
+    }
+
     /**
      * Kirim notifikasi email ke mitra kerjasama
      */
@@ -20,6 +47,7 @@ class NotificationController extends Controller
             'jenis' => 'required|string|in:reminder-3bulan,reminder-1bulan,urgent',
             'noDokumen' => 'required|string',
             'namaMitra' => 'required|string',
+            'dokumenId' => 'nullable|integer|exists:dokumen_kerjasama,id',
         ]);
 
             $jenisLabel = match ($validated['jenis']) {
@@ -88,6 +116,8 @@ class NotificationController extends Controller
                     ->from(config('mail.from.address'), config('mail.from.name'));
             });
 
+            $this->catatPengirimanManual($validated);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Email notifikasi berhasil dikirim ke ' . $validated['email'],
@@ -104,6 +134,36 @@ class NotificationController extends Controller
                 'message' => 'Gagal mengirim email: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Catat pengiriman manual ke tabel notifikasi_kerjasama supaya muncul di riwayat
+     * halaman Monitoring (sejajar dengan reminder terjadwal). Hanya kalau dokumenId dikirim.
+     */
+    private function catatPengirimanManual(array $validated): void
+    {
+        if (empty($validated['dokumenId'])) {
+            return;
+        }
+
+        $dokumen = DokumenKerjasama::find($validated['dokumenId']);
+        if ($dokumen === null) {
+            return;
+        }
+
+        NotifikasiKerjasama::updateOrCreate(
+            [
+                'dokumen_kerjasama_id'   => $dokumen->id,
+                'jenis'                  => $validated['jenis'],
+                'tanggal_berakhir_acuan' => optional($dokumen->tanggal_berakhir)->toDateString(),
+            ],
+            [
+                'email_tujuan' => $validated['email'],
+                'status'       => 'terkirim',
+                'keterangan'   => 'Dikirim manual dari halaman Monitoring',
+                'dikirim_pada' => Carbon::now(),
+            ],
+        );
     }
 
     /**

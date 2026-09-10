@@ -384,15 +384,18 @@ export default function RekapDataPage() {
         deleteRekapDokumen(row.noDokumen);
       }
     }
+    // Optimistik: buang semua baris terpilih dari tampilan sekarang juga.
+    setRekapData((prev) => prev.filter((r) => typeof r.id !== 'number' || !ids.includes(r.id)));
     setSelectedIds(new Set());
     setShowBulkDeleteConfirm(false);
-    try {
-      const rows = await fetchRekapDokumenFromApi({ forceRefresh: true });
-      setRekapData(rows);
-    } catch {
-      setRekapData((prev) => prev.filter((r) => typeof r.id !== 'number' || !ids.includes(r.id)));
-    }
     setFeedbackModal({ title: 'Berhasil Dihapus', message: `${ids.length} dokumen berhasil dihapus.` });
+
+    // Sinkronisasi ulang dari server di latar belakang — jangan blokir tampilan sukses.
+    void fetchRekapDokumenFromApi({ forceRefresh: true })
+      .then((rows) => setRekapData(rows))
+      .catch(() => {
+        // pertahankan hasil optimistik kalau refresh gagal
+      });
   }
 
   function handleDelete(item: RekapDokumen) {
@@ -419,25 +422,23 @@ export default function RekapDataPage() {
       return;
     }
 
+    // Optimistik: langsung buang baris dari tampilan tanpa nunggu fetch ulang ke server.
+    setRekapData((prev) => prev.filter(
+      (r) => r.noDokumen !== candidate.noDokumen
+        && !(typeof candidate.id === 'number' && r.id === candidate.id),
+    ));
     deleteRekapDokumen(candidate.noDokumen);
     if (detailItem?.noDokumen === candidate.noDokumen) {
       setDetailItem(null);
     }
     setDeleteCandidate(null);
 
-    if (typeof candidate.id === 'number') {
-      try {
-        const rows = await fetchRekapDokumenFromApi({ forceRefresh: true });
-        setRekapData(rows);
-      } catch {
-        // Keep optimistic local state when refresh fails.
-      }
-    }
-
     setFeedbackModal({
       title: 'Dokumen Berhasil Dihapus',
       message: `Dokumen ${candidate.noDokumen} berhasil dihapus dari rekap data.`,
     });
+    // Sinkronisasi ulang dari server berjalan di latar belakang lewat event
+    // 'rekap-data-updated' yang di-emit deleteRekapDokumen() — tidak perlu di-await di sini.
   }
 
   const handleSaveManfaat = async () => {

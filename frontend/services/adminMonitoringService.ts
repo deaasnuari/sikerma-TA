@@ -105,7 +105,7 @@ export interface MonitoringNotification {
   id: string;
   tanggalKirim: string;
   jenis: 'reminder-3bulan' | 'reminder-1bulan' | 'urgent';
-  status: 'terkirim' | 'dibaca' | 'ditindaklanjuti' | 'tidak-direspons';
+  status: 'terkirim' | 'dibaca' | 'ditindaklanjuti' | 'tidak-direspons' | 'gagal' | 'dilewati';
   pesan: string;
   emailMitra: string;
 }
@@ -281,30 +281,6 @@ const defaultMonitoringData: Kerjasama[] = [
     emailMitra: 'corporate@samatorgas.com',
   },
 ];
-
-// Riwayat notifikasi awal untuk contoh monitoring email.
-const defaultNotificationHistories: Record<number, MonitoringNotification[]> = {
-  2: [
-    {
-      id: 'notif-1',
-      tanggalKirim: '10/04/2026',
-      jenis: 'reminder-3bulan',
-      status: 'terkirim',
-      pesan: 'Notifikasi reminder otomatis: Kerjasama akan berakhir dalam 3 bulan',
-      emailMitra: 'admin@feenmarine.com',
-    },
-  ],
-  5: [
-    {
-      id: 'notif-2',
-      tanggalKirim: '12/04/2026',
-      jenis: 'reminder-1bulan',
-      status: 'dibaca',
-      pesan: 'Notifikasi reminder otomatis: Kerjasama akan berakhir dalam 1 bulan',
-      emailMitra: 'marketing@teknologimaju.id',
-    },
-  ],
-};
 
 // Badge jenis dokumen untuk dipakai langsung di komponen UI.
 export const monitoringJenisBadgeMap: Record<Kerjasama['jenis'], string> = {
@@ -553,13 +529,6 @@ export async function fetchMonitoringDataFromApi(options?: { forceRefresh?: bool
   return monitoringInFlight;
 }
 
-// Ambil riwayat notifikasi awal dan clone agar state React aman diubah.
-export function getDefaultNotificationHistories(): Record<number, MonitoringNotification[]> {
-  return Object.fromEntries(
-    Object.entries(defaultNotificationHistories).map(([key, value]) => [Number(key), [...value]])
-  );
-}
-
 // Hitung ringkasan statistik berdasarkan status kerjasama.
 export function getMonitoringStats(items: Kerjasama[]) {
   return {
@@ -679,21 +648,6 @@ export function createRenewalRecord(
   };
 }
 
-// Helper untuk membuat riwayat notifikasi email baru.
-export function createNotificationRecord(
-  kerjasamaId: number,
-  jenis: MonitoringNotification['jenis'],
-  emailMitra: string
-): MonitoringNotification {
-  return {
-    id: `notif-${kerjasamaId}-${Date.now()}`,
-    tanggalKirim: new Date().toLocaleDateString('id-ID'),
-    jenis,
-    status: 'terkirim',
-    pesan: `Notifikasi ${jenis} tentang status kerjasama Anda`,
-    emailMitra,
-  };
-}
 
 // Helper untuk membuat data penonaktifan kerjasama.
 export function createNonactiveRecord(
@@ -806,11 +760,53 @@ export function applyApprovedRenewalToMonitoring(
   return updated;
 }
 
+// Riwayat notifikasi (otomatis + manual) untuk satu dokumen kerja sama, dari tabel
+// notifikasi_kerjasama di backend (bukan lagi contoh/localStorage).
+export async function fetchNotifikasiKerjasama(dokumenId: number): Promise<MonitoringNotification[]> {
+  if (!dokumenId) return [];
+  try {
+    const res = await apiRequest<{ success: boolean; data: Array<{
+      id: number;
+      jenis: MonitoringNotification['jenis'];
+      status: string;
+      email: string | null;
+      keterangan: string | null;
+      dikirim_pada: string | null;
+      dibuat_pada: string | null;
+    }> }>(`/dokumen-kerjasama/${dokumenId}/notifikasi`);
+
+    return (res.data || []).map((row) => {
+      const waktu = row.dikirim_pada || row.dibuat_pada;
+      const statusMap: Record<string, MonitoringNotification['status']> = {
+        terkirim: 'terkirim',
+        gagal: 'gagal',
+        dilewati: 'dilewati',
+      };
+      const pesanDefault: Record<MonitoringNotification['jenis'], string> = {
+        'reminder-3bulan': 'Pengingat: kerja sama akan berakhir dalam ±3 bulan',
+        'reminder-1bulan': 'Pengingat: kerja sama akan berakhir dalam ±1 bulan',
+        urgent: 'URGENT: kerja sama segera berakhir',
+      };
+      return {
+        id: String(row.id),
+        tanggalKirim: waktu ? new Date(waktu).toLocaleString('id-ID') : '-',
+        jenis: row.jenis,
+        status: statusMap[row.status] ?? 'terkirim',
+        pesan: row.keterangan || pesanDefault[row.jenis] || 'Notifikasi terkirim',
+        emailMitra: row.email || '-',
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function sendNotificationEmail(
   emailMitra: string,
   jenis: 'reminder-3bulan' | 'reminder-1bulan' | 'urgent',
   noDokumen: string,
-  namaMitra: string
+  namaMitra: string,
+  dokumenId?: number
 ): Promise<{ success: boolean; message: string }> {
   const subjects: Record<typeof jenis, string> = {
     'reminder-3bulan': '[SIKERMA] Pengingat: Kerjasama Akan Berakhir dalam 3 Bulan',
@@ -836,6 +832,7 @@ export async function sendNotificationEmail(
           jenis,
           noDokumen,
           namaMitra,
+          ...(dokumenId ? { dokumenId } : {}),
         }),
       }
     );

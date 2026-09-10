@@ -9,7 +9,7 @@ interface Notification {
   id: string;
   tanggalKirim: string;
   jenis: 'reminder-3bulan' | 'reminder-1bulan' | 'urgent';
-  status: 'terkirim' | 'dibaca' | 'ditindaklanjuti' | 'tidak-direspons';
+  status: 'terkirim' | 'dibaca' | 'ditindaklanjuti' | 'tidak-direspons' | 'gagal' | 'dilewati';
   pesan: string;
   emailMitra: string;
 }
@@ -54,6 +54,8 @@ const statusConfig = {
   dibaca: { icon: CheckCircle2, label: 'Dibaca', color: 'text-blue-600' },
   ditindaklanjuti: { icon: CheckCircle2, label: 'Ditindaklanjuti', color: 'text-green-600' },
   'tidak-direspons': { icon: AlertCircle, label: 'Tidak Direspons', color: 'text-red-600' },
+  gagal: { icon: AlertCircle, label: 'Gagal Kirim', color: 'text-red-600' },
+  dilewati: { icon: Clock, label: 'Dilewati (tanpa email)', color: 'text-amber-600' },
 };
 
 export default function NotificationHistoryModal({
@@ -88,7 +90,8 @@ export default function NotificationHistoryModal({
         emailMitra,
         jenis as 'reminder-3bulan' | 'reminder-1bulan' | 'urgent',
         noDokumen,
-        namaMitra
+        namaMitra,
+        kerjasamaId || undefined
       );
 
       if (result.success) {
@@ -254,10 +257,12 @@ export default function NotificationHistoryModal({
               <div className="text-xs text-amber-700">
                 <p className="font-semibold">Info Notifikasi Otomatis</p>
                 <ul className="mt-2 space-y-1">
-                  <li>• Notifikasi 3 bulan: Dikirim otomatis saat contract 3 bulan menjelang berakhir</li>
-                  <li>• Notifikasi 1 bulan: Dikirim otomatis saat contract 1 bulan menjelang berakhir</li>
-                  <li>• Notifikasi Urgent: Dikirim saat contract tinggal minggu depan berakhir</li>
-                  <li>• Jika tidak direspons dalam 3 bulan, contract otomatis nonaktif</li>
+                  <li>• Sistem memeriksa masa berlaku kerja sama setiap hari dan mengirim email pengingat otomatis.</li>
+                  <li>• Pengingat 3 bulan: saat sisa masa berlaku 31–90 hari.</li>
+                  <li>• Pengingat 1 bulan: saat sisa masa berlaku 8–30 hari.</li>
+                  <li>• Pengingat Urgent: saat sisa masa berlaku 0–7 hari.</li>
+                  <li>• Tiap tahap dikirim sekali. Email dikirim ke pengusul/mitra bila datanya ada; jika tidak, notifikasi berstatus &quot;Dilewati&quot;.</li>
+                  <li>• Penonaktifan kerja sama tetap dilakukan manual oleh admin.</li>
                 </ul>
               </div>
             </div>

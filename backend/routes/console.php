@@ -5,8 +5,16 @@ use App\Services\CivitasStructureService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+
+// Pengingat masa berlaku kerja sama — dikirim otomatis tiap hari jam 07:00.
+// Butuh cron server: `* * * * * cd /path/ke/backend && php artisan schedule:run >> /dev/null 2>&1`
+Schedule::command('sikerma:kirim-reminder-kerjasama')
+    ->dailyAt('07:00')
+    ->withoutOverlapping()
+    ->onOneServer();
 
 Artisan::command('civitas:sync-struktur {--apply : Terapkan perubahan ke database (default hanya preview/dry-run)}', function (CivitasStructureService $civitas) {
     // Isi kolom master_unit_prodi.kode_kampus (ID_JURUSAN/ID_PROGRAM_STUDI/ID_UNIT dari
