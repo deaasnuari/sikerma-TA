@@ -545,26 +545,33 @@ class AuthTest extends TestCase
         $response->assertStatus(422)->assertJsonValidationErrors(['password']);
     }
 
-    public function test_login_ldap_ditolak_untuk_akun_admin(): void
+    public function test_login_ldap_berhasil_untuk_akun_admin_dan_role_tidak_berubah(): void
     {
-        User::factory()->create([
-            'role'  => 'admin',
-            'nik'   => '1234567890',
-            'email' => 'admin-civitas@polibatam.ac.id',
+        // Akun civitas asli yang dipromosikan jadi admin lewat Manajemen User tetap boleh
+        // login lewat "Login dengan Akun Kampus", dan role 'admin'-nya TIDAK di-reset jadi
+        // internal (admin tidak masuk autoRefreshableCivitasRoles()).
+        $user = User::factory()->create([
+            'role'          => 'admin',
+            'auth_provider' => 'ldap',
+            'nik'           => '1234567890',
+            'email'         => 'admin-civitas@polibatam.ac.id',
         ]);
 
         $this->mockCivitas([
-            'NIK'   => '1234567890',
-            'NAMA'  => 'Admin Civitas',
-            'EMAIL' => 'admin-civitas@polibatam.ac.id',
+            'NIK'        => '1234567890',
+            'NAMA'       => 'Admin Civitas',
+            'EMAIL'      => 'admin-civitas@polibatam.ac.id',
+            'UNIT_KERJA' => 'Teknik Informatika',
         ]);
+        $this->mockCivitasStrukturKosong();
 
         $response = $this->postJson('/api/login-kampus', [
             'username' => 'admin.civitas',
             'password' => 'PasswordKampus123',
         ]);
 
-        $response->assertStatus(422)->assertJsonValidationErrors(['password']);
+        $response->assertStatus(200)->assertJsonPath('user.role', 'admin');
+        $this->assertSame('admin', $user->fresh()->role);
     }
 
     public function test_login_ldap_gagal_tanpa_username_atau_password(): void

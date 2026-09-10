@@ -8,6 +8,7 @@ import DetailKerjasamaModal from './DetailKerjasamaModal';
 import EditDokumenModal from './EditDokumenModal';
 import LaporanPelaksanaanModal, { type LaporanPelaksanaanData } from '@/components/LaporanPelaksanaanModal';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 import {
   getRekapStats,
@@ -156,6 +157,9 @@ export default function InternalRekapDataPage() {
 
   const [detailItem, setDetailItem] = useState<KerjasamaItem | null>(null);
   const [editItem, setEditItem] = useState<KerjasamaItem | null>(null);
+  const [hapusTarget, setHapusTarget] = useState<KerjasamaItem | null>(null);
+  const [hapusLoading, setHapusLoading] = useState(false);
+  const [hapusError, setHapusError] = useState<string | null>(null);
   const [laporanItem, setLaporanItem] = useState<LaporanPelaksanaanData | null>(null);
 
   // Dipakai untuk mengisi tab Kontak & Histori di modal Detail Kerjasama dengan data pengajuan
@@ -269,9 +273,16 @@ export default function InternalRekapDataPage() {
     };
   }, []);
 
-  async function handleDelete(item: KerjasamaItem) {
-    if (!window.confirm(`Yakin ingin menghapus dokumen ${item.noDokumen}? Dokumen ini akan dihapus permanen dan tidak bisa dikembalikan lagi.`)) return;
+  function handleDelete(item: KerjasamaItem) {
+    setHapusError(null);
+    setHapusTarget(item);
+  }
 
+  async function jalankanHapus() {
+    const item = hapusTarget;
+    if (!item) return;
+    setHapusLoading(true);
+    setHapusError(null);
     try {
       // Sudah ada dokumen kerjasama (Rekap Data) -> hapus lewat situ; kalau belum (masih data
       // pengajuan mentah dari fallback), hapus pengajuannya langsung. Backend memastikan yang
@@ -285,9 +296,11 @@ export default function InternalRekapDataPage() {
       }
       setData((prev) => prev.filter((row) => row !== item));
       window.dispatchEvent(new Event('rekap-data-updated'));
+      setHapusTarget(null);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Gagal menghapus dokumen.';
-      alert(message);
+      setHapusError(error instanceof Error ? error.message : 'Gagal menghapus dokumen.');
+    } finally {
+      setHapusLoading(false);
     }
   }
 
@@ -667,6 +680,32 @@ export default function InternalRekapDataPage() {
         onClose={() => setLaporanItem(null)}
         data={laporanItem}
       />
+
+      <ConfirmDialog
+        open={hapusTarget !== null}
+        title="Hapus dokumen kerja sama?"
+        message={
+          <>
+            Dokumen <span className="font-semibold">{hapusTarget?.noDokumen}</span> akan dihapus{' '}
+            <span className="font-semibold">permanen</span> dan tidak bisa dikembalikan.
+          </>
+        }
+        confirmLabel="Ya, hapus"
+        loading={hapusLoading}
+        onConfirm={jalankanHapus}
+        onCancel={() => {
+          if (!hapusLoading) {
+            setHapusTarget(null);
+            setHapusError(null);
+          }
+        }}
+      />
+
+      {hapusError && (
+        <div className="fixed bottom-5 left-1/2 z-[95] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-[12px] font-semibold text-red-700 shadow-lg">
+          {hapusError}
+        </div>
+      )}
     </div>
   );
 }

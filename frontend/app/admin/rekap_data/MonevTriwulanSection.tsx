@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { useRouter } from 'next/navigation';
 import { Activity, ListChecks, Plus } from 'lucide-react';
 import {
@@ -62,6 +63,17 @@ export default function MonevTriwulanSection({ dokumenKerjasamaId, pengajuanId }
   const [selectedTahun, setSelectedTahun] = useState<number | null>(null);
   const [openFormKey, setOpenFormKey] = useState<string | null>(null);
   const [formState, setFormState] = useState<ManualFormState>(emptyForm);
+  const [konfirmasiHapus, setKonfirmasiHapus] = useState(false);
+  const konfirmResolveRef = useRef<((v: boolean) => void) | null>(null);
+  const mintaKonfirmasi = (): Promise<boolean> => {
+    setKonfirmasiHapus(true);
+    return new Promise<boolean>((resolve) => { konfirmResolveRef.current = resolve; });
+  };
+  const tutupKonfirmasi = (hasil: boolean) => {
+    konfirmResolveRef.current?.(hasil);
+    konfirmResolveRef.current = null;
+    setKonfirmasiHapus(false);
+  };
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
@@ -104,7 +116,7 @@ export default function MonevTriwulanSection({ dokumenKerjasamaId, pengajuanId }
   }
 
   async function handleDeleteManual(id: number) {
-    if (!window.confirm('Hapus catatan Monev ini?')) return;
+    if (!(await mintaKonfirmasi())) return;
     setDeletingId(id);
     try {
       await deleteMonevManual(id);
@@ -348,6 +360,15 @@ export default function MonevTriwulanSection({ dokumenKerjasamaId, pengajuanId }
           Dokumen ini belum terhubung ke pengajuan sumber, jadi belum ada aktivitas otomatis dari Story — catatan Monev manual di atas tetap bisa diisi.
         </p>
       )}
+
+      <ConfirmDialog
+        open={konfirmasiHapus}
+        title="Hapus catatan Monev?"
+        message="Catatan Monev manual ini akan dihapus."
+        confirmLabel="Ya, hapus"
+        onConfirm={() => tutupKonfirmasi(true)}
+        onCancel={() => tutupKonfirmasi(false)}
+      />
     </div>
   );
 }

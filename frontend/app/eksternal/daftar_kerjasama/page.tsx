@@ -23,6 +23,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import LaporanPelaksanaanModal, { type LaporanPelaksanaanData } from '@/components/LaporanPelaksanaanModal';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { exportToExcel } from '@/lib/exportExcel';
 import type { PengajuanItem } from '../../../services/adminPengajuanService';
 import { deletePengajuanItemApi, fetchPengajuanDataFromApi, refreshPengajuanDataFromApi } from '@/services/adminPengajuanService';
@@ -183,6 +184,9 @@ export default function DaftarKerjasamaEksternalPage() {
   const [data, setData] = useState<KerjasamaItem[]>([]);
   const [detailItem, setDetailItem] = useState<KerjasamaItem | null>(null);
   const [laporanItem, setLaporanItem] = useState<LaporanPelaksanaanData | null>(null);
+  const [hapusTarget, setHapusTarget] = useState<KerjasamaItem | null>(null);
+  const [hapusLoading, setHapusLoading] = useState(false);
+  const [hapusError, setHapusError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterReview, setFilterReview] = useState<'Semua Review' | 'Belum Direview' | 'Sudah Direview'>('Semua Review');
@@ -273,20 +277,27 @@ export default function DaftarKerjasamaEksternalPage() {
     };
   }, [data]);
 
-  const handleDelete = async (item: KerjasamaItem) => {
-    if (!window.confirm(`Yakin ingin menghapus pengajuan ${item.noDokumen}? Pengajuan ini akan dihapus permanen dan tidak bisa dikembalikan lagi.`)) {
-      return;
-    }
+  const handleDelete = (item: KerjasamaItem) => {
+    setHapusError(null);
+    setHapusTarget(item);
+  };
 
+  const jalankanHapus = async () => {
+    if (!hapusTarget) return;
+    setHapusLoading(true);
+    setHapusError(null);
     try {
       // Backend memastikan yang boleh dihapus cuma milik sendiri — dan sekarang hapus permanen
       // dari database (lihat PengajuanController::destroy), bukan cuma disembunyikan.
-      await deletePengajuanItemApi(item.id);
+      await deletePengajuanItemApi(hapusTarget.id);
       // Refresh cache pengajuan dari server & broadcast 'pengajuan-data-updated' — listener yang
       // sudah ada di halaman ini (lihat useEffect di atas) akan ikut sinkron ulang otomatis.
       await refreshPengajuanDataFromApi(true);
+      setHapusTarget(null);
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Gagal menghapus pengajuan.');
+      setHapusError(error instanceof Error ? error.message : 'Gagal menghapus pengajuan.');
+    } finally {
+      setHapusLoading(false);
     }
   };
 
@@ -794,6 +805,32 @@ export default function DaftarKerjasamaEksternalPage() {
         onClose={() => setLaporanItem(null)}
         data={laporanItem}
       />
+
+      <ConfirmDialog
+        open={hapusTarget !== null}
+        title="Hapus pengajuan?"
+        message={
+          <>
+            Pengajuan <span className="font-semibold">{hapusTarget?.noDokumen}</span> akan dihapus{' '}
+            <span className="font-semibold">permanen</span> dan tidak bisa dikembalikan.
+          </>
+        }
+        confirmLabel="Ya, hapus"
+        loading={hapusLoading}
+        onConfirm={jalankanHapus}
+        onCancel={() => {
+          if (!hapusLoading) {
+            setHapusTarget(null);
+            setHapusError(null);
+          }
+        }}
+      />
+
+      {hapusError && (
+        <div className="fixed bottom-5 left-1/2 z-[95] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-[12px] font-semibold text-red-700 shadow-lg">
+          {hapusError}
+        </div>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { FileText, Clock, CheckCircle, XCircle, Search, Filter, Plus, Eye, Messa
 import { addAdminNotification, markNotificationsByHrefPrefixAsRead } from '@/services/adminService';
 import AdminAjukanKerjasamaForm from './AjukanKerjasamaForm';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import InternalAjukanKerjasamaForm from '@/app/internal/data_pengajuan/AjukanKerjasamaForm';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 import {
@@ -301,6 +302,22 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
 // Track previous pending count for new submission notifications
   const previousPendingRef = useRef<number>(0);
 
+  // Konfirmasi hapus pakai modal (pengganti window.confirm). mintaKonfirmasi() mengembalikan
+  // Promise<boolean> yang selesai saat user menekan tombol di ConfirmDialog.
+  const [konfirmasiPesan, setKonfirmasiPesan] = useState<string | null>(null);
+  const konfirmasiResolveRef = useRef<((v: boolean) => void) | null>(null);
+  const mintaKonfirmasi = useCallback((pesan: string): Promise<boolean> => {
+    setKonfirmasiPesan(pesan);
+    return new Promise<boolean>((resolve) => {
+      konfirmasiResolveRef.current = resolve;
+    });
+  }, []);
+  const tutupKonfirmasi = useCallback((hasil: boolean) => {
+    konfirmasiResolveRef.current?.(hasil);
+    konfirmasiResolveRef.current = null;
+    setKonfirmasiPesan(null);
+  }, []);
+
   const refreshPengajuanData = useCallback(async (silent = false) => {
     if (!silent) {
       setPengajuanLoading(true);
@@ -501,7 +518,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   };
 
   const handleDeleteNegaraOption = async (item: MasterNegara) => {
-    const confirmed = window.confirm(`Yakin ingin menghapus negara "${item.nama_negara}"?`);
+    const confirmed = await mintaKonfirmasi(`Yakin ingin menghapus negara "${item.nama_negara}"?`);
     if (!confirmed) {
       return;
     }
@@ -686,7 +703,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   }
 
   async function handleDeleteRuangLingkup(id: number) {
-    const confirmed = window.confirm('Yakin ingin menghapus ruang lingkup ini?');
+    const confirmed = await mintaKonfirmasi('Yakin ingin menghapus ruang lingkup ini?');
     if (!confirmed) {
       return;
     }
@@ -1552,7 +1569,7 @@ function addEditJurusanUnitOption() {
   }
 
   async function handleDeleteProdi(prodiId: number) {
-    const confirmed = window.confirm('Yakin ingin menghapus prodi ini?');
+    const confirmed = await mintaKonfirmasi('Yakin ingin menghapus prodi ini?');
     if (!confirmed) {
       return;
     }
@@ -1580,7 +1597,7 @@ function addEditJurusanUnitOption() {
   }
 
   async function handleDeleteJurusan(jurusanId: number) {
-    const confirmed = window.confirm('Yakin ingin menghapus jurusan ini? Semua prodi di bawah jurusan ini juga akan ikut dihapus.');
+    const confirmed = await mintaKonfirmasi('Yakin ingin menghapus jurusan ini? Semua prodi di bawah jurusan ini juga akan ikut dihapus.');
     if (!confirmed) {
       return;
     }
@@ -1615,7 +1632,7 @@ function addEditJurusanUnitOption() {
   }
 
   async function handleDeleteUnitKerja(unitId: number) {
-    const confirmed = window.confirm('Yakin ingin menghapus unit kerja ini?');
+    const confirmed = await mintaKonfirmasi('Yakin ingin menghapus unit kerja ini?');
     if (!confirmed) {
       return;
     }
@@ -3434,6 +3451,15 @@ function addEditJurusanUnitOption() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={konfirmasiPesan !== null}
+        title="Konfirmasi hapus"
+        message={konfirmasiPesan}
+        confirmLabel="Ya, hapus"
+        onConfirm={() => tutupKonfirmasi(true)}
+        onCancel={() => tutupKonfirmasi(false)}
+      />
     </div>
   );
 }

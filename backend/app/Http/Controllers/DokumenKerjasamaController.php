@@ -95,9 +95,13 @@ class DokumenKerjasamaController extends Controller
             ? Pengajuan::find($dokumen_kerjasama->sumber_pengajuan_id)
             : null;
 
-        $aktivitas = $pengajuan
-            ? PengajuanAktivitas::query()->where('pengajuan_id', $pengajuan->id)->orderBy('tanggal')->get()
-            : collect();
+        // Aktivitas Story bisa menempel ke dokumen ini langsung (kerja sama tanpa pengajuan
+        // sumber) ATAU ke pengajuan sumbernya (data lama). Ambil keduanya.
+        $aktivitas = PengajuanAktivitas::query()
+            ->where('dokumen_kerjasama_id', $dokumen_kerjasama->id)
+            ->when($pengajuan, fn ($builder) => $builder->orWhere('pengajuan_id', $pengajuan->id))
+            ->orderBy('tanggal')
+            ->get();
 
         $monevEntries = LaporanPelaksanaan::query()
             ->where('dokumen_kerjasama_id', $dokumen_kerjasama->id)

@@ -19,25 +19,23 @@ import {
   Users,
 } from 'lucide-react';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import {
   deleteLaporanPelaksanaan,
-  getLaporanPelaksanaanByPengajuanIds,
+  getLaporanPelaksanaanByDokumenKerjasamaIds,
   type LaporanPelaksanaanRecord,
 } from '@/services/laporanPelaksanaanService';
+import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
+import type { RekapDokumen } from '@/services/adminRekapDataService';
 import {
-  getPengajuanData,
-  refreshPengajuanDataFromApi,
-  type PengajuanItem,
-} from '@/services/adminPengajuanService';
-import {
-  createAktivitasApi,
+  createAktivitasForDokumenApi,
   deleteAktivitasApi,
   getHiddenStoryIds,
   refreshAktivitasDataFromApi,
-  updateAktivitasApi,
+  updateAktivitasForDokumenApi,
 } from '@/services/adminStoryAktivitasService';
 import {
-  findStoryAktivitasGroupByRouteParam,
+  findStoryAktivitasGroupFromRekapByRouteParam,
   type StoryAktivitasTimelineItem,
 } from '@/services/storyAktivitasGrouping';
 
@@ -155,16 +153,29 @@ function getKerjasamaStatus(tanggalBerakhir?: string): 'Aktif' | 'Akan Berakhir'
     return 'Aktif';
   }
 
+  // Ambang 90 hari — sama dengan Rekap Data & Status Kerjasama, jangan diubah sendiri.
   const diffDays = Math.ceil((endDate.getTime() - Date.now()) / 86400000);
   if (diffDays < 0) {
     return 'Kadaluarsa';
   }
 
-  if (diffDays <= 120) {
+  if (diffDays <= 90) {
     return 'Akan Berakhir';
   }
 
   return 'Aktif';
+}
+
+const kerjasamaStatusBadge: Record<'Aktif' | 'Akan Berakhir' | 'Kadaluarsa', string> = {
+  Aktif: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  'Akan Berakhir': 'border-amber-200 bg-amber-50 text-amber-700',
+  Kadaluarsa: 'border-red-200 bg-red-50 text-red-700',
+};
+
+// Status per dokumen: pakai status_siklus (lewat storyAktivitasGrouping) kalau tersedia,
+// supaya SAMA dengan Rekap Data/Arsip/Status Kerjasama; fallback hitung dari tanggal.
+function docStatus(pengajuan: { tanggalBerakhir?: string; statusKerjasama?: 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa' }): 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa' {
+  return pengajuan.statusKerjasama ?? getKerjasamaStatus(pengajuan.tanggalBerakhir);
 }
 
 function statusClass(status: AktivitasStatus): string {
@@ -210,7 +221,7 @@ export default function DetailStoryAktivitasPage() {
   const router = useRouter();
   const routeId = String(params.id || '');
 
-  const [sourceData, setSourceData] = useState<PengajuanItem[]>([]);
+  const [sourceData, setSourceData] = useState<RekapDokumen[]>([]);
   const [hiddenStoryIds, setHiddenStoryIds] = useState<number[]>([]);
   const [aktivitasRevision, setAktivitasRevision] = useState(0);
   const [showLaporanModal, setShowLaporanModal] = useState(false);
@@ -222,9 +233,18 @@ export default function DetailStoryAktivitasPage() {
   const [laporanLoading, setLaporanLoading] = useState(false);
   const [deletingLaporanId, setDeletingLaporanId] = useState<number | null>(null);
   const [filterAktivitasStatus, setFilterAktivitasStatus] = useState<'semua' | 'selesai' | 'berlangsung' | 'direncanakan'>('semua');
+  const [konfirmasi, setKonfirmasi] = useState<{ jenis: 'aktivitas' | 'laporan'; id: number } | null>(null);
+  const [konfirmasiLoading, setKonfirmasiLoading] = useState(false);
+  const [pesanError, setPesanError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pesanError) return;
+    const t = setTimeout(() => setPesanError(null), 4000);
+    return () => clearTimeout(t);
+  }, [pesanError]);
 
   const storyGroup = useMemo(
-    () => findStoryAktivitasGroupByRouteParam(sourceData, routeId, hiddenStoryIds),
+    () => findStoryAktivitasGroupFromRekapByRouteParam(sourceData, routeId, hiddenStoryIds),
     [sourceData, routeId, hiddenStoryIds, aktivitasRevision]
   );
 
@@ -235,13 +255,6 @@ export default function DetailStoryAktivitasPage() {
   useEffect(() => {
     let isMounted = true;
 
-    const syncData = () => {
-      if (!isMounted) {
-        return;
-      }
-      setSourceData(getPengajuanData());
-    };
-
     const syncStoryState = () => {
       if (!isMounted) {
         return;
@@ -251,28 +264,30 @@ export default function DetailStoryAktivitasPage() {
     };
 
     void Promise.all([
-      refreshPengajuanDataFromApi(true),
-      refreshAktivitasDataFromApi(),
+      fetchRekapDokumenFromApi({ forceRefresh: true }),
+      refreshAktivitasDataFromApi().catch(() => undefined),
     ])
+      .then(([rows]) => {
+        if (isMounted && rows) {
+          setSourceData(rows);
+        }
+      })
       .catch(() => {
-        // Keep UI usable with cached data if API aktivitas gagal.
+        // Keep UI usable with cached data if API gagal.
       })
       .finally(() => {
-        syncData();
         syncStoryState();
       });
 
-    window.addEventListener('pengajuan-data-updated', syncData);
     window.addEventListener('story-data-updated', syncStoryState);
 
     return () => {
       isMounted = false;
-      window.removeEventListener('pengajuan-data-updated', syncData);
       window.removeEventListener('story-data-updated', syncStoryState);
     };
   }, []);
 
-  // Ambil laporan pelaksanaan yang dikirim internal/eksternal/admin untuk pengajuan-pengajuan di story ini.
+  // Ambil laporan pelaksanaan yang dikirim internal/eksternal/admin untuk dokumen kerja sama di story ini.
   const storyPengajuanIds = storyGroup?.pengajuan.map((p) => p.id).join(',') ?? '';
   useEffect(() => {
     if (!storyPengajuanIds) {
@@ -282,7 +297,7 @@ export default function DetailStoryAktivitasPage() {
 
     let isMounted = true;
     setLaporanLoading(true);
-    getLaporanPelaksanaanByPengajuanIds(storyPengajuanIds.split(',').map(Number))
+    getLaporanPelaksanaanByDokumenKerjasamaIds(storyPengajuanIds.split(',').map(Number))
       .then((rows) => {
         if (isMounted) setLaporanDiterima(rows);
       })
@@ -390,36 +405,39 @@ export default function DetailStoryAktivitasPage() {
     setShowForm(true);
   };
 
-  const handleDelete = async (item: StoryAktivitasTimelineItem) => {
-    const confirmed = window.confirm('Hapus aktivitas ini dari timeline?');
-    if (!confirmed) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await deleteAktivitasApi(item.id);
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Gagal menghapus aktivitas.');
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleDelete = (item: StoryAktivitasTimelineItem) => {
+    setPesanError(null);
+    setKonfirmasi({ jenis: 'aktivitas', id: item.id });
   };
 
-  const handleDeleteLaporan = async (laporan: LaporanPelaksanaanRecord) => {
-    const confirmed = window.confirm('Hapus laporan pelaksanaan ini?');
-    if (!confirmed) {
-      return;
-    }
+  const handleDeleteLaporan = (laporan: LaporanPelaksanaanRecord) => {
+    setPesanError(null);
+    setKonfirmasi({ jenis: 'laporan', id: laporan.id });
+  };
 
-    setDeletingLaporanId(laporan.id);
+  const jalankanHapus = async () => {
+    if (!konfirmasi) return;
+    const { jenis, id } = konfirmasi;
+    setKonfirmasiLoading(true);
+    setPesanError(null);
     try {
-      await deleteLaporanPelaksanaan(laporan.id);
-      setLaporanDiterima((prev) => prev.filter((item) => item.id !== laporan.id));
+      if (jenis === 'aktivitas') {
+        await deleteAktivitasApi(id);
+      } else {
+        await deleteLaporanPelaksanaan(id);
+        setLaporanDiterima((prev) => prev.filter((item) => item.id !== id));
+      }
+      setKonfirmasi(null);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Gagal menghapus laporan pelaksanaan.');
+      setPesanError(
+        error instanceof Error
+          ? error.message
+          : jenis === 'aktivitas'
+            ? 'Gagal menghapus aktivitas.'
+            : 'Gagal menghapus laporan pelaksanaan.'
+      );
     } finally {
-      setDeletingLaporanId(null);
+      setKonfirmasiLoading(false);
     }
   };
 
@@ -427,15 +445,17 @@ export default function DetailStoryAktivitasPage() {
     if (!storyGroup) {
       return;
     }
+    setPesanError(null);
 
     if (!formState.judul.trim() || !formState.jenisAktivitas.trim() || !formState.tanggal.trim()) {
-      window.alert('Judul, jenis aktivitas, dan tanggal wajib diisi.');
+      setPesanError('Judul, jenis aktivitas, dan tanggal wajib diisi.');
       return;
     }
 
-    const sourcePengajuanId = formState.sourcePengajuanId || (storyGroup.pengajuan[0]?.id ?? 0);
-    if (!sourcePengajuanId) {
-      window.alert('Pengajuan sumber aktivitas tidak valid.');
+    // Di jalur Rekap Data, id ini = dokumen_kerjasama.id tempat aktivitas menempel.
+    const dokumenKerjasamaId = formState.sourcePengajuanId || (storyGroup.pengajuan[0]?.id ?? 0);
+    if (!dokumenKerjasamaId) {
+      setPesanError('Dokumen kerja sama sumber aktivitas tidak valid.');
       return;
     }
 
@@ -453,16 +473,16 @@ export default function DetailStoryAktivitasPage() {
     setIsSubmitting(true);
     try {
       if (editingRef) {
-        await updateAktivitasApi(editingRef.activityId, sourcePengajuanId, payload);
+        await updateAktivitasForDokumenApi(editingRef.activityId, dokumenKerjasamaId, payload);
       } else {
-        await createAktivitasApi(sourcePengajuanId, payload);
+        await createAktivitasForDokumenApi(dokumenKerjasamaId, payload);
       }
 
       setShowForm(false);
       setEditingRef(null);
       setFormState(emptyForm(storyGroup.pengajuan[0]?.id ?? 0));
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Gagal menyimpan aktivitas.');
+      setPesanError(error instanceof Error ? error.message : 'Gagal menyimpan aktivitas.');
     } finally {
       setIsSubmitting(false);
     }
@@ -486,7 +506,7 @@ export default function DetailStoryAktivitasPage() {
     );
   }
 
-  const statusKerjasama = getKerjasamaStatus(storyGroup.pengajuan[0]?.tanggalBerakhir);
+  const statusKerjasama = storyGroup.status;
 
   return (
     <div className="space-y-4 pb-6">
@@ -574,20 +594,42 @@ export default function DetailStoryAktivitasPage() {
 
       <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-[15px] font-bold text-slate-900">Story Kerja Sama</h2>
+          <h2 className="text-[15px] font-bold text-slate-900">
+            Story Kerja Sama
+            <span className="ml-2 text-[11px] font-medium text-slate-500">({storyGroup.pengajuan.length} dokumen kerja sama)</span>
+          </h2>
+          <div className="flex flex-wrap gap-2 text-[10px] font-semibold">
+            {(['Aktif', 'Akan Berakhir', 'Kadaluarsa'] as const).map((label) => {
+              const jumlah = storyGroup.pengajuan.filter(
+                (p) => docStatus(p) === label
+              ).length;
+              return (
+                <span key={label} className={`rounded-full border px-2.5 py-1 ${kerjasamaStatusBadge[label]}`}>
+                  {jumlah} {label}
+                </span>
+              );
+            })}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-3">
-          {storyGroup.pengajuan.map((pengajuan) => (
+          {storyGroup.pengajuan.map((pengajuan) => {
+            const statusDok = docStatus(pengajuan);
+            return (
             <article key={pengajuan.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{pengajuan.nomorPengajuan}</p>
                   <h3 className="mt-1 text-[12px] font-bold text-slate-900">{pengajuan.judulPengajuan}</h3>
                 </div>
-                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-                  {pengajuan.jenisDokumen}
-                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${kerjasamaStatusBadge[statusDok]}`}>
+                    {statusDok}
+                  </span>
+                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+                    {pengajuan.jenisDokumen}
+                  </span>
+                </div>
               </div>
 
               <div className="mt-3 space-y-1.5 text-[10px] text-slate-600">
@@ -621,7 +663,8 @@ export default function DetailStoryAktivitasPage() {
                 ))}
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -954,6 +997,31 @@ export default function DetailStoryAktivitasPage() {
         onClose={() => setShowLaporanModal(false)}
         data={laporanData}
       />
+
+      <ConfirmDialog
+        open={konfirmasi !== null}
+        title={konfirmasi?.jenis === 'laporan' ? 'Hapus laporan pelaksanaan?' : 'Hapus aktivitas?'}
+        message={
+          konfirmasi?.jenis === 'laporan'
+            ? 'Laporan pelaksanaan ini akan dihapus permanen.'
+            : 'Aktivitas ini akan dihapus dari timeline dan tidak bisa dikembalikan.'
+        }
+        confirmLabel="Ya, hapus"
+        loading={konfirmasiLoading}
+        onConfirm={jalankanHapus}
+        onCancel={() => {
+          if (!konfirmasiLoading) {
+            setKonfirmasi(null);
+            setPesanError(null);
+          }
+        }}
+      />
+
+      {pesanError && (
+        <div className="fixed bottom-5 left-1/2 z-[95] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-[12px] font-semibold text-red-700 shadow-lg">
+          {pesanError}
+        </div>
+      )}
     </div>
   );
 }

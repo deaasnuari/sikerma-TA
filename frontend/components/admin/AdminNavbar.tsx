@@ -375,15 +375,26 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
               </button>
 
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-100 rounded-lg shadow-xl py-0 z-50 overflow-hidden">
-                  <div className="bg-slate-50 px-4 py-3 border-b border-slate-100">
-                    <p className="text-[13px] font-semibold text-gray-900 break-all">{user?.email}</p>
-                    <p className="mt-0.5 text-[12px] leading-snug text-gray-600">{userSubLabel}</p>
+                <div className="absolute right-0 z-50 mt-2 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                  <div className="flex items-center gap-3 bg-gradient-to-br from-[#0e1d34] to-[#173B82] px-4 py-4 text-white">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25">
+                      <User size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-semibold leading-tight">{user?.name || userDisplayName}</p>
+                      <p className="truncate text-[11px] leading-tight text-blue-100">{user?.email}</p>
+                    </div>
                   </div>
-                  <div className="p-2">
+
+                  <div className="px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Peran</p>
+                    <p className="mt-0.5 text-[12px] font-medium leading-snug text-slate-700">{userSubLabel}</p>
+                  </div>
+
+                  <div className="border-t border-slate-100 p-2">
                     <button
                       onClick={handleLogout}
-                      className="w-full text-left px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors rounded font-medium"
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] font-semibold text-red-600 transition-colors hover:bg-red-50"
                     >
                       <LogOut size={16} />
                       Logout

@@ -12,6 +12,7 @@ class PengajuanAktivitas extends Model
 
     protected $fillable = [
         'pengajuan_id',
+        'dokumen_kerjasama_id',
         'judul',
         'jenis_aktivitas',
         'tanggal',
@@ -39,6 +40,11 @@ class PengajuanAktivitas extends Model
     public function pengajuan(): BelongsTo
     {
         return $this->belongsTo(Pengajuan::class, 'pengajuan_id');
+    }
+
+    public function dokumenKerjasama(): BelongsTo
+    {
+        return $this->belongsTo(DokumenKerjasama::class, 'dokumen_kerjasama_id');
     }
 
     public function getTahunAttribute(): ?int

@@ -1,5 +1,6 @@
 import { getAktivitasByKerjasamaId, type AktivitasItem } from './adminStoryAktivitasService';
-import type { PengajuanItem } from './adminPengajuanService';
+import type { PengajuanItem, PengajuanStatus } from './adminPengajuanService';
+import type { RekapDokumen } from './adminRekapDataService';
 
 export interface StoryAktivitasTimelineItem extends AktivitasItem {
   sourcePengajuanId: number;
@@ -110,12 +111,15 @@ function getStatus(tanggalBerakhir?: string): StoryAktivitasGroup['status'] {
     return 'Aktif';
   }
 
+  // Ambang 90 hari — SAMA dengan Rekap Data (adminRekapDataService) & Monitoring
+  // (adminMonitoringService), supaya hitungan Aktif/Akan Berakhir/Kadaluarsa konsisten
+  // di semua halaman. Jangan diubah ke angka lain tanpa menyamakan ketiga tempat itu.
   const diffDays = Math.ceil((endDate.getTime() - Date.now()) / 86400000);
   if (diffDays < 0) {
     return 'Kadaluarsa';
   }
 
-  if (diffDays <= 120) {
+  if (diffDays <= 90) {
     return 'Akan Berakhir';
   }
 
@@ -185,7 +189,10 @@ function buildGroup(items: PengajuanItem[], key: string): StoryAktivitasGroup {
     namaMitra: primary?.namaMitra ?? '-',
     nomorDokumen: primary?.nomorPengajuan ?? '-',
     jenis: toDocJenis(primary?.jenisDokumen),
-    status: getStatus(primary?.tanggalBerakhir),
+    // Pakai status dari kolom (kalau ada, jalur Rekap Data) supaya konsisten dengan
+    // halaman lain; fallback hitung-dari-tanggal untuk jalur pengajuan (internal/eksternal).
+    status: (primary as { statusKerjasama?: StoryAktivitasGroup['status'] } | undefined)?.statusKerjasama
+      ?? getStatus(primary?.tanggalBerakhir),
     berakhir: formatDisplayDate(primary?.tanggalBerakhir),
     masaBerlaku: formatMasaBerlaku(primary?.tanggalBerakhir),
     tahun: Number(primary?.diajukanPada?.slice(0, 4)) || new Date().getFullYear(),
@@ -215,6 +222,59 @@ export function groupStoryAktivitasByMitra(items: PengajuanItem[], hiddenStoryId
   return Array.from(grouped.entries())
     .map(([key, value]) => buildGroup(value, key))
     .sort((left, right) => compareDesc(left.pengajuan[0]?.diajukanPada, right.pengajuan[0]?.diajukanPada));
+}
+
+// ── Sumber data: Rekap Data (dokumen_kerjasama) ─────────────────────────────
+// Story & Aktivitas (admin) mengambil dari dokumen kerja sama, bukan pengajuan.
+// Tiap dokumen dipetakan ke bentuk PengajuanItem supaya seluruh logika grouping
+// per-mitra + halaman detail bisa dipakai ulang tanpa perubahan. `id` di sini =
+// dokumen_kerjasama.id — aktivitasnya menempel ke dokumen (lihat
+// adminStoryAktivitasService: refreshAktivitasDataFromApi meng-index by dokumen id).
+function mapRekapDokumenToPengajuanItem(dok: RekapDokumen): PengajuanItem {
+  return {
+    id: dok.id ?? 0,
+    nomorPengajuan: dok.noDokumen,
+    judulPengajuan: dok.noDokumen,
+    namaPengusul: dok.picMitra ?? '-',
+    diajukanPada: dok.tanggalMulaiRaw ?? dok.tanggalMulai ?? '',
+    mitraId: dok.mitraId,
+    namaMitra: dok.namaMitra,
+    jenisDokumen: dok.jenis,
+    unitProdiId: dok.unitProdiId,
+    namaUnitProdi: dok.unit,
+    tanggalMulai: dok.tanggalMulaiRaw ?? dok.tanggalMulai,
+    tanggalBerakhir: dok.berlakuHinggaRaw ?? dok.berlakuHingga,
+    ruangLingkupIds: dok.ruangLingkupIds ?? [],
+    ruangLingkup: dok.ruangLingkup ?? [],
+    statusPengajuan: 'disetujui' as PengajuanStatus,
+    // Status kategori (Aktif/Akan Berakhir/Kadaluarsa) diambil dari dok.status yang
+    // sudah dipetakan dari kolom status_siklus di dokumenKerjasamaApiService — SAMA
+    // dengan Rekap Data/Arsip/Monitoring. Field ekstra, cast di bawah membolehkannya.
+    statusKerjasama: dok.status,
+    // Field PengajuanItem lain tidak dipakai jalur Story — cast aman.
+  } as unknown as PengajuanItem;
+}
+
+export function groupStoryAktivitasFromRekap(
+  rows: RekapDokumen[],
+  hiddenStoryIds: number[] = []
+): StoryAktivitasGroup[] {
+  return groupStoryAktivitasByMitra(
+    rows.filter((row) => typeof row.id === 'number').map(mapRekapDokumenToPengajuanItem),
+    hiddenStoryIds
+  );
+}
+
+export function findStoryAktivitasGroupFromRekapByRouteParam(
+  rows: RekapDokumen[],
+  routeParam: string,
+  hiddenStoryIds: number[] = []
+): StoryAktivitasGroup | null {
+  return findStoryAktivitasGroupByRouteParam(
+    rows.filter((row) => typeof row.id === 'number').map(mapRekapDokumenToPengajuanItem),
+    routeParam,
+    hiddenStoryIds
+  );
 }
 
 export function findStoryAktivitasGroupByRouteParam(

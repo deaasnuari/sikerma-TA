@@ -1,11 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
-  BookOpen,
-  Calendar,
-  CalendarCheck,
+  ChevronDown,
   Eye,
   FileText,
   Filter,
@@ -14,14 +12,10 @@ import {
 } from 'lucide-react';
 
 import DetailStoryModal from './DetailStoryModal';
-import { type PengajuanItem, type PengajuanStatus, fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
+import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
+import type { RekapDokumen } from '@/services/adminRekapDataService';
 import { refreshAktivitasDataFromApi } from '@/services/adminStoryAktivitasService';
-import {
-  getExternalPengajuanData,
-  getExternalPengajuanUpdateEventName,
-  syncExternalPengajuanWithAdminData,
-} from '@/services/externalPengajuanService';
-import { groupStoryAktivitasByMitra, type StoryAktivitasGroup } from '@/services/storyAktivitasGrouping';
+import { groupStoryAktivitasFromRekap, type StoryAktivitasGroup } from '@/services/storyAktivitasGrouping';
 
 // ── Types ──────────────────────────────────────────────
 
@@ -38,6 +32,17 @@ export interface Aktivitas {
   picPolibatam: string;
   picMitra: string;
   status: StatusAktivitas;
+}
+
+export interface DokumenRingkas {
+  id: number;
+  noDokumen: string;
+  jenis: string;
+  status: StatusKerjasama;
+  tanggalMulai: string;
+  tanggalBerakhir: string;
+  unit: string;
+  ruangLingkup: string[];
 }
 
 export interface KerjasamaStory {
@@ -58,18 +63,12 @@ export interface KerjasamaStory {
   jurusanTerlibat: string[];
   aktivitas: Aktivitas[];
   totalPengajuan: number;
-  pengajuanId?: number;
-  pengajuanIds: number[];
+  dokumenKerjasamaIds: number[];
+  rincianStatus: { Aktif: number; 'Akan Berakhir': number; Kadaluarsa: number };
+  dokumen: DokumenRingkas[];
 }
 
 // ── Helpers ────────────────────────────────────────────
-
-const APPROVED_STATUSES = new Set<PengajuanStatus>([
-  'Disetujui',
-  'Disetujui Internal',
-  'Disetujui Mitra',
-  'Final Approved',
-]);
 
 function toDisplayDate(value?: string): string {
   if (!value) return '-';
@@ -78,19 +77,37 @@ function toDisplayDate(value?: string): string {
   return d.toLocaleDateString('en-GB');
 }
 
-function computeSisaWaktu(tanggalBerakhir?: string): string {
-  if (!tanggalBerakhir) return '-';
+function statusDari(tanggalBerakhir?: string): StatusKerjasama {
+  if (!tanggalBerakhir) return 'Aktif';
   const end = new Date(tanggalBerakhir);
-  if (Number.isNaN(end.getTime())) return '-';
+  if (Number.isNaN(end.getTime())) return 'Aktif';
   const diffDays = Math.ceil((end.getTime() - Date.now()) / 86400000);
   if (diffDays < 0) return 'Kadaluarsa';
-  const months = Math.floor(diffDays / 30);
-  const days = diffDays % 30;
-  if (months > 0) return days > 0 ? `${months} Bulan ${days} Hari` : `${months} Bulan`;
-  return `${diffDays} Hari`;
+  if (diffDays <= 90) return 'Akan Berakhir';
+  return 'Aktif';
 }
 
 function mapStoryGroupToStory(group: StoryAktivitasGroup): KerjasamaStory {
+  const dokumen: DokumenRingkas[] = group.pengajuan.map((p) => {
+    const st = (p as { statusKerjasama?: StatusKerjasama }).statusKerjasama ?? statusDari(p.tanggalBerakhir);
+    return {
+      id: p.id,
+      noDokumen: p.nomorPengajuan,
+      jenis: p.jenisDokumen,
+      status: st,
+      tanggalMulai: toDisplayDate(p.tanggalMulai),
+      tanggalBerakhir: toDisplayDate(p.tanggalBerakhir),
+      unit: p.namaUnitProdi || '-',
+      ruangLingkup: [...p.ruangLingkup],
+    };
+  });
+
+  const rincianStatus = {
+    Aktif: dokumen.filter((d) => d.status === 'Aktif').length,
+    'Akan Berakhir': dokumen.filter((d) => d.status === 'Akan Berakhir').length,
+    Kadaluarsa: dokumen.filter((d) => d.status === 'Kadaluarsa').length,
+  };
+
   return {
     id: String(group.mitraId ?? group.pengajuan[0]?.id ?? group.key),
     key: group.key,
@@ -104,7 +121,7 @@ function mapStoryGroupToStory(group: StoryAktivitasGroup): KerjasamaStory {
     alamat: group.pengajuan[0]?.mitraAlamat || '-',
     email: group.pengajuan[0]?.mitraEmail || group.pengajuan[0]?.emailPengusul || '-',
     telepon: group.pengajuan[0]?.mitraTelepon || group.pengajuan[0]?.whatsappPengusul || '-',
-    sisaWaktu: computeSisaWaktu(group.pengajuan[0]?.tanggalBerakhir),
+    sisaWaktu: group.masaBerlaku,
     ruangLingkup: [...group.ruangLingkup],
     jurusanTerlibat: [...group.jurusanTerlibat],
     aktivitas: group.aktivitas.map((a) => ({
@@ -118,23 +135,18 @@ function mapStoryGroupToStory(group: StoryAktivitasGroup): KerjasamaStory {
       status: a.status as StatusAktivitas,
     })),
     totalPengajuan: group.totalPengajuan,
-    pengajuanId: group.pengajuan[0]?.id,
-    pengajuanIds: group.pengajuan.map((p) => p.id),
+    dokumenKerjasamaIds: group.pengajuan.map((p) => p.id),
+    rincianStatus,
+    dokumen,
   };
 }
 
 // ── Badges ─────────────────────────────────────────────
 
 const jenisBadgeMap: Record<Jenis, string> = {
-  MoA: 'bg-cyan-100 text-cyan-700',
-  MoU: 'bg-violet-100 text-violet-700',
-  IA: 'bg-orange-100 text-orange-700',
-};
-
-const statusDotMap: Record<StatusKerjasama, string> = {
-  Aktif: 'bg-green-500',
-  'Akan Berakhir': 'bg-orange-500',
-  Kadaluarsa: 'bg-red-500',
+  MoA: 'border-cyan-500 bg-cyan-50 text-cyan-700',
+  MoU: 'border-violet-500 bg-violet-50 text-violet-700',
+  IA: 'border-orange-500 bg-orange-50 text-orange-700',
 };
 
 const jenisOptions = ['Semua Jenis', 'MoA', 'MoU', 'IA'];
@@ -147,233 +159,191 @@ export default function EksternalStoryAktivitasPage() {
   const [search, setSearch] = useState('');
   const [filterJenis, setFilterJenis] = useState('Semua Jenis');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
+  const [filterTahun, setFilterTahun] = useState('Semua Tahun');
   const [selectedStory, setSelectedStory] = useState<KerjasamaStory | null>(null);
+  const rekapRef = useRef<RekapDokumen[]>([]);
 
   useEffect(() => {
     let isMounted = true;
-    const updateEventName = getExternalPengajuanUpdateEventName();
 
-    // Sebelumnya halaman ini selalu baca cache gabungan (getExternalPengajuanData()), yang
-    // punya celah: kalau pengajuan yang dihapus dari Daftar Kerjasama adalah SATU-SATUNYA
-    // pengajuan eksternal yang tersisa, sync-nya menganggap hasil live kosong = "belum tentu
-    // segar" (lihat canPruneStale di syncExternalPengajuanWithAdminData) sehingga entri lama di
-    // cache tidak pernah dibuang — pengajuan yang sudah dihapus tetap nongol lagi di sini
-    // beserta story & aktivitasnya, padahal di Daftar Kerjasama sudah hilang.
-    // Sekarang utamakan hasil fetch API langsung (sama seperti Daftar Kerjasama): begitu sebuah
-    // pengajuan dihapus (soft-delete dihapus_user_pada), otomatis tidak ikut kefetch lagi dan
-    // story & aktivitasnya pun ikut hilang dari tampilan eksternal ini — cache cuma dipakai
-    // sebagai fallback saat API benar-benar gagal (offline).
-    const sync = async () => {
+    const rebuild = () => {
       if (!isMounted) return;
-
-      try {
-        const [pengajuanItems] = await Promise.all([
-          fetchPengajuanDataFromApi({ perPage: 500 }),
-          refreshAktivitasDataFromApi().catch(() => ({})),
-        ]);
-        if (!isMounted) return;
-
-        syncExternalPengajuanWithAdminData();
-
-        const ownItems = pengajuanItems.filter((item) => item.kategoriPengajuan === 'Eksternal');
-        const approved = ownItems.filter((item) => APPROVED_STATUSES.has(item.statusPengajuan));
-        setKerjasamaData(groupStoryAktivitasByMitra(approved).map(mapStoryGroupToStory));
-      } catch {
-        // Offline/API gagal -> fallback ke cache lokal supaya halaman tidak kosong total.
-        if (!isMounted) return;
-        const items = getExternalPengajuanData();
-        const approved = items.filter((item) => APPROVED_STATUSES.has(item.statusPengajuan));
-        setKerjasamaData(groupStoryAktivitasByMitra(approved).map(mapStoryGroupToStory));
-      }
+      setKerjasamaData(groupStoryAktivitasFromRekap(rekapRef.current).map(mapStoryGroupToStory));
     };
 
-    void sync();
+    void Promise.all([
+      fetchRekapDokumenFromApi({ forceRefresh: true }),
+      refreshAktivitasDataFromApi().catch(() => undefined),
+    ])
+      .then(([rows]) => {
+        rekapRef.current = rows;
+        rebuild();
+      })
+      .catch(() => undefined);
 
-    const handler = () => void sync();
-    window.addEventListener(updateEventName, handler);
-    window.addEventListener('pengajuan-data-updated', handler);
-    window.addEventListener('story-data-updated', handler);
-
+    window.addEventListener('story-data-updated', rebuild);
     return () => {
       isMounted = false;
-      window.removeEventListener(updateEventName, handler);
-      window.removeEventListener('pengajuan-data-updated', handler);
-      window.removeEventListener('story-data-updated', handler);
+      window.removeEventListener('story-data-updated', rebuild);
     };
   }, []);
 
-  const allAktivitas = kerjasamaData.flatMap((k) => k.aktivitas);
-  const totalAktivitas = allAktivitas.length;
-  const kerjasamaAktif = kerjasamaData.filter((k) => k.status === 'Aktif').length;
-  const now = new Date();
-  const bulanIni = allAktivitas.filter((a) => {
-    const normalized = a.tanggal.includes('/') ? a.tanggal : new Date(a.tanggal).toLocaleDateString('en-GB');
-    const parts = normalized.split('/');
-    const month = Number(parts[1]);
-    const year = Number(parts[2]);
-    return month === now.getMonth() + 1 && year === now.getFullYear();
-  }).length;
-  const rataRata = kerjasamaData.length > 0 ? Math.round(totalAktivitas / kerjasamaData.length) : 0;
+  const tahunOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(kerjasamaData.map((k) => k.tanggalBerakhir.slice(-4)).filter((y) => /^\d{4}$/.test(y))),
+      ).sort((a, b) => Number(b) - Number(a)),
+    [kerjasamaData],
+  );
 
   const filtered = useMemo(() => {
     return kerjasamaData.filter((k) => {
       const keyword = search.toLowerCase().trim();
-      const matchSearch = keyword === '' || k.namaMitra.toLowerCase().includes(keyword) || k.noDokumen.toLowerCase().includes(keyword);
+      const matchSearch =
+        keyword === '' ||
+        k.namaMitra.toLowerCase().includes(keyword) ||
+        k.noDokumen.toLowerCase().includes(keyword);
       const matchJenis = filterJenis === 'Semua Jenis' || k.jenis === filterJenis;
       const matchStatus = filterStatus === 'Semua Status' || k.status === filterStatus;
-      return matchSearch && matchJenis && matchStatus;
+      const matchTahun = filterTahun === 'Semua Tahun' || k.tanggalBerakhir.endsWith(filterTahun);
+      return matchSearch && matchJenis && matchStatus && matchTahun;
     });
-  }, [kerjasamaData, search, filterJenis, filterStatus]);
+  }, [kerjasamaData, search, filterJenis, filterStatus, filterTahun]);
 
   if (selectedStory) {
     return <DetailStoryModal story={selectedStory} onBack={() => setSelectedStory(null)} />;
   }
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
+    <div className="space-y-6">
       <div>
-        <h1 className="page-title">Story & Aktivitas Kerjasama</h1>
-        <p className="page-subtitle mt-1">Timeline dan monitoring aktivitas dari kerjasama yang sudah disetujui</p>
+        <h1 className="page-title">Story dan Aktivitas Kerja Sama</h1>
+        <p className="page-subtitle mt-0.5">Rekam jejak aktivitas kerja sama, dikelompokkan per mitra</p>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard icon={<Activity size={20} className="text-blue-500" />} iconBg="bg-blue-100" title="Total Aktivitas" value={totalAktivitas} caption="Semua aktivitas tercatat" />
-        <StatCard icon={<CalendarCheck size={20} className="text-green-500" />} iconBg="bg-green-100" title="Kerjasama Aktif" value={kerjasamaAktif} caption="Memiliki aktivitas" />
-        <StatCard icon={<Calendar size={20} className="text-purple-500" />} iconBg="bg-purple-100" title="Bulan Ini" value={bulanIni} caption="Aktivitas di bulan ini" />
-        <StatCard icon={<BookOpen size={20} className="text-orange-500" />} iconBg="bg-orange-100" title="Rata-rata" value={rataRata} caption="Aktivitas per kerjasama" />
-      </div>
+      {/* Toolbar: total mitra + filter + search */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50">
+              <Users size={20} className="text-blue-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold leading-none text-gray-900">{kerjasamaData.length}</p>
+              <p className="mt-1 text-xs font-medium text-gray-500">Total mitra dengan kerja sama</p>
+            </div>
+          </div>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-gray-700">
-            <Filter size={15} />
-            Filter:
-          </span>
-          <select
-            value={filterJenis}
-            onChange={(e) => setFilterJenis(e.target.value)}
-            className="input-field px-3 py-2 text-[12px] text-gray-700"
-          >
-            {jenisOptions.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="input-field px-3 py-2 text-[12px] text-gray-700"
-          >
-            {statusOptions.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
+          <div className="relative w-full lg:max-w-xs">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Cari nama mitra…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm outline-none transition placeholder:text-gray-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/30"
+            />
+          </div>
         </div>
 
-        <label className="relative w-full md:max-w-sm md:ml-auto">
-          <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari berdasarkan nama mitra..."
-            className="input-field h-10 w-full pl-10 pr-3 text-[12px] text-gray-700 placeholder:text-gray-400"
-          />
-        </label>
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
+          <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500">
+            <Filter size={14} /> Filter
+          </span>
+          {[
+            { value: filterJenis, set: setFilterJenis, opts: jenisOptions },
+            { value: filterStatus, set: setFilterStatus, opts: statusOptions },
+            { value: filterTahun, set: setFilterTahun, opts: ['Semua Tahun', ...tahunOptions] },
+          ].map((f, i) => (
+            <div key={i} className="relative">
+              <select
+                value={f.value}
+                onChange={(e) => f.set(e.target.value)}
+                className="appearance-none rounded-xl border border-gray-200 bg-gray-50 py-2 pl-3.5 pr-9 text-sm font-medium text-gray-700 outline-none transition hover:bg-gray-100 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/30"
+              >
+                {f.opts.map((o) => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Kerjasama Cards */}
-      <div className="space-y-4">
-        {filtered.length === 0 ? (
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-10 text-center text-[12px] text-gray-500">
+      {/* Kerjasama List */}
+      <div className="space-y-3">
+        {filtered.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center text-sm text-gray-400">
             {kerjasamaData.length === 0
-              ? 'Belum ada kerjasama yang disetujui. Story & aktivitas akan muncul setelah pengajuan di-ACC oleh admin.'
-              : 'Data tidak ditemukan.'}
+              ? 'Belum ada kerja sama yang disetujui. Story & aktivitas muncul setelah pengajuan di-ACC admin.'
+              : 'Tidak ada data ditemukan'}
           </div>
-        ) : (
-          filtered.map((k) => (
-            <div key={k.id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="flex items-center gap-2.5">
-                    <h3 className="text-[13.5px] font-bold text-gray-900">{k.namaMitra}</h3>
-                    <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${jenisBadgeMap[k.jenis]}`}>{k.jenis}</span>
+        )}
+
+        {filtered.map((k) => (
+          <div
+            key={k.key}
+            className="group flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:border-blue-300 hover:shadow-md"
+          >
+            <div className="w-1.5 shrink-0 bg-gradient-to-b from-blue-500 to-[#0e1d34]" />
+
+            <div className="flex-1 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="line-clamp-2 text-[15px] font-bold text-gray-900">{k.namaMitra}</h3>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${jenisBadgeMap[k.jenis]}`}>
+                      {k.jenis}
+                    </span>
+                    {k.totalPengajuan > 1 && (
+                      <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                        {k.totalPengajuan} dokumen digabung
+                      </span>
+                    )}
                   </div>
-                  <p className="mt-0.5 text-[10px] text-gray-500">
-                    {k.noDokumen}
-                    <span className="mx-2 text-gray-300">•</span>
-                    Berakhir: {k.tanggalBerakhir}
+                  <p className="mt-1 truncate text-xs text-gray-500">
+                    {k.noDokumen} <span className="text-gray-300">•</span> Berakhir {k.tanggalBerakhir}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`h-2.5 w-2.5 rounded-full ${statusDotMap[k.status]}`} />
-                  <span className="text-[12px] font-medium text-gray-700">{k.status}</span>
-                </div>
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-4 text-[10px] text-gray-500">
-                <span className="inline-flex items-center gap-1">
-                  <Activity size={13} />
-                  {k.aktivitas.length} Aktivitas
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <Users size={13} />
-                  {k.jurusanTerlibat.length} Jurusan Terlibat
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <FileText size={13} />
-                  {k.ruangLingkup.length} Ruang Lingkup
-                </span>
 
                 <button
                   type="button"
                   onClick={() => setSelectedStory(k)}
-                  className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#F28C00] px-3 py-1.5 text-[10px] font-semibold text-white transition-colors hover:bg-[#d97b00]"
+                  className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl bg-[#0e1d34] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[#1a2d4a]"
                 >
-                  <Eye size={13} />
-                  Lihat Detail & Story
+                  <Eye size={14} />
+                  Lihat Detail
                 </button>
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                {k.jurusanTerlibat.map((j) => (
-                  <span key={j} className="rounded-full border border-gray-200 bg-white px-3 py-1 text-[10px] font-medium text-gray-700">
-                    {j}
-                  </span>
-                ))}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600">
+                  <Activity size={13} className="text-gray-400" />
+                  {k.aktivitas.length} Aktivitas
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600">
+                  <Users size={13} className="text-gray-400" />
+                  {k.jurusanTerlibat.length} Jurusan
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600">
+                  <FileText size={13} className="text-gray-400" />
+                  {k.ruangLingkup.length} Ruang Lingkup
+                </span>
               </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
 
-function StatCard({
-  icon,
-  iconBg,
-  title,
-  value,
-  caption,
-}: {
-  icon: React.ReactNode;
-  iconBg: string;
-  title: string;
-  value: number;
-  caption: string;
-}) {
-  return (
-    <div className="stat-card flex items-start gap-3 p-3.5">
-      <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${iconBg}`}>
-        {icon}
-      </div>
-      <div>
-        <p className="text-[10px] text-gray-500">{title}</p>
-        <p className="mt-0.5 text-[17px] font-bold text-gray-900">{value}</p>
-        <p className="text-[10.5px] text-gray-400">{caption}</p>
+              {k.jurusanTerlibat.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {k.jurusanTerlibat.map((j) => (
+                    <span key={j} className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                      {j}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

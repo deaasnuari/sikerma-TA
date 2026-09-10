@@ -29,7 +29,8 @@ type ApiSingleResponse<T> = {
 
 type ApiAktivitasRow = {
   id: number;
-  pengajuan_id: number;
+  pengajuan_id: number | null;
+  dokumen_kerjasama_id?: number | null;
   judul: string;
   jenis_aktivitas: string;
   tanggal: string;
@@ -171,12 +172,20 @@ export async function refreshAktivitasDataFromApi(): Promise<Record<string, Akti
   const grouped: Record<string, AktivitasItem[]> = {};
 
   for (const row of response.data || []) {
-    const key = String(row.pengajuan_id);
-    if (!grouped[key]) {
-      grouped[key] = [];
-    }
+    const item = mapApiAktivitasToItem(row);
+    // Di-index by dokumen_kerjasama_id (jalur Story & Aktivitas dari Rekap Data) DAN
+    // by pengajuan_id (jalur lama internal/eksternal). Baris yang punya keduanya
+    // masuk ke dua key, jadi lookup lewat id mana pun tetap ketemu.
+    const keys = [row.dokumen_kerjasama_id, row.pengajuan_id]
+      .filter((v): v is number => typeof v === 'number' && v > 0)
+      .map(String);
 
-    grouped[key].push(mapApiAktivitasToItem(row));
+    for (const key of keys) {
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(item);
+    }
   }
 
   saveAllAktivitasData(grouped);
@@ -218,6 +227,49 @@ export async function deleteAktivitasApi(aktivitasId: number): Promise<void> {
   });
 
   await refreshAktivitasDataFromApi();
+}
+
+// ── Aktivitas yang menempel ke dokumen kerja sama (Story & Aktivitas admin) ──
+
+function mapItemToDokumenApiPayload(dokumenKerjasamaId: number, item: Omit<AktivitasItem, 'id'>) {
+  return {
+    dokumen_kerjasama_id: dokumenKerjasamaId,
+    judul: item.judul,
+    jenis_aktivitas: item.jenisAktivitas,
+    tanggal: item.tanggal,
+    jumlah_peserta: Number(item.peserta || 0),
+    deskripsi: item.deskripsi || '',
+    pic_polibatam: item.picPolibatam || '',
+    pic_mitra: item.picMitra || '',
+    status: normalizeStatus(item.status),
+  };
+}
+
+export async function createAktivitasForDokumenApi(
+  dokumenKerjasamaId: number,
+  item: Omit<AktivitasItem, 'id'>
+): Promise<AktivitasItem> {
+  const response = await apiRequest<ApiSingleResponse<ApiAktivitasRow>>('/pengajuan-aktivitas', {
+    method: 'POST',
+    body: JSON.stringify(mapItemToDokumenApiPayload(dokumenKerjasamaId, item)),
+  });
+
+  await refreshAktivitasDataFromApi();
+  return mapApiAktivitasToItem(response.data);
+}
+
+export async function updateAktivitasForDokumenApi(
+  aktivitasId: number,
+  dokumenKerjasamaId: number,
+  item: Omit<AktivitasItem, 'id'>
+): Promise<AktivitasItem> {
+  const response = await apiRequest<ApiSingleResponse<ApiAktivitasRow>>(`/pengajuan-aktivitas/${aktivitasId}`, {
+    method: 'PUT',
+    body: JSON.stringify(mapItemToDokumenApiPayload(dokumenKerjasamaId, item)),
+  });
+
+  await refreshAktivitasDataFromApi();
+  return mapApiAktivitasToItem(response.data);
 }
 
 /**

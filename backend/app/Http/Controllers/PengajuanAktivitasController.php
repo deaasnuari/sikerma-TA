@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DokumenKerjasama;
 use App\Models\Pengajuan;
 use App\Models\PengajuanAktivitas;
 use App\Services\StructuralAccessService;
@@ -14,7 +15,9 @@ class PengajuanAktivitasController extends Controller
     private function baseValidationRules(): array
     {
         return [
-            'pengajuan_id' => ['required', 'integer', Rule::exists((new Pengajuan)->getTable(), 'id')],
+            // Aktivitas menempel ke pengajuan ATAU ke dokumen kerja sama — minimal salah satu.
+            'pengajuan_id' => ['nullable', 'required_without:dokumen_kerjasama_id', 'integer', Rule::exists((new Pengajuan)->getTable(), 'id')],
+            'dokumen_kerjasama_id' => ['nullable', 'required_without:pengajuan_id', 'integer', Rule::exists('dokumen_kerjasama', 'id')],
             'judul' => ['required', 'string', 'max:255'],
             'jenis_aktivitas' => ['required', 'string', 'max:120'],
             'tanggal' => ['required', 'date'],
@@ -73,42 +76,118 @@ class PengajuanAktivitasController extends Controller
     }
 
     /**
-     * Hanya PEMILIK pengajuan (bukan sekadar yang di-CC) atau admin yang boleh
-     * menambah/mengubah/menghapus aktivitas. User yang di-CC cuma boleh melihat.
+     * unit_prodi_id yang berada dalam cakupan struktural user (Ketua Jurusan/Prodi/Kepala Unit).
+     * Kosong untuk role/akun tanpa jabatan struktural.
+     *
+     * @return array<int, int>
      */
-    private function ensureCanManage(Request $request, int $pengajuanId): ?Response
+    private function scopedUnitProdiIds(Request $request): array
+    {
+        $user = $request->user();
+        if (!$user || !in_array($this->normalizedRole($request), ['internal', 'unit', 'jurusan', 'prodi'], true)) {
+            return [];
+        }
+
+        $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
+
+        return app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access) ?? [];
+    }
+
+    /**
+     * ID dokumen_kerjasama yang boleh dilihat non-admin: berasal dari pengajuan yang boleh
+     * dilihat, dibuat sendiri oleh user, ATAU berada dalam cakupan jurusan/prodi/unit yang
+     * dipimpin user (LDAP Ketua Jurusan/Prodi/Kepala Unit). Null untuk admin.
+     *
+     * @param  array<int, int>|null  $viewablePengajuanIds
+     */
+    private function viewableDokumenIds(Request $request, ?array $viewablePengajuanIds): ?array
+    {
+        if ($viewablePengajuanIds === null) {
+            return null;
+        }
+
+        $user = $request->user();
+        $scopedUnitProdiIds = $this->scopedUnitProdiIds($request);
+
+        return DokumenKerjasama::query()
+            ->where(function ($builder) use ($viewablePengajuanIds, $user, $scopedUnitProdiIds) {
+                $builder->whereIn('sumber_pengajuan_id', $viewablePengajuanIds);
+                if ($user) {
+                    $builder->orWhere('dibuat_oleh_user_id', $user->id);
+                }
+                if ($scopedUnitProdiIds) {
+                    $builder->orWhereIn('unit_prodi_id', $scopedUnitProdiIds);
+                }
+            })
+            ->pluck('id')->all();
+    }
+
+    /**
+     * Hanya admin, PEMILIK pengajuan sumbernya, ATAU pembuat dokumen kerja samanya yang
+     * boleh menambah/mengubah/menghapus aktivitas. User yang cuma di-CC hanya bisa melihat.
+     */
+    private function ensureCanManage(Request $request, ?int $pengajuanId, ?int $dokumenId): ?Response
     {
         if ($this->isAdminRole($request)) {
             return null;
         }
 
         $user = $request->user();
-        $isOwner = $user && Pengajuan::query()
-            ->where('id', $pengajuanId)
-            ->where('user_pengusul_id', $user->id)
-            ->exists();
-
-        if (!$isOwner) {
-            return response([
-                'success' => false,
-                'message' => 'Anda tidak memiliki akses untuk mengubah aktivitas pada pengajuan ini.',
-            ], 403);
+        if (!$user) {
+            return $this->tolakKelola();
         }
 
-        return null;
+        if ($pengajuanId && Pengajuan::query()->whereKey($pengajuanId)->where('user_pengusul_id', $user->id)->exists()) {
+            return null;
+        }
+
+        if ($dokumenId) {
+            $dokumen = DokumenKerjasama::query()->find($dokumenId);
+            if ($dokumen) {
+                if ((int) $dokumen->dibuat_oleh_user_id === (int) $user->id) {
+                    return null;
+                }
+                if ($dokumen->sumber_pengajuan_id
+                    && Pengajuan::query()->whereKey($dokumen->sumber_pengajuan_id)->where('user_pengusul_id', $user->id)->exists()) {
+                    return null;
+                }
+                $scopedUnitProdiIds = $this->scopedUnitProdiIds($request);
+                if ($scopedUnitProdiIds && in_array((int) $dokumen->unit_prodi_id, array_map('intval', $scopedUnitProdiIds), true)) {
+                    return null;
+                }
+            }
+        }
+
+        return $this->tolakKelola();
+    }
+
+    private function tolakKelola(): Response
+    {
+        return response([
+            'success' => false,
+            'message' => 'Anda tidak memiliki akses untuk mengubah aktivitas pada kerja sama ini.',
+        ], 403);
     }
 
     public function index(Request $request): Response
     {
         $query = PengajuanAktivitas::query()->orderByDesc('tanggal')->orderByDesc('id');
 
-        $viewableIds = $this->viewablePengajuanIds($request);
-        if ($viewableIds !== null) {
-            $query->whereIn('pengajuan_id', $viewableIds);
+        $viewablePengajuanIds = $this->viewablePengajuanIds($request);
+        if ($viewablePengajuanIds !== null) {
+            $viewableDokumenIds = $this->viewableDokumenIds($request, $viewablePengajuanIds);
+            $query->where(function ($builder) use ($viewablePengajuanIds, $viewableDokumenIds) {
+                $builder->whereIn('pengajuan_id', $viewablePengajuanIds)
+                    ->orWhereIn('dokumen_kerjasama_id', $viewableDokumenIds ?: [0]);
+            });
         }
 
         if ($request->filled('pengajuan_id')) {
             $query->where('pengajuan_id', (int) $request->input('pengajuan_id'));
+        }
+
+        if ($request->filled('dokumen_kerjasama_id')) {
+            $query->where('dokumen_kerjasama_id', (int) $request->input('dokumen_kerjasama_id'));
         }
 
         return response([
@@ -122,7 +201,10 @@ class PengajuanAktivitasController extends Controller
     {
         $validated = $request->validate($this->baseValidationRules());
 
-        if ($response = $this->ensureCanManage($request, (int) $validated['pengajuan_id'])) {
+        $pengajuanId = isset($validated['pengajuan_id']) ? (int) $validated['pengajuan_id'] : null;
+        $dokumenId = isset($validated['dokumen_kerjasama_id']) ? (int) $validated['dokumen_kerjasama_id'] : null;
+
+        if ($response = $this->ensureCanManage($request, $pengajuanId, $dokumenId)) {
             return $response;
         }
 
@@ -140,17 +222,22 @@ class PengajuanAktivitasController extends Controller
 
     public function update(Request $request, PengajuanAktivitas $pengajuan_aktivitas): Response
     {
-        if ($response = $this->ensureCanManage($request, (int) $pengajuan_aktivitas->pengajuan_id)) {
+        if ($response = $this->ensureCanManage($request, (int) $pengajuan_aktivitas->pengajuan_id ?: null, (int) $pengajuan_aktivitas->dokumen_kerjasama_id ?: null)) {
             return $response;
         }
 
         $validated = $request->validate($this->baseValidationRules());
 
-        if ($response = $this->ensureCanManage($request, (int) $validated['pengajuan_id'])) {
+        $pengajuanId = isset($validated['pengajuan_id']) ? (int) $validated['pengajuan_id'] : null;
+        $dokumenId = isset($validated['dokumen_kerjasama_id']) ? (int) $validated['dokumen_kerjasama_id'] : null;
+
+        if ($response = $this->ensureCanManage($request, $pengajuanId, $dokumenId)) {
             return $response;
         }
 
         $validated['jumlah_peserta'] = (int) ($validated['jumlah_peserta'] ?? 0);
+        $validated['pengajuan_id'] = $pengajuanId;
+        $validated['dokumen_kerjasama_id'] = $dokumenId;
 
         $pengajuan_aktivitas->update($validated);
 
@@ -163,7 +250,7 @@ class PengajuanAktivitasController extends Controller
 
     public function destroy(Request $request, PengajuanAktivitas $pengajuan_aktivitas): Response
     {
-        if ($response = $this->ensureCanManage($request, (int) $pengajuan_aktivitas->pengajuan_id)) {
+        if ($response = $this->ensureCanManage($request, (int) $pengajuan_aktivitas->pengajuan_id ?: null, (int) $pengajuan_aktivitas->dokumen_kerjasama_id ?: null)) {
             return $response;
         }
 

@@ -19,8 +19,8 @@ import {
 } from 'lucide-react';
 import type { KerjasamaStory, Aktivitas } from './page';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
-import { getLaporanPelaksanaanByPengajuanIds, type LaporanPelaksanaanRecord } from '@/services/laporanPelaksanaanService';
-import { createAktivitasApi } from '@/services/adminStoryAktivitasService';
+import { getLaporanPelaksanaanByDokumenKerjasamaIds, type LaporanPelaksanaanRecord } from '@/services/laporanPelaksanaanService';
+import { createAktivitasForDokumenApi } from '@/services/adminStoryAktivitasService';
 
 type Jenis = 'MoA' | 'MoU' | 'IA';
 type StatusKerjasama = 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
@@ -74,8 +74,22 @@ function formatLaporanDate(value?: string): string {
   return parsed.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+const kerjasamaStatusBadge: Record<StatusKerjasama, string> = {
+  Aktif: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  'Akan Berakhir': 'border-amber-200 bg-amber-50 text-amber-700',
+  Kadaluarsa: 'border-red-200 bg-red-50 text-red-700',
+};
+
 export default function DetailStoryModal({ story, onBack }: DetailStoryModalProps) {
   const [aktivitasList, setAktivitasList] = useState<Aktivitas[]>(story.aktivitas);
+  const [pesanError, setPesanError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pesanError) return;
+    const t = setTimeout(() => setPesanError(null), 4000);
+    return () => clearTimeout(t);
+  }, [pesanError]);
+
   const totalAktivitas = aktivitasList.length;
   const selesai = aktivitasList.filter((a) => a.status === 'selesai').length;
   const berlangsung = aktivitasList.filter((a) => a.status === 'berlangsung').length;
@@ -87,14 +101,14 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
   const [laporanLoading, setLaporanLoading] = useState(false);
 
   useEffect(() => {
-    if (story.pengajuanIds.length === 0) {
+    if (story.dokumenKerjasamaIds.length === 0) {
       setLaporanTerkirim([]);
       return;
     }
 
     let isMounted = true;
     setLaporanLoading(true);
-    getLaporanPelaksanaanByPengajuanIds(story.pengajuanIds)
+    getLaporanPelaksanaanByDokumenKerjasamaIds(story.dokumenKerjasamaIds)
       .then((rows) => {
         if (isMounted) setLaporanTerkirim(rows);
       })
@@ -108,27 +122,27 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
     return () => {
       isMounted = false;
     };
-  }, [story.pengajuanIds, showLaporanModal]);
+  }, [story.dokumenKerjasamaIds, showLaporanModal]);
 
-  const laporanData = story.pengajuanId
+  const laporanData = story.dokumenKerjasamaIds[0]
     ? {
         namaMitra: story.namaMitra,
         noDokumen: story.noDokumen,
         jenis: story.jenis,
         ruangLingkup: story.ruangLingkup,
-        pengajuanId: story.pengajuanId,
+        dokumenKerjasamaId: story.dokumenKerjasamaIds[0],
       }
     : null;
 
   async function handleTambahAktivitas(data: Aktivitas, jenisAktivitas: string) {
-    const kerjasamaId = story.pengajuanId ?? story.pengajuanIds[0];
-    if (!kerjasamaId) {
-      alert('Aktivitas tidak bisa disimpan karena kerja sama ini tidak terhubung ke pengajuan manapun.');
+    const dokumenId = story.dokumenKerjasamaIds[0];
+    if (!dokumenId) {
+      setPesanError('Aktivitas tidak bisa disimpan karena kerja sama ini tidak punya dokumen.');
       return;
     }
 
     try {
-      const created = await createAktivitasApi(kerjasamaId, {
+      const created = await createAktivitasForDokumenApi(dokumenId, {
         judul: data.judul,
         jenisAktivitas,
         tanggal: data.tanggal,
@@ -141,7 +155,7 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
       setAktivitasList((prev) => [{ ...data, id: String(created.id) }, ...prev]);
       setShowTambah(false);
     } catch (error) {
-      alert(error instanceof Error && error.message ? error.message : 'Gagal menyimpan aktivitas ke server.');
+      setPesanError(error instanceof Error && error.message ? error.message : 'Gagal menyimpan aktivitas ke server.');
     }
   }
 
@@ -255,6 +269,44 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Dokumen Kerja Sama pada mitra ini */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-[13.5px] font-bold text-gray-900">
+            Dokumen Kerja Sama
+            <span className="ml-2 text-[11px] font-medium text-gray-500">({story.dokumen.length} dokumen)</span>
+          </h3>
+          <div className="flex flex-wrap gap-2 text-[10px] font-semibold">
+            {(['Aktif', 'Akan Berakhir', 'Kadaluarsa'] as const).map((label) => (
+              <span key={label} className={`rounded-full border px-2.5 py-1 ${kerjasamaStatusBadge[label]}`}>
+                {story.rincianStatus[label]} {label}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-2.5">
+          {story.dokumen.map((d) => (
+            <div key={d.id} className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold text-gray-800">{d.noDokumen}</p>
+                <div className="flex items-center gap-1.5">
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${kerjasamaStatusBadge[d.status]}`}>
+                    {d.status}
+                  </span>
+                  <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600">
+                    {d.jenis}
+                  </span>
+                </div>
+              </div>
+              <p className="mt-1 text-[10px] text-gray-500">
+                {d.tanggalMulai} – {d.tanggalBerakhir}
+                {d.unit && d.unit !== '-' && <> <span className="text-gray-300">•</span> {d.unit}</>}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -399,6 +451,12 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
         onClose={() => setShowLaporanModal(false)}
         data={laporanData}
       />
+
+      {pesanError && (
+        <div className="fixed bottom-5 left-1/2 z-[95] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-[12px] font-semibold text-red-700 shadow-lg">
+          {pesanError}
+        </div>
+      )}
     </div>
   );
 }

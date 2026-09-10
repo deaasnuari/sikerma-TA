@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Archive, Bell, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Eye, Filter, HandshakeIcon, Mail, MessageCircle, Phone, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 // import RenewalHistoryModal from './RenewalHistoryModal';
 import RenewalFullForm from './RenewalFullForm';
@@ -58,6 +59,7 @@ export default function MonitoringdanstatusPage() {
   const [nonactiveModal, setNonactiveModal] = useState<{ open: boolean; kerjasamaId: number | null }>({ open: false, kerjasamaId: null });
   const [nonactiveHistories, setNonactiveHistories] = useState<Record<number, NonactiveRecord[]>>({});
   const [monitoringData, setMonitoringData] = useState<Kerjasama[]>([]);
+  const [hapusTarget, setHapusTarget] = useState<Kerjasama | null>(null);
   // State untuk toggle form sederhana/baru
   const [showSimpleForm, setShowSimpleForm] = useState(false);
 
@@ -263,14 +265,15 @@ export default function MonitoringdanstatusPage() {
   const selectedNonactiveItem = findKerjasamaById(monitoringData, nonactiveModal.kerjasamaId);
 
   const handleDeleteMonitoring = (item: Kerjasama) => {
-    const isConfirmed = window.confirm(`Yakin ingin menghapus data monitoring untuk ${item.namaMitra}?`);
-    if (!isConfirmed) {
-      return;
-    }
+    setHapusTarget(item);
+  };
 
+  const jalankanHapusMonitoring = () => {
+    if (!hapusTarget) return;
     // Langsung perbarui tampilan dari hasil hapus lokal — jangan nunggu refetch API
     // (event 'monitoring-data-updated' tetap memicu sinkronisasi server di latar belakang).
-    setMonitoringData(deleteMonitoringItem(item.id));
+    setMonitoringData(deleteMonitoringItem(hapusTarget.id));
+    setHapusTarget(null);
   };
 
   return (
@@ -959,6 +962,15 @@ export default function MonitoringdanstatusPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={hapusTarget !== null}
+        title="Hapus data monitoring?"
+        message={`Data monitoring untuk ${hapusTarget?.namaMitra ?? ''} akan dihapus dari daftar.`}
+        confirmLabel="Ya, hapus"
+        onConfirm={jalankanHapusMonitoring}
+        onCancel={() => setHapusTarget(null)}
+      />
     </div>
   );
 }

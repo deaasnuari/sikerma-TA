@@ -120,10 +120,15 @@ class AuthController extends Controller
      * tidak. Tidak berdampak ke akun dummy migrasi lama yang role-nya juga 'unit' — mereka
      * auth_provider='local', bukan 'ldap', jadi baris login() di bawah (yang mensyaratkan
      * KEDUANYA role masuk daftar ini DAN auth_provider='ldap') tidak ikut memblokir mereka.
+     *
+     * 'admin'/'admin-humas' ikut supaya akun civitas asli yang dipromosikan admin lewat
+     * Manajemen User tetap bisa login lewat tombol "Login dengan Akun Kampus" (dulu ditolak
+     * "bukan akun civitas Polibatam"). Role admin TIDAK ikut di-refresh otomatis
+     * (lihat autoRefreshableCivitasRoles()), jadi tidak akan turun jadi internal saat login.
      */
     private function ldapOnlyRoles(): array
     {
-        return ['internal', 'pimpinan', 'unit', 'jurusan', 'prodi'];
+        return ['internal', 'pimpinan', 'unit', 'jurusan', 'prodi', 'admin', 'admin-humas'];
     }
 
     /**

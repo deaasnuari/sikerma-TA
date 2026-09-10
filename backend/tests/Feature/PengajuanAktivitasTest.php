@@ -388,4 +388,102 @@ class PengajuanAktivitasTest extends TestCase
         $this->assertContains($aktivitasDalamUnit->id, $ids);
         $this->assertNotContains($aktivitasUnitLain->id, $ids);
     }
+
+    // ------------------------------------------------------------------
+    // aktivitas menempel ke dokumen_kerjasama (Story & Aktivitas dari Rekap Data)
+    // ------------------------------------------------------------------
+
+    private function buatDokumen(?int $sumberPengajuanId = null, ?int $dibuatOlehUserId = null): \App\Models\DokumenKerjasama
+    {
+        $unit = \App\Models\MasterUnitProdi::create([
+            'jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'TI ' . fake()->unique()->numerify('##'), 'aktif' => true,
+        ]);
+
+        return \App\Models\DokumenKerjasama::create([
+            'no_permohonan'      => 'PMH-' . fake()->unique()->numerify('#####'),
+            'nomor_dokumen'      => 'DOK-' . fake()->unique()->numerify('###'),
+            'nama_dokumen'       => 'Dok',
+            'file'               => 'x.pdf',
+            'status_siklus'      => 'active',
+            'unit_prodi_id'      => $unit->id,
+            'sumber_pengajuan_id' => $sumberPengajuanId,
+            'dibuat_oleh_user_id' => $dibuatOlehUserId,
+        ]);
+    }
+
+    public function test_admin_buat_aktivitas_untuk_dokumen_tanpa_pengajuan(): void
+    {
+        $admin = $this->user('admin');
+        $dokumen = $this->buatDokumen();
+
+        $response = $this->actingAs($admin)->postJson('/api/pengajuan-aktivitas', [
+            'dokumen_kerjasama_id' => $dokumen->id,
+            'judul' => 'Kunjungan Industri', 'jenis_aktivitas' => 'Kunjungan',
+            'tanggal' => '2026-08-01', 'status' => 'selesai',
+        ]);
+
+        $response->assertCreated()->assertJsonPath('success', true);
+        $this->assertDatabaseHas('pengajuan_aktivitas', [
+            'dokumen_kerjasama_id' => $dokumen->id, 'pengajuan_id' => null, 'judul' => 'Kunjungan Industri',
+        ]);
+    }
+
+    public function test_buat_aktivitas_gagal_tanpa_pengajuan_dan_tanpa_dokumen(): void
+    {
+        $this->actingAs($this->user('admin'))->postJson('/api/pengajuan-aktivitas', [
+            'judul' => 'X', 'jenis_aktivitas' => 'Y', 'tanggal' => '2026-08-01', 'status' => 'selesai',
+        ])->assertStatus(422)->assertJsonValidationErrors(['pengajuan_id', 'dokumen_kerjasama_id']);
+    }
+
+    public function test_filter_aktivitas_by_dokumen_kerjasama_id(): void
+    {
+        $admin = $this->user('admin');
+        $dok1 = $this->buatDokumen();
+        $dok2 = $this->buatDokumen();
+        PengajuanAktivitas::create(['dokumen_kerjasama_id' => $dok1->id, 'judul' => 'A1', 'jenis_aktivitas' => 'W', 'tanggal' => '2026-07-01', 'status' => 'selesai']);
+        PengajuanAktivitas::create(['dokumen_kerjasama_id' => $dok2->id, 'judul' => 'A2', 'jenis_aktivitas' => 'W', 'tanggal' => '2026-07-02', 'status' => 'selesai']);
+
+        $response = $this->actingAs($admin)->getJson("/api/pengajuan-aktivitas?dokumen_kerjasama_id={$dok1->id}");
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('A1', $response->json('data.0.judul'));
+    }
+
+    public function test_non_admin_pembuat_dokumen_boleh_kelola_aktivitasnya(): void
+    {
+        $pemilik = $this->user('internal');
+        $dokumen = $this->buatDokumen(dibuatOlehUserId: $pemilik->id);
+
+        $this->actingAs($pemilik)->postJson('/api/pengajuan-aktivitas', [
+            'dokumen_kerjasama_id' => $dokumen->id,
+            'judul' => 'Rapat', 'jenis_aktivitas' => 'Rapat', 'tanggal' => '2026-08-01', 'status' => 'direncanakan',
+        ])->assertCreated();
+    }
+
+    public function test_non_admin_bukan_pembuat_dokumen_ditolak(): void
+    {
+        $orangLain = $this->user('internal');
+        $dokumen = $this->buatDokumen(dibuatOlehUserId: $this->user('internal')->id);
+
+        $this->actingAs($orangLain)->postJson('/api/pengajuan-aktivitas', [
+            'dokumen_kerjasama_id' => $dokumen->id,
+            'judul' => 'Rapat', 'jenis_aktivitas' => 'Rapat', 'tanggal' => '2026-08-01', 'status' => 'direncanakan',
+        ])->assertStatus(403);
+    }
+
+    public function test_non_admin_index_melihat_aktivitas_dokumen_buatannya(): void
+    {
+        $pemilik = $this->user('internal');
+        $dokumen = $this->buatDokumen(dibuatOlehUserId: $pemilik->id);
+        $akt = PengajuanAktivitas::create(['dokumen_kerjasama_id' => $dokumen->id, 'judul' => 'Punyaku', 'jenis_aktivitas' => 'W', 'tanggal' => '2026-07-01', 'status' => 'selesai']);
+        $dokLain = $this->buatDokumen(dibuatOlehUserId: $this->user('internal')->id);
+        PengajuanAktivitas::create(['dokumen_kerjasama_id' => $dokLain->id, 'judul' => 'Bukan Punyaku', 'jenis_aktivitas' => 'W', 'tanggal' => '2026-07-01', 'status' => 'selesai']);
+
+        $response = $this->actingAs($pemilik)->getJson('/api/pengajuan-aktivitas');
+
+        $ids = collect($response->json('data'))->pluck('id')->all();
+        $this->assertContains($akt->id, $ids);
+        $this->assertNotContains('Bukan Punyaku', collect($response->json('data'))->pluck('judul')->all());
+    }
 }

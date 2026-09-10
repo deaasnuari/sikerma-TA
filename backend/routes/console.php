@@ -16,6 +16,13 @@ Schedule::command('sikerma:kirim-reminder-kerjasama')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Selaraskan dokumen_kerjasama.status_siklus dengan tanggal_berakhir tiap hari — supaya
+// status Aktif/Akan Berakhir/Kadaluarsa konsisten di Rekap Data, Status & Progres, Arsip.
+Schedule::command('sikerma:sinkron-status-siklus --apply')
+    ->dailyAt('01:00')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 Artisan::command('civitas:sync-struktur {--apply : Terapkan perubahan ke database (default hanya preview/dry-run)}', function (CivitasStructureService $civitas) {
     // Isi kolom master_unit_prodi.kode_kampus (ID_JURUSAN/ID_PROGRAM_STUDI/ID_UNIT dari
     // Civitas API) berdasarkan pencocokan nama — sekali jalan, aman diulang (idempotent),

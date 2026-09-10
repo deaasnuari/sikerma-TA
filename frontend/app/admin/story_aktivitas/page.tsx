@@ -1,12 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
-  CheckCircle,
-  CalendarDays,
-  BarChart3,
   Filter,
   Search,
   Users,
@@ -14,9 +11,10 @@ import {
   Eye,
   ChevronDown,
 } from 'lucide-react';
-import { getHiddenStoryIds } from '@/services/adminStoryAktivitasService';
-import { getPengajuanData, refreshPengajuanDataFromApi } from '../../../services/adminPengajuanService';
-import { groupStoryAktivitasByMitra, type StoryAktivitasGroup } from '@/services/storyAktivitasGrouping';
+import { getHiddenStoryIds, refreshAktivitasDataFromApi } from '@/services/adminStoryAktivitasService';
+import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
+import type { RekapDokumen } from '@/services/adminRekapDataService';
+import { groupStoryAktivitasFromRekap, type StoryAktivitasGroup } from '@/services/storyAktivitasGrouping';
 
 interface Kerjasama {
   key: string;
@@ -50,22 +48,10 @@ function mapGroupToKerjasama(group: StoryAktivitasGroup): Kerjasama {
   };
 }
 
-const statusColor: Record<string, { dot: string; text: string }> = {
-  Aktif: { dot: 'bg-green-500', text: 'text-green-700' },
-  'Akan Berakhir': { dot: 'bg-yellow-400', text: 'text-yellow-700' },
-  Kadaluarsa: { dot: 'bg-red-500', text: 'text-red-700' },
-};
-
 const jenisColor: Record<string, string> = {
   MoA: 'border-blue-500 text-blue-700 bg-blue-50',
   MoU: 'border-purple-500 text-purple-700 bg-purple-50',
   IA: 'border-orange-500 text-orange-700 bg-orange-50',
-};
-
-const accentColor: Record<string, string> = {
-  Aktif: 'from-green-400 to-green-500',
-  'Akan Berakhir': 'from-yellow-400 to-yellow-500',
-  Kadaluarsa: 'from-red-400 to-red-500',
 };
 
 export default function StoryAktivitasPage() {
@@ -75,30 +61,35 @@ export default function StoryAktivitasPage() {
   const [filterTahun, setFilterTahun] = useState('Semua Tahun');
   const [search, setSearch] = useState('');
   const [sourceData, setSourceData] = useState<Kerjasama[]>([]);
+  const rekapRowsRef = useRef<RekapDokumen[]>([]);
 
   useEffect(() => {
     let isMounted = true;
 
-    const syncData = () => {
-      if (!isMounted) {
-        return;
-      }
-
-      // Satu kartu per mitra — kalau satu mitra punya beberapa pengajuan/dokumen,
-      // digabung jadi satu (lihat groupStoryAktivitasByMitra), bukan dipecah per pengajuan.
-      const groups = groupStoryAktivitasByMitra(getPengajuanData(), getHiddenStoryIds());
+    // Satu kartu per mitra — kalau satu mitra punya beberapa dokumen kerja sama
+    // (Rekap Data), digabung jadi satu (lihat groupStoryAktivitasFromRekap),
+    // bukan dipecah per dokumen. Detail-nya baru menampilkan tiap dokumen.
+    const rebuild = () => {
+      if (!isMounted) return;
+      const groups = groupStoryAktivitasFromRekap(rekapRowsRef.current, getHiddenStoryIds());
       setSourceData(groups.map(mapGroupToKerjasama));
     };
 
-    void refreshPengajuanDataFromApi(true).finally(syncData);
+    void Promise.all([
+      fetchRekapDokumenFromApi({ forceRefresh: true }),
+      refreshAktivitasDataFromApi().catch(() => undefined),
+    ])
+      .then(([rows]) => {
+        rekapRowsRef.current = rows;
+        rebuild();
+      })
+      .catch(() => undefined);
 
-    window.addEventListener('pengajuan-data-updated', syncData);
-    window.addEventListener('story-data-updated', syncData);
+    window.addEventListener('story-data-updated', rebuild);
 
     return () => {
       isMounted = false;
-      window.removeEventListener('pengajuan-data-updated', syncData);
-      window.removeEventListener('story-data-updated', syncData);
+      window.removeEventListener('story-data-updated', rebuild);
     };
   }, []);
 
@@ -119,143 +110,67 @@ export default function StoryAktivitasPage() {
     return matchJenis && matchStatus && matchTahun && matchSearch;
   });
 
-  const totalAktivitas = sourceData.reduce((s, i) => s + i.aktivitas, 0);
-  const kerjasamaAktif = sourceData.filter((i) => i.status === 'Aktif').length;
-  const now = new Date();
-  const bulanIni = sourceData.filter((item) => item.tahun === now.getFullYear()).length;
-  const rataRata =
-    sourceData.length > 0
-      ? Math.round(totalAktivitas / sourceData.length)
-      : 0;
-
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
-            <Activity size={22} className="text-blue-600" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 font-medium">Total Aktivitas</p>
-            <p className="text-3xl font-bold text-gray-900">{totalAktivitas}</p>
-            <p className="text-xs text-gray-400 mt-0.5">Semua aktivitas tercatat</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center shrink-0">
-            <CheckCircle size={22} className="text-green-600" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 font-medium">Kerjasama Aktif</p>
-            <p className="text-3xl font-bold text-gray-900">{kerjasamaAktif}</p>
-            <p className="text-xs text-gray-400 mt-0.5">Memiliki aktivitas</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
-            <CalendarDays size={22} className="text-purple-600" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 font-medium">Bulan Ini</p>
-            <p className="text-3xl font-bold text-gray-900">{bulanIni}</p>
-            <p className="text-xs text-gray-400 mt-0.5">Aktivitas di bulan ini</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-pink-100 flex items-center justify-center shrink-0">
-            <BarChart3 size={22} className="text-pink-600" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 font-medium">Rata-rata</p>
-            <p className="text-3xl font-bold text-gray-900">{rataRata}</p>
-            <p className="text-xs text-gray-400 mt-0.5">Aktivitas per kerjasama</p>
-          </div>
-        </div>
+      <div>
+        <h1 className="page-title">Story dan Aktivitas Kerja Sama</h1>
+        <p className="page-subtitle mt-0.5">Rekam jejak aktivitas kerja sama, dikelompokkan per mitra</p>
       </div>
 
-      {/* Filter & Search */}
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2 text-gray-700 font-semibold">
-          <Filter size={16} />
-          <span>Filter:</span>
+      {/* Toolbar: total mitra + filter + search */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50">
+              <Users size={20} className="text-blue-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold leading-none text-gray-900">{sourceData.length}</p>
+              <p className="mt-1 text-xs font-medium text-gray-500">Total mitra dengan kerja sama</p>
+            </div>
+          </div>
+
+          <div className="relative w-full lg:max-w-xs">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Cari nama mitra…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm outline-none transition placeholder:text-gray-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/30"
+            />
+          </div>
         </div>
 
-        <div className="relative">
-          <select
-            value={filterJenis}
-            onChange={(e) => setFilterJenis(e.target.value)}
-            className="appearance-none bg-white border border-gray-300 rounded-lg pl-4 pr-9 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          >
-            <option>Semua Jenis</option>
-            <option>MoA</option>
-            <option>MoU</option>
-            <option>IA</option>
-          </select>
-          <ChevronDown
-            size={14}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-          />
-        </div>
-
-        <div className="relative">
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="appearance-none bg-white border border-gray-300 rounded-lg pl-4 pr-9 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          >
-            <option>Semua Status</option>
-            <option>Aktif</option>
-            <option>Akan Berakhir</option>
-            <option>Kadaluarsa</option>
-          </select>
-          <ChevronDown
-            size={14}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-          />
-        </div>
-
-        <div className="relative">
-          <select
-            value={filterTahun}
-            onChange={(e) => setFilterTahun(e.target.value)}
-            className="appearance-none bg-white border border-gray-300 rounded-lg pl-4 pr-9 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          >
-            <option>Semua Tahun</option>
-            {tahunOptions.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <ChevronDown
-            size={14}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-          />
-        </div>
-
-        <div className="relative ml-auto">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          />
-          <input
-            type="text"
-            placeholder="Cari berdasarkan nama mitra"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm w-72 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          />
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
+          <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500">
+            <Filter size={14} /> Filter
+          </span>
+          {([
+            { value: filterJenis, set: setFilterJenis, opts: ['Semua Jenis', 'MoA', 'MoU', 'IA'] },
+            { value: filterStatus, set: setFilterStatus, opts: ['Semua Status', 'Aktif', 'Akan Berakhir', 'Kadaluarsa'] },
+            { value: filterTahun, set: setFilterTahun, opts: ['Semua Tahun', ...tahunOptions.map(String)] },
+          ] as const).map((f, i) => (
+            <div key={i} className="relative">
+              <select
+                value={f.value}
+                onChange={(e) => f.set(e.target.value)}
+                className="appearance-none rounded-xl border border-gray-200 bg-gray-50 py-2 pl-3.5 pr-9 text-sm font-medium text-gray-700 outline-none transition hover:bg-gray-100 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/30"
+              >
+                {f.opts.map((o) => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Kerjasama List */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         {filtered.length === 0 && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-12 text-center text-gray-400">
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center text-sm text-gray-400">
             Tidak ada data ditemukan
           </div>
         )}
@@ -263,87 +178,62 @@ export default function StoryAktivitasPage() {
         {filtered.map((item) => (
           <div
             key={item.key}
-            className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex"
+            className="group flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:border-blue-300 hover:shadow-md"
           >
-            <div
-              className={`w-2 shrink-0 bg-gradient-to-b ${accentColor[item.status]}`}
-            />
+            <div className="w-1.5 shrink-0 bg-gradient-to-b from-blue-500 to-[#0e1d34]" />
 
             <div className="flex-1 p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h3 className="text-lg font-bold text-gray-900">
-                      {item.nama}
-                    </h3>
-                    <span
-                      className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${jenisColor[item.jenis]}`}
-                    >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="line-clamp-2 text-[15px] font-bold text-gray-900">{item.nama}</h3>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${jenisColor[item.jenis]}`}>
                       {item.jenis}
                     </span>
                     {item.totalPengajuan > 1 && (
-                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full border border-slate-300 text-slate-600 bg-slate-50">
-                        {item.totalPengajuan} pengajuan digabung
+                      <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                        {item.totalPengajuan} dokumen digabung
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
-                    <span>{item.nomorDokumen}</span>
-                    <span>• Berakhir: {item.berakhir}</span>
-                  </div>
+                  <p className="mt-1 truncate text-xs text-gray-500">
+                    {item.nomorDokumen} <span className="text-gray-300">•</span> Berakhir {item.berakhir}
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <div
-                    className={`w-3 h-3 rounded-full ${statusColor[item.status].dot}`}
-                  />
-                  <span
-                    className={`text-sm font-semibold ${statusColor[item.status].text}`}
-                  >
-                    {item.status}
-                  </span>
-                </div>
+                <button
+                  onClick={() => router.push(`/admin/story_aktivitas/${item.key}`)}
+                  className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl bg-[#0e1d34] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[#1a2d4a]"
+                >
+                  <Eye size={14} />
+                  Lihat Detail
+                </button>
               </div>
 
-              <div className="flex items-center justify-between mt-4">
-                <div className="flex items-center gap-6 text-sm text-gray-600">
-                  <span className="flex items-center gap-1.5">
-                    <Activity size={14} className="text-gray-400" />
-                    {item.aktivitas} Aktivitas
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <Users size={14} className="text-gray-400" />
-                    {item.jurusanTerlibat} Jurusan Terlibat
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <FileText size={14} className="text-gray-400" />
-                    {item.ruangLingkup.length} Ruang Lingkup
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() =>
-                      router.push(`/admin/story_aktivitas/${item.key}`)
-                    }
-                    className="flex items-center gap-1.5 bg-[#0e1d34] hover:bg-[#1a2d4a] text-white text-sm font-medium px-4 py-2 rounded-lg transition"
-                  >
-                    <Eye size={14} />
-                    Lihat Detail Story
-                  </button>
-                </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600">
+                  <Activity size={13} className="text-gray-400" />
+                  {item.aktivitas} Aktivitas
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600">
+                  <Users size={13} className="text-gray-400" />
+                  {item.jurusanTerlibat} Jurusan
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600">
+                  <FileText size={13} className="text-gray-400" />
+                  {item.ruangLingkup.length} Ruang Lingkup
+                </span>
               </div>
 
-              <div className="flex flex-wrap gap-2 mt-3">
-                {item.jurusan.map((j) => (
-                  <span
-                    key={j}
-                    className="bg-gray-100 text-gray-700 text-xs font-medium px-3 py-1 rounded-lg"
-                  >
-                    {j}
-                  </span>
-                ))}
-              </div>
+              {item.jurusan.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {item.jurusan.map((j) => (
+                    <span key={j} className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                      {j}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
