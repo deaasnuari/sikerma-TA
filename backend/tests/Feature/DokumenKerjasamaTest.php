@@ -718,4 +718,69 @@ class DokumenKerjasamaTest extends TestCase
         $this->actingAs($kajur)->getJson("/api/dokumen-kerjasama/{$a->id}")->assertOk();
         $this->actingAs($kajur)->getJson("/api/dokumen-kerjasama/{$c->id}")->assertStatus(404);
     }
+
+    // Sebelumnya index() cuma membatasi role internal/unit/jurusan/prodi — role 'external'
+    // tidak ikut dibatasi sama sekali, jadi mitra eksternal bisa lihat SEMUA dokumen
+    // kerjasama se-institusi lewat Rekap Data/Story & Aktivitas/Monitoring (sama seperti
+    // admin). Ini menutup celah itu: eksternal cuma boleh lihat dokumen dari pengajuan
+    // miliknya sendiri.
+    public function test_eksternal_hanya_melihat_dokumen_kerjasama_miliknya_sendiri(): void
+    {
+        $pemilik = User::factory()->create(['role' => 'external']);
+        $lain = User::factory()->create(['role' => 'external']);
+
+        $pengajuanMilik = Pengajuan::create([
+            'nomor_pengajuan' => 'PMH-EXT-001',
+            'nama_pengusul' => 'Mitra A',
+            'judul_pengajuan' => 'Kerja Sama A',
+            'jenis_dokumen' => 'MOU',
+            'status_pengajuan' => 'disetujui',
+            'ruang_lingkup_ids' => [],
+            'user_pengusul_id' => $pemilik->id,
+        ]);
+        $pengajuanLain = Pengajuan::create([
+            'nomor_pengajuan' => 'PMH-EXT-002',
+            'nama_pengusul' => 'Mitra B',
+            'judul_pengajuan' => 'Kerja Sama B',
+            'jenis_dokumen' => 'MOU',
+            'status_pengajuan' => 'disetujui',
+            'ruang_lingkup_ids' => [],
+            'user_pengusul_id' => $lain->id,
+        ]);
+
+        $dokMilik = $this->buatDokumen(['nomor_dokumen' => 'EXT-A-001', 'sumber_pengajuan_id' => $pengajuanMilik->id]);
+        $dokLain = $this->buatDokumen(['nomor_dokumen' => 'EXT-B-001', 'sumber_pengajuan_id' => $pengajuanLain->id]);
+
+        $response = $this->actingAs($pemilik)->getJson('/api/dokumen-kerjasama?per_page=50');
+        $response->assertOk();
+        $ids = collect($response->json('data.data'))->pluck('id')->all();
+
+        $this->assertContains($dokMilik->id, $ids);
+        $this->assertNotContains($dokLain->id, $ids);
+    }
+
+    public function test_eksternal_yang_di_cc_ikut_melihat_dokumen_kerjasama(): void
+    {
+        $pemilik = User::factory()->create(['role' => 'external']);
+        $userCc = User::factory()->create(['role' => 'external']);
+
+        $pengajuan = Pengajuan::create([
+            'nomor_pengajuan' => 'PMH-EXT-003',
+            'nama_pengusul' => 'Mitra C',
+            'judul_pengajuan' => 'Kerja Sama C',
+            'jenis_dokumen' => 'MOU',
+            'status_pengajuan' => 'disetujui',
+            'ruang_lingkup_ids' => [],
+            'user_pengusul_id' => $pemilik->id,
+            'distribusi_user_ids' => [$userCc->id],
+        ]);
+
+        $dokumen = $this->buatDokumen(['nomor_dokumen' => 'EXT-C-001', 'sumber_pengajuan_id' => $pengajuan->id]);
+
+        $response = $this->actingAs($userCc)->getJson('/api/dokumen-kerjasama?per_page=50');
+        $response->assertOk();
+        $ids = collect($response->json('data.data'))->pluck('id')->all();
+
+        $this->assertContains($dokumen->id, $ids);
+    }
 }

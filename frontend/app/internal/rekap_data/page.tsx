@@ -347,6 +347,7 @@ export default function InternalRekapDataPage() {
       'Kode Perusahaan',
       'Tingkat Perusahaan',
       'Judul Kegiatan Kerja Sama',
+      'Ruang Lingkup',
       'Manfaat bagi Polibatam/Prodi',
       'Luaran Kerja Sama',
       'Tanggal Awal Kerja Sama',
@@ -369,6 +370,7 @@ export default function InternalRekapDataPage() {
         item.kodePerusahaan || '-',
         item.tingkatPerusahaan || '-',
         item.judulKegiatan || item.noDokumen,
+        (item.ruangLingkup && item.ruangLingkup.length > 0) ? item.ruangLingkup.join(', ') : '-',
         item.manfaatSebenarnya || item.manfaatKerjasama || '-',
         item.luaranKerjaSama || '-',
         item.tanggalMulai,
@@ -517,6 +519,7 @@ export default function InternalRekapDataPage() {
                 <th className="px-4 py-3">Kode Perusahaan</th>
                 <th className="px-4 py-3">Tingkat Perusahaan</th>
                 <th className="px-4 py-3">Judul Kegiatan Kerja Sama</th>
+                <th className="px-4 py-3">Ruang Lingkup</th>
                 <th className="px-4 py-3">Manfaat bagi Polibatam/Prodi</th>
                 <th className="px-4 py-3">Luaran Kerja Sama</th>
                 <th className="px-4 py-3">Tanggal Awal Kerja Sama</th>
@@ -531,7 +534,7 @@ export default function InternalRekapDataPage() {
             <tbody>
               {paginatedData.length === 0 ? (
                 <tr>
-                  <td colSpan={17} className="px-4 py-10 text-center text-[12px] text-gray-500">
+                  <td colSpan={18} className="px-4 py-10 text-center text-[12px] text-gray-500">
                     Data tidak ditemukan berdasarkan filter saat ini.
                   </td>
                 </tr>
@@ -559,6 +562,9 @@ export default function InternalRekapDataPage() {
                     <td className="px-4 py-3 text-[10px] text-gray-600">{row.kodePerusahaan || '-'}</td>
                     <td className="px-4 py-3">{row.tingkatPerusahaan || '-'}</td>
                     <td className="px-4 py-3 max-w-[180px]"><p className="line-clamp-2">{row.judulKegiatan || row.noDokumen}</p></td>
+                    <td className="px-4 py-3 max-w-[180px]">
+                      <p>{(row.ruangLingkup && row.ruangLingkup.length > 0) ? row.ruangLingkup.join(', ') : '-'}</p>
+                    </td>
                     <td className="px-4 py-3 max-w-[180px]"><p className="text-[10px] text-gray-600 line-clamp-2">{row.manfaatSebenarnya || row.manfaatKerjasama || '-'}</p></td>
                     <td className="px-4 py-3 max-w-[180px]"><p className="text-[10px] text-gray-600 line-clamp-2">{row.luaranKerjaSama || '-'}</p></td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.tanggalMulai}</td>

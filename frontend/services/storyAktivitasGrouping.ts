@@ -16,6 +16,11 @@ export interface StoryAktivitasGroup {
   namaMitra: string;
   nomorDokumen: string;
   jenis: 'MoA' | 'MoU' | 'IA';
+  // Semua jenis dokumen yang ada di grup ini (satu mitra bisa punya beberapa dokumen kerja
+  // sama dengan jenis berbeda-beda, mis. MoU dan MoA sekaligus) — dipakai untuk filter
+  // "Jenis" di halaman daftar Story & Aktivitas, supaya mitra tidak lolos dari filter
+  // cuma karena dokumen "primary"-nya kebetulan bukan jenis yang dicari.
+  jenisTerlibat: string[];
   status: 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
   berakhir: string;
   masaBerlaku: string;
@@ -189,6 +194,7 @@ function buildGroup(items: PengajuanItem[], key: string): StoryAktivitasGroup {
     namaMitra: primary?.namaMitra ?? '-',
     nomorDokumen: primary?.nomorPengajuan ?? '-',
     jenis: toDocJenis(primary?.jenisDokumen),
+    jenisTerlibat: uniqueStrings(pengajuan.map((item) => toDocJenis(item.jenisDokumen))),
     // Pakai status dari kolom (kalau ada, jalur Rekap Data) supaya konsisten dengan
     // halaman lain; fallback hitung-dari-tanggal untuk jalur pengajuan (internal/eksternal).
     status: (primary as { statusKerjasama?: StoryAktivitasGroup['status'] } | undefined)?.statusKerjasama

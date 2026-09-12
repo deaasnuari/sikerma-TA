@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
+  CalendarDays,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   FileText,
   Filter,
@@ -15,6 +18,8 @@ import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService'
 import type { RekapDokumen } from '@/services/adminRekapDataService';
 import { refreshAktivitasDataFromApi } from '@/services/adminStoryAktivitasService';
 import { groupStoryAktivitasFromRekap, type StoryAktivitasGroup } from '@/services/storyAktivitasGrouping';
+import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
+import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 
 // ── Types ──────────────────────────────────────────────
 
@@ -151,7 +156,6 @@ const jenisBadgeMap: Record<Jenis, string> = {
 };
 
 const jenisOptions = ['Semua Jenis', 'MoA', 'MoU', 'IA'];
-const statusOptions = ['Semua Status', 'Aktif', 'Akan Berakhir', 'Kadaluarsa'];
 
 // ── Component ──────────────────────────────────────────
 
@@ -159,10 +163,23 @@ export default function InternalStoryAktivitasPage() {
   const [kerjasamaData, setKerjasamaData] = useState<KerjasamaStory[]>([]);
   const [search, setSearch] = useState('');
   const [filterJenis, setFilterJenis] = useState('Semua Jenis');
-  const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterTahun, setFilterTahun] = useState('Semua Tahun');
+  const [filterJurusanProdi, setFilterJurusanProdi] = useState('Semua Jurusan/Prodi/Unit');
   const [selectedStory, setSelectedStory] = useState<KerjasamaStory | null>(null);
   const rekapRef = useRef<RekapDokumen[]>([]);
+  const [yearPickerOpen, setYearPickerOpen] = useState(false);
+  const currentYear = new Date().getFullYear();
+  const [yearRangeStart, setYearRangeStart] = useState(currentYear - 4);
+  // 24 tahun sekaligus, sama seperti kalender tahun di Rekap Data/Monitoring.
+  const YEAR_PICKER_SIZE = 24;
+  const yearGrid = Array.from({ length: YEAR_PICKER_SIZE }, (_, index) => yearRangeStart + index);
+
+  // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) supaya dropdown filter
+  // Jurusan/Prodi/Unit bisa dikelompokkan pakai <optgroup>, sama seperti di Rekap Data & Story
+  // Aktivitas admin.
+  const [masterJurusanOptions, setMasterJurusanOptions] = useState<string[]>([]);
+  const [masterProdiOptions, setMasterProdiOptions] = useState<string[]>([]);
+  const [masterUnitKerjaOptions, setMasterUnitKerjaOptions] = useState<string[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -189,6 +206,34 @@ export default function InternalStoryAktivitasPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadMasterUnitOptions() {
+      try {
+        const [jurusanRows, unitRows, prodiRows] = await Promise.all([
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'prodi', aktif: true }),
+        ]);
+
+        if (!isMounted) return;
+
+        setMasterJurusanOptions(Array.from(new Set(jurusanRows.map((item) => item.nama).filter(Boolean))));
+        setMasterUnitKerjaOptions(Array.from(new Set(unitRows.map((item) => item.nama).filter(Boolean))));
+        setMasterProdiOptions(Array.from(new Set(prodiRows.map((item) => item.nama).filter(Boolean))));
+      } catch {
+        // fallback tetap ke daftar hasil derive dari data story kalau API belum siap.
+      }
+    }
+
+    void loadMasterUnitOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const tahunOptions = useMemo(
     () =>
       Array.from(
@@ -196,6 +241,21 @@ export default function InternalStoryAktivitasPage() {
       ).sort((a, b) => Number(b) - Number(a)),
     [kerjasamaData],
   );
+
+  // Jurusan/Prodi/Unit yang terlibat di lintas semua mitra — dikelompokkan sesuai kategori
+  // Data Master (Jurusan/Program Studi/Unit Kerja), sama seperti filter Unit di Rekap Data.
+  // Nama yang muncul di data tapi tidak cocok ke master aktif mana pun masuk "Lainnya".
+  const unitGroups = useMemo(() => {
+    const jurusanTerlibatSemua = Array.from(new Set(kerjasamaData.flatMap((k) => k.jurusanTerlibat)));
+    const known = new Set([...masterJurusanOptions, ...masterProdiOptions, ...masterUnitKerjaOptions]);
+    const lainnya = jurusanTerlibatSemua.filter((nama) => !known.has(nama));
+    return {
+      jurusan: masterJurusanOptions.filter((nama) => jurusanTerlibatSemua.includes(nama)),
+      prodi: masterProdiOptions.filter((nama) => jurusanTerlibatSemua.includes(nama)),
+      unit: masterUnitKerjaOptions.filter((nama) => jurusanTerlibatSemua.includes(nama)),
+      lainnya,
+    };
+  }, [kerjasamaData, masterJurusanOptions, masterProdiOptions, masterUnitKerjaOptions]);
 
   const filtered = useMemo(() => {
     return kerjasamaData.filter((k) => {
@@ -205,11 +265,12 @@ export default function InternalStoryAktivitasPage() {
         k.namaMitra.toLowerCase().includes(keyword) ||
         k.noDokumen.toLowerCase().includes(keyword);
       const matchJenis = filterJenis === 'Semua Jenis' || k.jenis === filterJenis;
-      const matchStatus = filterStatus === 'Semua Status' || k.status === filterStatus;
       const matchTahun = filterTahun === 'Semua Tahun' || k.tanggalBerakhir.endsWith(filterTahun);
-      return matchSearch && matchJenis && matchStatus && matchTahun;
+      const matchJurusanProdi =
+        filterJurusanProdi === 'Semua Jurusan/Prodi/Unit' || k.jurusanTerlibat.includes(filterJurusanProdi);
+      return matchSearch && matchJenis && matchTahun && matchJurusanProdi;
     });
-  }, [kerjasamaData, search, filterJenis, filterStatus, filterTahun]);
+  }, [kerjasamaData, search, filterJenis, filterTahun, filterJurusanProdi]);
 
   if (selectedStory) {
     return <DetailStoryModal story={selectedStory} onBack={() => setSelectedStory(null)} />;
@@ -253,8 +314,6 @@ export default function InternalStoryAktivitasPage() {
           </span>
           {[
             { value: filterJenis, set: setFilterJenis, opts: jenisOptions },
-            { value: filterStatus, set: setFilterStatus, opts: statusOptions },
-            { value: filterTahun, set: setFilterTahun, opts: ['Semua Tahun', ...tahunOptions] },
           ].map((f, i) => (
             <div key={i} className="relative">
               <select
@@ -269,6 +328,94 @@ export default function InternalStoryAktivitasPage() {
               <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
           ))}
+
+          <GroupedFilterSelect
+            value={filterJurusanProdi}
+            onChange={setFilterJurusanProdi}
+            allLabel="Semua Jurusan/Prodi/Unit"
+            groups={[
+              { label: 'Jurusan', options: unitGroups.jurusan },
+              { label: 'Program Studi', options: unitGroups.prodi },
+              { label: 'Unit Kerja', options: unitGroups.unit },
+              { label: 'Lainnya', options: unitGroups.lainnya },
+            ]}
+          />
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setYearPickerOpen((prev) => !prev)}
+              className="inline-flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-gray-50 py-2 pl-3.5 pr-3 text-sm font-medium text-gray-700 outline-none transition hover:bg-gray-100 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/30"
+            >
+              <span>{filterTahun}</span>
+              <CalendarDays size={14} className="text-gray-400" />
+            </button>
+
+            {yearPickerOpen && (
+              <div className="absolute left-0 top-[calc(100%+8px)] z-20 w-[320px] rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                <div className="mb-3 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setYearRangeStart((prev) => prev - YEAR_PICKER_SIZE)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <p className="text-[12px] font-semibold text-gray-800">
+                    {yearRangeStart} - {yearRangeStart + YEAR_PICKER_SIZE - 1}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setYearRangeStart((prev) => prev + YEAR_PICKER_SIZE)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2">
+                  {yearGrid.map((year) => {
+                    const isSelected = String(year) === filterTahun;
+                    const hasData = tahunOptions.includes(String(year));
+
+                    return (
+                      <button
+                        key={year}
+                        type="button"
+                        onClick={() => {
+                          setFilterTahun(String(year));
+                          setYearPickerOpen(false);
+                        }}
+                        className={`rounded-lg border px-2 py-2 text-[11.5px] font-medium transition-colors ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-500 text-white'
+                            : hasData
+                              ? 'border-gray-200 bg-white text-gray-800 hover:border-blue-400 hover:text-blue-600'
+                              : 'border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-200'
+                        }`}
+                      >
+                        {year}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+                  <p className="text-[10px] text-gray-500">Pilih tahun untuk menampilkan data tahunan</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterTahun('Semua Tahun');
+                      setYearPickerOpen(false);
+                    }}
+                    className="text-[10px] font-semibold text-blue-600 hover:underline"
+                  >
+                    Semua Tahun
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

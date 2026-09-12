@@ -18,12 +18,18 @@ import { getHiddenStoryIds, refreshAktivitasDataFromApi } from '@/services/admin
 import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
 import type { RekapDokumen } from '@/services/adminRekapDataService';
 import { groupStoryAktivitasFromRekap, type StoryAktivitasGroup } from '@/services/storyAktivitasGrouping';
+import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
+import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 
 interface Kerjasama {
   key: string;
   nama: string;
   nomorDokumen: string;
   jenis: 'MoA' | 'MoU' | 'IA';
+  // Semua jenis dokumen yang dipunyai mitra ini (bisa lebih dari satu, mis. MoU dan MoA
+  // sekaligus di dokumen kerja sama yang berbeda) — dipakai filter "Jenis" supaya tidak
+  // meleset cuma karena dokumen "primary"-nya beda jenis dari yang dicari.
+  jenisTerlibat: string[];
   berakhir: string;
   tahun: number;
   status: 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
@@ -40,6 +46,7 @@ function mapGroupToKerjasama(group: StoryAktivitasGroup): Kerjasama {
     nama: group.namaMitra,
     nomorDokumen: group.nomorDokumen,
     jenis: group.jenis,
+    jenisTerlibat: [...group.jenisTerlibat],
     berakhir: group.berakhir,
     tahun: group.tahun,
     status: group.status,
@@ -60,8 +67,8 @@ const jenisColor: Record<string, string> = {
 export default function StoryAktivitasPage() {
   const router = useRouter();
   const [filterJenis, setFilterJenis] = useState('Semua Jenis');
-  const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterTahun, setFilterTahun] = useState('Semua Tahun');
+  const [filterJurusanProdi, setFilterJurusanProdi] = useState('Semua Jurusan/Prodi/Unit');
   const [search, setSearch] = useState('');
   const [sourceData, setSourceData] = useState<Kerjasama[]>([]);
   const rekapRowsRef = useRef<RekapDokumen[]>([]);
@@ -71,6 +78,40 @@ export default function StoryAktivitasPage() {
   // 24 tahun sekaligus, sama seperti kalender tahun di Rekap Data/Monitoring.
   const YEAR_PICKER_SIZE = 24;
   const yearGrid = Array.from({ length: YEAR_PICKER_SIZE }, (_, index) => yearRangeStart + index);
+
+  // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) supaya dropdown filter
+  // Jurusan/Prodi/Unit bisa dikelompokkan pakai <optgroup>, sama seperti di Rekap Data.
+  const [masterJurusanOptions, setMasterJurusanOptions] = useState<string[]>([]);
+  const [masterProdiOptions, setMasterProdiOptions] = useState<string[]>([]);
+  const [masterUnitKerjaOptions, setMasterUnitKerjaOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadMasterUnitOptions() {
+      try {
+        const [jurusanRows, unitRows, prodiRows] = await Promise.all([
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
+          getMasterUnitProdi({ jenis_node: 'prodi', aktif: true }),
+        ]);
+
+        if (!isMounted) return;
+
+        setMasterJurusanOptions(Array.from(new Set(jurusanRows.map((item) => item.nama).filter(Boolean))));
+        setMasterUnitKerjaOptions(Array.from(new Set(unitRows.map((item) => item.nama).filter(Boolean))));
+        setMasterProdiOptions(Array.from(new Set(prodiRows.map((item) => item.nama).filter(Boolean))));
+      } catch {
+        // fallback tetap ke daftar hasil derive dari data story kalau API belum siap.
+      }
+    }
+
+    void loadMasterUnitOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -106,17 +147,32 @@ export default function StoryAktivitasPage() {
     new Set(sourceData.map((d) => d.tahun))
   ).sort((a, b) => b - a);
 
+  // Jurusan/Prodi/Unit yang terlibat di lintas semua mitra — dikelompokkan sesuai kategori
+  // Data Master (Jurusan/Program Studi/Unit Kerja), sama seperti filter Unit di Rekap Data.
+  // Nama yang muncul di data tapi tidak cocok ke master aktif mana pun masuk "Lainnya".
+  const jurusanTerlibatSemua = Array.from(new Set(sourceData.flatMap((d) => d.jurusan)));
+  const unitGroups = (() => {
+    const known = new Set([...masterJurusanOptions, ...masterProdiOptions, ...masterUnitKerjaOptions]);
+    const lainnya = jurusanTerlibatSemua.filter((nama) => !known.has(nama));
+    return {
+      jurusan: masterJurusanOptions.filter((nama) => jurusanTerlibatSemua.includes(nama)),
+      prodi: masterProdiOptions.filter((nama) => jurusanTerlibatSemua.includes(nama)),
+      unit: masterUnitKerjaOptions.filter((nama) => jurusanTerlibatSemua.includes(nama)),
+      lainnya,
+    };
+  })();
+
   const filtered = sourceData.filter((item) => {
     const matchJenis =
-      filterJenis === 'Semua Jenis' || item.jenis === filterJenis;
-    const matchStatus =
-      filterStatus === 'Semua Status' || item.status === filterStatus;
+      filterJenis === 'Semua Jenis' || item.jenisTerlibat.includes(filterJenis);
     const matchTahun =
       filterTahun === 'Semua Tahun' || item.tahun === Number(filterTahun);
+    const matchJurusanProdi =
+      filterJurusanProdi === 'Semua Jurusan/Prodi/Unit' || item.jurusan.includes(filterJurusanProdi);
     const matchSearch = item.nama
       .toLowerCase()
       .includes(search.toLowerCase());
-    return matchJenis && matchStatus && matchTahun && matchSearch;
+    return matchJenis && matchTahun && matchJurusanProdi && matchSearch;
   });
 
   return (
@@ -157,7 +213,6 @@ export default function StoryAktivitasPage() {
           </span>
           {([
             { value: filterJenis, set: setFilterJenis, opts: ['Semua Jenis', 'MoA', 'MoU', 'IA'] },
-            { value: filterStatus, set: setFilterStatus, opts: ['Semua Status', 'Aktif', 'Akan Berakhir', 'Kadaluarsa'] },
           ] as const).map((f, i) => (
             <div key={i} className="relative">
               <select
@@ -172,6 +227,18 @@ export default function StoryAktivitasPage() {
               <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
           ))}
+
+          <GroupedFilterSelect
+            value={filterJurusanProdi}
+            onChange={setFilterJurusanProdi}
+            allLabel="Semua Jurusan/Prodi/Unit"
+            groups={[
+              { label: 'Jurusan', options: unitGroups.jurusan },
+              { label: 'Program Studi', options: unitGroups.prodi },
+              { label: 'Unit Kerja', options: unitGroups.unit },
+              { label: 'Lainnya', options: unitGroups.lainnya },
+            ]}
+          />
 
           <div className="relative">
             <button

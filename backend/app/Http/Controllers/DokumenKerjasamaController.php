@@ -233,6 +233,21 @@ class DokumenKerjasamaController extends Controller
                     $builder->orWhereIn('unit_prodi_id', $scopedUnitProdiIds);
                 }
             });
+        } elseif ($normalizedRole === 'external') {
+            // Mitra eksternal (role 'external') TIDAK ikut cabang di atas — sebelumnya ini
+            // celah: index() cuma membatasi internal/unit/jurusan/prodi, jadi akun eksternal
+            // bisa lihat SEMUA dokumen kerjasama se-institusi (Rekap Data/Story & Aktivitas/
+            // Monitoring/Arsip Dokumen), sama seperti admin. Eksternal cuma boleh lihat
+            // dokumen dari pengajuan miliknya sendiri atau yang di-CC (distribusi_user_ids) —
+            // tidak ada privilese struktural seperti internal (bukan pimpinan jurusan/prodi/unit).
+            if ($user) {
+                $query->whereHas('pengajuan', function ($inner) use ($user) {
+                    $inner->where(function ($q) use ($user) {
+                        $q->where('user_pengusul_id', $user->id)
+                            ->orWhereJsonContains('distribusi_user_ids', $user->id);
+                    });
+                });
+            }
         }
 
         if ($request->filled('status_siklus')) {
