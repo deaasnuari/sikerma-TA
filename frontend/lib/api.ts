@@ -47,7 +47,9 @@ function getAccessTokenFromStorage(): string | undefined {
   }
 }
 
-export async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+// Coba tiap kandidat base URL sampai ada yang berhasil merespons — dipakai bersama oleh
+// apiRequest (JSON/text) dan downloadFileWithAuth (blob) supaya logic fallback-nya satu tempat.
+async function fetchWithFallback(endpoint: string, options: RequestInit, buildHeaders: (accessToken?: string) => HeadersInit): Promise<Response> {
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   let response: Response | null = null;
   let lastError: unknown = null;
@@ -55,15 +57,10 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
 
   for (const baseUrl of API_BASE_URL_CANDIDATES) {
     try {
-      const isFormData = options.body instanceof FormData;
       const candidateResponse = await fetch(`${baseUrl}${normalizedEndpoint}`, {
-        ...options, cache: options.cache ?? 'no-store',
-        headers: {
-          Accept: 'application/json',
-          ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          ...(options.headers || {}),
-        },
+        ...options,
+        cache: options.cache ?? 'no-store',
+        headers: buildHeaders(accessToken),
       });
 
       // Jika kandidat relative proxy gagal (404/5xx),
@@ -98,6 +95,18 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
     throw lastError;
   }
 
+  return response;
+}
+
+export async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const isFormData = options.body instanceof FormData;
+  const response = await fetchWithFallback(endpoint, options, (accessToken) => ({
+    Accept: 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    ...(options.headers || {}),
+  }));
+
   const contentType = response.headers.get('content-type') || '';
   const body = contentType.includes('application/json')
     ? await response.json()
@@ -127,6 +136,42 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
   }
 
   return body as T;
+}
+
+// Unduh file lewat endpoint API yang butuh login (mis. /dokumen-kerjasama/{id}/documents/{fileId}/download),
+// lalu simpan pakai NAMA ASLI berkasnya — bukan nama acak hasil penyimpanan di server. Ditempuh
+// lewat fetch+blob (bukan <a href> langsung ke endpoint API) karena dua alasan: endpoint API perlu
+// header Authorization (navigasi <a> biasa tidak membawa header), dan atribut `download` HTML cuma
+// dihormati browser untuk URL same-origin — begitu jadi object URL dari blob, unduhannya otomatis
+// dianggap same-origin jadi nama filenya konsisten dipakai di semua browser.
+export async function downloadFileWithAuth(endpoint: string, fileName: string): Promise<void> {
+  const response = await fetchWithFallback(endpoint, {}, (accessToken) => ({
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  }));
+
+  if (!response.ok) {
+    if (response.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('user');
+      window.location.replace('/login?reason=expired');
+      throw new Error('Unauthenticated.');
+    }
+
+    throw new Error('Gagal mengunduh file.');
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 export { API_BASE_URL };

@@ -23,7 +23,8 @@ type FormState = {
   website: string;
   alamat: string;
   email_mitra: string;
-  telepon_mitra: string;
+  whatsapp_mitra: string;
+  no_telepon_mitra: string;
   nama_kontak_utama: string;
   jabatan_kontak_utama: string;
   email_kontak_utama: string;
@@ -57,7 +58,8 @@ const emptyForm: FormState = {
   website: '',
   alamat: '',
   email_mitra: '',
-  telepon_mitra: '',
+  whatsapp_mitra: '',
+  no_telepon_mitra: '',
   nama_kontak_utama: '',
   jabatan_kontak_utama: '',
   email_kontak_utama: '',
@@ -71,6 +73,12 @@ const kategoriOptions = [
   'Pemerintahan',
   'Swasta/Dunia Usaha dan Dunia Industri (DUDI)',
   'Organisasi Non-Profit / LSM',
+  // 4 kategori di bawah ini sudah lama dipakai di data mitra (hasil migrasi/import lama)
+  // tapi belum ada di daftar ini — jadi sebelumnya tidak bisa dipilih lewat filter/form.
+  'dudi dalam negeri',
+  'dudi luar negeri',
+  'instansi dalam negeri',
+  'instansi luar negeri',
 ] as const;
 
 const tingkatOptions = ['Lokal', 'Nasional', 'Internasional', 'Multinasional'] as const;
@@ -285,7 +293,8 @@ export default function MasterMitraPage() {
       website: item.website || '',
       alamat: item.alamat || '',
       email_mitra: item.email_mitra || '',
-      telepon_mitra: item.telepon_mitra || '',
+      whatsapp_mitra: item.whatsapp_mitra || '',
+      no_telepon_mitra: item.no_telepon_mitra || '',
       nama_kontak_utama: item.nama_kontak_utama || '',
       jabatan_kontak_utama: item.jabatan_kontak_utama || '',
       email_kontak_utama: item.email_kontak_utama || '',
@@ -325,7 +334,8 @@ export default function MasterMitraPage() {
         website: form.website.trim() || null,
         alamat: form.alamat.trim() || null,
         email_mitra: form.email_mitra.trim() || null,
-        telepon_mitra: form.telepon_mitra.trim() || null,
+        whatsapp_mitra: form.whatsapp_mitra.trim() || null,
+        no_telepon_mitra: form.no_telepon_mitra.trim() || null,
         nama_kontak_utama: form.nama_kontak_utama.trim() || null,
         jabatan_kontak_utama: form.jabatan_kontak_utama.trim() || null,
         email_kontak_utama: form.email_kontak_utama.trim() || null,
@@ -397,7 +407,7 @@ export default function MasterMitraPage() {
           nama: (item.nama_kontak_utama || '-').trim() || '-',
           jabatan: (item.jabatan_kontak_utama || '-').trim() || '-',
           email: (item.email_kontak_utama || item.email_mitra || '-').trim() || '-',
-          telepon: (item.telepon_kontak_utama || item.telepon_mitra || '-').trim() || '-',
+          telepon: (item.telepon_kontak_utama || item.whatsapp_mitra || '-').trim() || '-',
         };
         const key = `${kontak.nama}|${kontak.jabatan}|${kontak.email}|${kontak.telepon}`;
         if (!kontakMap.has(key)) {
@@ -824,8 +834,11 @@ export default function MasterMitraPage() {
               <Field label="Email Mitra">
                 <input type="email" value={form.email_mitra} onChange={(event) => setForm((prev) => ({ ...prev, email_mitra: event.target.value }))} className="input-field w-full px-4 py-2.5 text-[12px]" />
               </Field>
-              <Field label="Telepon Mitra">
-                <input value={form.telepon_mitra} onChange={(event) => setForm((prev) => ({ ...prev, telepon_mitra: event.target.value }))} className="input-field w-full px-4 py-2.5 text-[12px]" />
+              <Field label="WhatsApp Mitra">
+                <input value={form.whatsapp_mitra} onChange={(event) => setForm((prev) => ({ ...prev, whatsapp_mitra: event.target.value }))} className="input-field w-full px-4 py-2.5 text-[12px]" />
+              </Field>
+              <Field label="No. Telepon">
+                <input value={form.no_telepon_mitra} onChange={(event) => setForm((prev) => ({ ...prev, no_telepon_mitra: event.target.value }))} className="input-field w-full px-4 py-2.5 text-[12px]" />
               </Field>
               <div className="md:col-span-2">
                 <Field label="Alamat">

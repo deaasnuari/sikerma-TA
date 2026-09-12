@@ -167,6 +167,7 @@ export function syncExternalPengajuanWithAdminData(): PengajuanItem[] {
       mitraKategori: fromAdmin.mitraKategori ?? item.mitraKategori,
       mitraTingkatPerusahaan: fromAdmin.mitraTingkatPerusahaan ?? item.mitraTingkatPerusahaan,
       mitraTelepon: fromAdmin.mitraTelepon ?? item.mitraTelepon,
+      mitraNoTelepon: fromAdmin.mitraNoTelepon ?? item.mitraNoTelepon,
     };
 
     const changed =
@@ -184,7 +185,8 @@ export function syncExternalPengajuanWithAdminData(): PengajuanItem[] {
       nextItem.namaMitra !== item.namaMitra ||
       nextItem.mitraKategori !== item.mitraKategori ||
       nextItem.mitraTingkatPerusahaan !== item.mitraTingkatPerusahaan ||
-      nextItem.mitraTelepon !== item.mitraTelepon;
+      nextItem.mitraTelepon !== item.mitraTelepon ||
+      nextItem.mitraNoTelepon !== item.mitraNoTelepon;
 
     if (changed) {
       hasChanges = true;

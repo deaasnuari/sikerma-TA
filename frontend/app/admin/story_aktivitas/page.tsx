@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Filter,
   Search,
   Users,
@@ -62,6 +65,12 @@ export default function StoryAktivitasPage() {
   const [search, setSearch] = useState('');
   const [sourceData, setSourceData] = useState<Kerjasama[]>([]);
   const rekapRowsRef = useRef<RekapDokumen[]>([]);
+  const [yearPickerOpen, setYearPickerOpen] = useState(false);
+  const currentYear = new Date().getFullYear();
+  const [yearRangeStart, setYearRangeStart] = useState(currentYear - 4);
+  // 24 tahun sekaligus, sama seperti kalender tahun di Rekap Data/Monitoring.
+  const YEAR_PICKER_SIZE = 24;
+  const yearGrid = Array.from({ length: YEAR_PICKER_SIZE }, (_, index) => yearRangeStart + index);
 
   useEffect(() => {
     let isMounted = true;
@@ -149,7 +158,6 @@ export default function StoryAktivitasPage() {
           {([
             { value: filterJenis, set: setFilterJenis, opts: ['Semua Jenis', 'MoA', 'MoU', 'IA'] },
             { value: filterStatus, set: setFilterStatus, opts: ['Semua Status', 'Aktif', 'Akan Berakhir', 'Kadaluarsa'] },
-            { value: filterTahun, set: setFilterTahun, opts: ['Semua Tahun', ...tahunOptions.map(String)] },
           ] as const).map((f, i) => (
             <div key={i} className="relative">
               <select
@@ -164,6 +172,82 @@ export default function StoryAktivitasPage() {
               <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
           ))}
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setYearPickerOpen((prev) => !prev)}
+              className="inline-flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-gray-50 py-2 pl-3.5 pr-3 text-sm font-medium text-gray-700 outline-none transition hover:bg-gray-100 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/30"
+            >
+              <span>{filterTahun}</span>
+              <CalendarDays size={14} className="text-gray-400" />
+            </button>
+
+            {yearPickerOpen && (
+              <div className="absolute left-0 top-[calc(100%+8px)] z-20 w-[320px] rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                <div className="mb-3 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setYearRangeStart((prev) => prev - YEAR_PICKER_SIZE)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <p className="text-[12px] font-semibold text-gray-800">
+                    {yearRangeStart} - {yearRangeStart + YEAR_PICKER_SIZE - 1}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setYearRangeStart((prev) => prev + YEAR_PICKER_SIZE)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2">
+                  {yearGrid.map((year) => {
+                    const isSelected = String(year) === filterTahun;
+                    const hasData = tahunOptions.includes(year);
+
+                    return (
+                      <button
+                        key={year}
+                        type="button"
+                        onClick={() => {
+                          setFilterTahun(String(year));
+                          setYearPickerOpen(false);
+                        }}
+                        className={`rounded-lg border px-2 py-2 text-[11.5px] font-medium transition-colors ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-500 text-white'
+                            : hasData
+                              ? 'border-gray-200 bg-white text-gray-800 hover:border-blue-400 hover:text-blue-600'
+                              : 'border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-200'
+                        }`}
+                      >
+                        {year}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+                  <p className="text-[10px] text-gray-500">Pilih tahun untuk menampilkan data tahunan</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterTahun('Semua Tahun');
+                      setYearPickerOpen(false);
+                    }}
+                    className="text-[10px] font-semibold text-blue-600 transition-colors hover:text-blue-800"
+                  >
+                    Semua Tahun
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

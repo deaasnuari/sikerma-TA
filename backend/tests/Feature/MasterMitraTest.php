@@ -128,7 +128,7 @@ class MasterMitraTest extends TestCase
             'website'              => 'https://example.com',
             'alamat'               => 'Jl. Sudirman No. 1',
             'email_mitra'          => 'info@example.com',
-            'telepon_mitra'        => '0811111111',
+            'whatsapp_mitra'        => '0811111111',
             'nama_kontak_utama'    => 'Budi',
             'jabatan_kontak_utama' => 'Direktur',
             'email_kontak_utama'   => 'budi@example.com',
@@ -138,6 +138,28 @@ class MasterMitraTest extends TestCase
         $response = $this->actingAs($admin)->postJson('/api/master/mitra', $payload);
 
         $response->assertCreated()->assertJsonPath('data.nama_kontak_utama', 'Budi');
+    }
+
+    public function test_buat_mitra_dengan_no_telepon_terpisah_dari_whatsapp(): void
+    {
+        $admin = $this->admin();
+
+        $payload = $this->dataMitra([
+            'whatsapp_mitra'    => '081211112222', // WhatsApp
+            'no_telepon_mitra' => '0778469858',   // No. Telepon kantor
+        ]);
+
+        $response = $this->actingAs($admin)->postJson('/api/master/mitra', $payload);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.whatsapp_mitra', '081211112222')
+            ->assertJsonPath('data.no_telepon_mitra', '0778469858');
+
+        $this->assertDatabaseHas('master_mitra', [
+            'nama_mitra'       => 'PT Teknologi Nusantara',
+            'whatsapp_mitra'    => '081211112222',
+            'no_telepon_mitra' => '0778469858',
+        ]);
     }
 
     public function test_buat_mitra_gagal_tanpa_nama(): void

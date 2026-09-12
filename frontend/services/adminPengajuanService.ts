@@ -48,6 +48,8 @@ export interface PengajuanItem {
   mitraAlamat?: string;
   mitraEmail?: string;
   mitraTelepon?: string;
+  // No. Telepon mitra (terpisah dari WhatsApp di atas) — field tambahan di "Informasi Mitra".
+  mitraNoTelepon?: string;
   // Kontak PIC mitra (dari bagian "Kontak Person Mitra" di form) — disinkronkan server-side
   // ke master_mitra.nama_kontak_utama dkk saat submit, supaya PIC muncul di Rekap Data
   // tanpa perlu izin admin (endpoint /master/mitra sendiri admin-only).
@@ -244,7 +246,7 @@ type ApiPengajuanRow = {
   diajukan_pada?: string | null;
   unit_prodi?: { id: number; nama: string } | null;
   user_pengusul?: { id: number; name: string; username?: string | null } | null;
-  mitra?: { id: number; nama_mitra: string; kategori_mitra?: string | null; bidang_usaha?: string | null; tingkat_perusahaan?: string | null; negara?: string | null; alamat?: string | null; email_mitra?: string | null; telepon_mitra?: string | null; } | string | null;
+  mitra?: { id: number; nama_mitra: string; kategori_mitra?: string | null; bidang_usaha?: string | null; tingkat_perusahaan?: string | null; negara?: string | null; alamat?: string | null; email_mitra?: string | null; whatsapp_mitra?: string | null; no_telepon_mitra?: string | null; } | string | null;
   // Legacy schema keys (from recent pulled backend)
   judul?: string;
   deskripsi?: string | null;
@@ -488,7 +490,8 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
     mitraNegara: typeof row.mitra === 'object' && row.mitra !== null && 'negara' in row.mitra ? row.mitra.negara || pickOptionalString((row as Record<string, unknown>).negara) : pickOptionalString((row as Record<string, unknown>).negara),
     mitraAlamat: typeof row.mitra === 'object' && row.mitra !== null && 'alamat' in row.mitra ? row.mitra.alamat || pickOptionalString((row as Record<string, unknown>).alamat_mitra) : pickOptionalString((row as Record<string, unknown>).alamat_mitra),
     mitraEmail: typeof row.mitra === 'object' && row.mitra !== null && 'email_mitra' in row.mitra ? row.mitra.email_mitra || pickOptionalString((row as Record<string, unknown>).email_mitra) : pickOptionalString((row as Record<string, unknown>).email_mitra),
-    mitraTelepon: typeof row.mitra === 'object' && row.mitra !== null && 'telepon_mitra' in row.mitra ? row.mitra.telepon_mitra || pickOptionalString((row as Record<string, unknown>).telepon_mitra) : pickOptionalString((row as Record<string, unknown>).telepon_mitra),
+    mitraTelepon: typeof row.mitra === 'object' && row.mitra !== null && 'whatsapp_mitra' in row.mitra ? row.mitra.whatsapp_mitra || pickOptionalString((row as Record<string, unknown>).whatsapp_mitra) : pickOptionalString((row as Record<string, unknown>).whatsapp_mitra),
+    mitraNoTelepon: typeof row.mitra === 'object' && row.mitra !== null && 'no_telepon_mitra' in row.mitra ? row.mitra.no_telepon_mitra || pickOptionalString((row as Record<string, unknown>).no_telepon_mitra) : pickOptionalString((row as Record<string, unknown>).no_telepon_mitra),
     jenisDokumen: mapJenisDokumenFromApi(row.jenis_dokumen),
     unitProdiId: row.unit_prodi_id ?? undefined,
     namaUnitProdi: row.unit_prodi?.nama || row.jurusan || '-',
@@ -659,7 +662,8 @@ export async function updatePengajuanItemApi(
   if (updates.mitraKategori !== undefined) payload.jenis_mitra = updates.mitraKategori || null;
   if (updates.mitraBidangUsaha !== undefined) payload.bidang_usaha = updates.mitraBidangUsaha || null;
   if (updates.mitraTingkatPerusahaan !== undefined) payload.tingkat_perusahaan = updates.mitraTingkatPerusahaan || null;
-  if (typeof updates.mitraTelepon === 'string') payload.telepon_mitra = updates.mitraTelepon;
+  if (typeof updates.mitraTelepon === 'string') payload.whatsapp_mitra = updates.mitraTelepon;
+  if (typeof updates.mitraNoTelepon === 'string') payload.no_telepon_mitra = updates.mitraNoTelepon;
   if (typeof updates.jenisDokumen === 'string') payload.jenis_dokumen = mapJenisDokumenToApi(updates.jenisDokumen);
   if (typeof updates.tanggalMulai === 'string') payload.tanggal_mulai = updates.tanggalMulai;
   if (typeof updates.tanggalBerakhir === 'string') payload.tanggal_berakhir = updates.tanggalBerakhir;
@@ -736,7 +740,8 @@ export async function submitPengajuanApi(
     jenis_mitra: data.mitraKategori || null,
     bidang_usaha: data.mitraBidangUsaha || null,
     tingkat_perusahaan: data.mitraTingkatPerusahaan || null,
-    telepon_mitra: data.mitraTelepon || null,
+    whatsapp_mitra: data.mitraTelepon || null,
+    no_telepon_mitra: data.mitraNoTelepon || null,
     // Field transien buat backend sinkron ke master_mitra (lihat PengajuanController) —
     // tidak tersimpan di pengajuan_v2, cukup dikirim di request ini.
     mitra_alamat: data.mitraAlamat || null,

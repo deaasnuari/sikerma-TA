@@ -126,6 +126,7 @@ export default function PengajuanBaruEksternalPage() {
             mitraBidangUsaha: formData.bidangUsaha.trim() || undefined,
             mitraTingkatPerusahaan: formData.tingkatPerusahaan.trim() || undefined,
             mitraTelepon: formData.teleponMitra.trim() || undefined,
+            mitraNoTelepon: formData.noTeleponMitra.trim() || undefined,
             jenisDokumen: formData.jenisKerjasama,
             namaUnitProdi: formData.unitPelaksana,
             unitProdiId: selectedProdiId,

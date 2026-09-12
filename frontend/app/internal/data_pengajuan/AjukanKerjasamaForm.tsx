@@ -114,6 +114,7 @@ const initialForm = {
   bidangUsaha: '',
   tingkatPerusahaan: '',
   teleponMitra: '',
+  noTeleponMitra: '',
   emailMitra: '',
   alamatMitra: '',
   negara: 'Indonesia',
@@ -243,7 +244,7 @@ const defaultAppearanceSettings: FormAppearanceSettings = {
   sectionDokumenSubtitle: 'Pilih jenis dokumen, unduh template bila diperlukan, lalu upload berkas pendukung.',
   labelNamaMitra: 'Nama Mitra',
   labelJenisMitra: 'Jenis Mitra',
-  labelTeleponMitra: 'WhatsApp Aktif / No. Telepon',
+  labelTeleponMitra: 'WhatsApp Mitra',
   labelEmailMitra: 'Email Mitra',
   labelAlamatMitra: 'Alamat Lengkap',
   labelJenisKerjasama: 'Jenis Kerjasama',
@@ -256,7 +257,7 @@ const defaultAppearanceSettings: FormAppearanceSettings = {
   labelNamaKontak: 'Nama Lengkap',
   labelJabatanKontak: 'Jabatan',
   labelEmailKontak: 'Email',
-  labelTeleponKontak: 'WhatsApp Aktif / No. Telepon',
+  labelTeleponKontak: 'WhatsApp',
 };
 
 const DEFAULT_APPEARANCE_STORAGE_KEY = 'internal-pengajuan-appearance-v1';
@@ -526,12 +527,12 @@ export default function InternalAjukanKerjasamaForm({
       setAppearanceSettings((prev) => {
         const next = { ...prev, ...parsed };
 
-        if (!next.labelTeleponMitra || next.labelTeleponMitra === 'Telepon') {
-          next.labelTeleponMitra = 'WhatsApp Aktif / No. Telepon';
+        if (!next.labelTeleponMitra || next.labelTeleponMitra === 'Telepon' || next.labelTeleponMitra === 'WhatsApp Aktif / No. Telepon') {
+          next.labelTeleponMitra = 'WhatsApp Mitra';
         }
 
-        if (!next.labelTeleponKontak || next.labelTeleponKontak === 'Telepon') {
-          next.labelTeleponKontak = 'WhatsApp Aktif / No. Telepon';
+        if (!next.labelTeleponKontak || next.labelTeleponKontak === 'Telepon' || next.labelTeleponKontak === 'WhatsApp Aktif / No. Telepon') {
+          next.labelTeleponKontak = 'WhatsApp';
         }
 
         return next;
@@ -875,6 +876,7 @@ export default function InternalAjukanKerjasamaForm({
           emailPengusul: formData.emailKontak,
           whatsappPengusul: formData.teleponKontak,
           mitraTelepon: formData.teleponMitra,
+          mitraNoTelepon: formData.noTeleponMitra,
           ruangLingkupIds: (selectedRuangLingkup || []).map((name) => masterRuangLingkupRows.find((r) => r.nama_ruang_lingkup === name)?.id).filter(Boolean) as number[],
           ruangLingkup: selectedRuangLingkup,
           fileName: [...dokumen, ...dokumenPendukung].map((item) => item.file.name).join(', ') || 'Dokumen pendukung internal',
@@ -1150,6 +1152,15 @@ export default function InternalAjukanKerjasamaForm({
                   Pastikan nomor ini aktif di WhatsApp agar mudah dihubungi
                 </p>
               )}
+            </div>
+            <div>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">No. Telepon</label>
+              <input
+                value={formData.noTeleponMitra}
+                onChange={(e) => handleChange('noTeleponMitra', e.target.value)}
+                className="input-field h-10 w-full rounded-lg px-3 text-[12px]"
+                placeholder="(0778) 469 858"
+              />
             </div>
             <div>
               <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelEmailMitra}</label>

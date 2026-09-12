@@ -275,6 +275,32 @@ class PengajuanTest extends TestCase
         $this->assertEquals($mitra->id, $response->json('data.mitra_id'));
     }
 
+    public function test_buat_pengajuan_dengan_no_telepon_mitra_tersimpan_dan_sinkron_ke_master_mitra(): void
+    {
+        $user = $this->internal();
+
+        $response = $this->actingAs($user)->postJson('/api/pengajuan', $this->dataPengajuan([
+            'whatsapp_mitra'    => '081298765432', // WhatsApp
+            'no_telepon_mitra' => '0778469858',   // No. Telepon terpisah
+        ]));
+
+        $response->assertCreated()
+            ->assertJsonPath('data.whatsapp_mitra', '081298765432')
+            ->assertJsonPath('data.no_telepon_mitra', '0778469858');
+
+        $this->assertDatabaseHas('pengajuan_v2', [
+            'whatsapp_mitra'    => '081298765432',
+            'no_telepon_mitra' => '0778469858',
+        ]);
+
+        $mitraId = $response->json('data.mitra_id');
+        $this->assertNotNull($mitraId);
+        $this->assertDatabaseHas('master_mitra', [
+            'id'               => $mitraId,
+            'no_telepon_mitra' => '0778469858',
+        ]);
+    }
+
     public function test_buat_pengajuan_tanpa_auth_ditolak(): void
     {
         $this->postJson('/api/pengajuan', $this->dataPengajuan())->assertUnauthorized();

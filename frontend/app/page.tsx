@@ -49,6 +49,39 @@ function MenuIcon() {
   );
 }
 
+/** Briefcase icon for DUDI hero stat cards */
+function BriefcaseIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="3" y="7" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M3 12h18" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+/** Building icon for Instansi hero stat cards */
+function BuildingIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 21V5a1 1 0 011-1h6a1 1 0 011 1v16" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M14 21V9a1 1 0 011-1h4a1 1 0 011 1v12" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M7 7h1M7 10h1M7 13h1M7 16h1M17 11h1M17 14h1M17 17h1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M2 21h20" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Globe icon marking the "internasional" variant of a hero stat card */
+function GlobeIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -57,6 +90,7 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedRow, setSelectedRow] = useState<KerjasamaRow | null>(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [selectedWilayah, setSelectedWilayah] = useState('Semua Wilayah');
@@ -298,7 +332,7 @@ export default function Home() {
               Portal Resmi Bagian Kerjasama
             </span>
             <h1 className="mt-4 max-w-2xl text-[25px] font-extrabold leading-tight text-white md:text-[40px]">
-              Bangun kolaborasi strategis bersama Politeknik Negeri Batam
+              Bangun Kolaborasi Strategis Bersama Politeknik Negeri Batam
             </h1>
             <p className="mt-4 max-w-xl text-[11.5px] leading-6 text-slate-200 md:text-[13.5px]">
               Temukan informasi kerja sama, statistik kemitraan, dan daftar mitra aktif secara lebih cepat, rapi, dan terstruktur.
@@ -308,35 +342,45 @@ export default function Home() {
               <a href="#info-kerjasama" className="btn-highlight">
                 Lihat Informasi
               </a>
-              <a
-                href="#kontak"
+              <button
+                type="button"
+                onClick={() => setShowContactModal(true)}
                 className="inline-flex min-h-[2.75rem] items-center justify-center rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-[11.5px] font-semibold text-white backdrop-blur-sm transition hover:bg-white/15"
               >
                 Hubungi Kami
-              </a>
+              </button>
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-2 text-[10px] text-slate-200">
-              <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1">MoU &amp; MoA Aktif</span>
-              <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1">Mitra Nasional &amp; Internasional</span>
-              <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1">Data Terpusat</span>
-            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             {([
-              { key: 'dudi_nasional',          label: 'Dudi\nNasional' },
-              { key: 'dudi_internasional',      label: 'Dudi\nInternasional' },
-              { key: 'instansi_nasional',       label: 'Instansi\nNasional' },
-              { key: 'instansi_internasional',  label: 'Instansi\nInternasional' },
+              { key: 'dudi_nasional',          label: 'Dudi Nasional',          Icon: BriefcaseIcon, accent: '#57C9E8', intl: false },
+              { key: 'dudi_internasional',     label: 'Dudi Internasional',     Icon: BriefcaseIcon, accent: '#F28C00', intl: true  },
+              { key: 'instansi_nasional',      label: 'Instansi Nasional',      Icon: BuildingIcon,  accent: '#57C9E8', intl: false },
+              { key: 'instansi_internasional', label: 'Instansi Internasional', Icon: BuildingIcon,  accent: '#F28C00', intl: true  },
             ] as const).map((item) => (
               <div
                 key={item.key}
-                className="rounded-2xl border border-white/10 bg-white/10 p-4 text-white shadow-lg backdrop-blur-md"
+                className="group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-white/10 bg-white/10 p-3.5 text-white shadow-lg backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/15 hover:shadow-xl"
               >
-                <p className="text-[20px] font-bold md:text-[25px]">{stats[item.key]}</p>
-                <div className="my-2 h-1 w-10 rounded-full bg-[#57C9E8]" />
-                <p className="text-[10px] leading-snug text-slate-200 whitespace-pre-line">{item.label}</p>
+                <div
+                  className="pointer-events-none absolute -right-6 -top-6 h-16 w-16 rounded-full opacity-20 blur-2xl transition-opacity duration-300 group-hover:opacity-30"
+                  style={{ backgroundColor: item.accent }}
+                />
+                <span
+                  className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: `${item.accent}25`, color: item.accent }}
+                >
+                  <item.Icon className="h-5 w-5" />
+                </span>
+                <div className="relative min-w-0">
+                  <p className="text-[22px] font-bold leading-none md:text-[24px]">{stats[item.key]}</p>
+                  <p className="mt-1.5 flex items-center gap-1 text-[10.5px] font-medium leading-snug text-slate-300">
+                    {item.label}
+                    {item.intl && <GlobeIcon className="h-3 w-3 flex-shrink-0 text-slate-400" />}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
@@ -900,6 +944,106 @@ export default function Home() {
               >
                 Login →
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showContactModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={() => setShowContactModal(false)}
+        >
+          <div
+            className="scrollbar-none relative grid max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-gradient-to-br from-[#091222] via-[#0f2557] to-[#173B82] text-white shadow-2xl md:grid-cols-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowContactModal(false)}
+              className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/80 transition hover:bg-white/20"
+              aria-label="Tutup"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Left — info kontak */}
+            <div className="p-6 md:p-8">
+              <h2 className="text-[26px] font-extrabold uppercase tracking-tight text-[#FBBF24] md:text-[30px]">
+                Get In Touch
+              </h2>
+              <div className="mt-2 mb-6 h-1 w-16 rounded-full bg-[#FBBF24]" />
+
+              <div className="space-y-5 text-[12.5px]">
+                <div>
+                  <h3 className="mb-2 text-[13px] font-bold text-white">Message Us</h3>
+                  <ul className="space-y-1.5">
+                    <li>
+                      <a href="mailto:info@polibatam.ac.id" className="text-cyan-200 underline-offset-2 hover:underline">
+                        info@polibatam.ac.id
+                      </a>
+                    </li>
+                    <li>
+                      <a href="mailto:kerjasama@polibatam.ac.id" className="text-cyan-200 underline-offset-2 hover:underline">
+                        kerjasama@polibatam.ac.id
+                      </a>
+                    </li>
+                    <li>
+                      <a href="mailto:oia@polibatam.ac.id" className="text-cyan-200 underline-offset-2 hover:underline">
+                        oia@polibatam.ac.id
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-[13px] font-bold text-white">Telephone</h3>
+                  <ul className="space-y-1 text-slate-100">
+                    <li>
+                      <a href="tel:+62778469858" className="hover:text-white">(0778) 469 858</a>
+                    </li>
+                    <li>Ridwan P. (+62 852-6468-6864)</li>
+                    <li>Irkram (+62 813-6387-6244)</li>
+                    <li>Dessy (+62 858-3554-1983)</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-[13px] font-bold text-white">Mailing Address</h3>
+                  <p className="leading-relaxed text-slate-100">
+                    Jl. Ahmad Yani, Tlk. Tering, Kec. Batam Kota, Kota Batam, Kepulauan Riau 29461
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Right — foto kampus & website */}
+            <div className="relative flex flex-col justify-between gap-4 bg-black/10 p-4 md:p-6">
+              <div className="relative h-40 w-full overflow-hidden rounded-xl border border-white/20 shadow-lg md:h-full">
+                <img
+                  src="/polibatam.jpg"
+                  alt="Kampus Politeknik Negeri Batam"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 rounded-xl bg-white/10 p-3 backdrop-blur-sm">
+                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-white p-1.5 shadow-md">
+                  <img src="/polibatam_logo.png" alt="Logo Polibatam" className="h-full w-full object-contain" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold text-white">Visit Our Website</p>
+                  <a
+                    href="https://www.polibatam.ac.id"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block truncate text-[11.5px] text-cyan-200 underline-offset-2 hover:underline"
+                  >
+                    www.Polibatam.ac.id
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         </div>

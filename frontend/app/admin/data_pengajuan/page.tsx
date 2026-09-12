@@ -280,6 +280,9 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const [editingProdiId, setEditingProdiId] = useState<number | null>(null);
   const [editingProdiKode, setEditingProdiKode] = useState('');
   const [editingProdiNama, setEditingProdiNama] = useState('');
+  const [editingUnitId, setEditingUnitId] = useState<number | null>(null);
+  const [editingUnitKode, setEditingUnitKode] = useState('');
+  const [editingUnitNama, setEditingUnitNama] = useState('');
   const [infoModalMessage, setInfoModalMessage] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
 
@@ -862,6 +865,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
       bidangUsaha: editingItem.mitraBidangUsaha || '',
       tingkatPerusahaan: editingItem.mitraTingkatPerusahaan || '',
       teleponMitra: editingItem.mitraTelepon || editingItem.whatsappPengusul || '',
+      noTeleponMitra: editingItem.mitraNoTelepon || '',
       emailMitra: editingItem.mitraEmail || editingItem.emailPengusul || '',
       alamatMitra: editingItem.mitraAlamat || '',
       negara: editingItem.mitraNegara || 'Indonesia',
@@ -1319,6 +1323,7 @@ function addEditJurusanUnitOption() {
       bidangUsaha: string;
       tingkatPerusahaan: string;
       teleponMitra: string;
+      noTeleponMitra: string;
       emailMitra: string;
       alamatMitra: string;
       negara: string;
@@ -1381,7 +1386,8 @@ function addEditJurusanUnitOption() {
     // sudah diisi di form.
     const mitraExtra = {
       alamat: payload.formData.alamatMitra?.trim() || undefined,
-      telepon_mitra: payload.formData.teleponMitra?.trim() || undefined,
+      whatsapp_mitra: payload.formData.teleponMitra?.trim() || undefined,
+      no_telepon_mitra: payload.formData.noTeleponMitra?.trim() || undefined,
       email_mitra: payload.formData.emailMitra?.trim() || undefined,
       negara: payload.formData.negara?.trim() || undefined,
       nama_kontak_utama: payload.formData.namaKontak?.trim() || undefined,
@@ -1436,6 +1442,7 @@ function addEditJurusanUnitOption() {
       emailPengusul: payload.formData.emailKontak || editingItem.emailPengusul,
       whatsappPengusul: payload.formData.teleponKontak || editingItem.whatsappPengusul,
       mitraTelepon: payload.formData.teleponMitra || editingItem.mitraTelepon,
+      mitraNoTelepon: payload.formData.noTeleponMitra || editingItem.mitraNoTelepon,
       deskripsiPengajuan: payload.formData.deskripsi.trim() || undefined,
       jabatanPengusul: payload.formData.jabatanKontak.trim() || undefined,
       ...(filesWereModified
@@ -1562,6 +1569,45 @@ function addEditJurusanUnitOption() {
       setMasterMessage('Prodi berhasil diperbarui.');
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : 'Gagal memperbarui prodi.';
+      setMasterMessage(message);
+    } finally {
+      setMasterSaving(false);
+    }
+  }
+
+  function startEditUnit(unit: MasterUnitProdi) {
+    setEditingUnitId(unit.id);
+    setEditingUnitKode(unit.kode || '');
+    setEditingUnitNama(unit.nama || '');
+  }
+
+  function cancelEditUnit() {
+    setEditingUnitId(null);
+    setEditingUnitKode('');
+    setEditingUnitNama('');
+  }
+
+  async function saveEditUnit(unitId: number) {
+    const nama = editingUnitNama.trim();
+    if (!nama) {
+      setMasterMessage('Nama unit wajib diisi.');
+      return;
+    }
+
+    try {
+      setMasterSaving(true);
+      setMasterMessage(null);
+
+      await updateMasterUnitProdi(unitId, {
+        kode: editingUnitKode.trim() || '',
+        nama,
+      });
+
+      await refreshMasterReferenceData();
+      cancelEditUnit();
+      setMasterMessage('Unit kerja berhasil diperbarui.');
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : 'Gagal memperbarui unit kerja.';
       setMasterMessage(message);
     } finally {
       setMasterSaving(false);
@@ -1961,7 +2007,7 @@ function addEditJurusanUnitOption() {
                     className="inline-flex items-center gap-1.5 text-[10px] sm:text-[12px] text-green-700 border border-green-300 bg-green-50 rounded-lg px-2.5 sm:px-3 py-1.5 font-medium transition-colors hover:bg-green-100"
                   >
                     <MessageSquare size={14} />
-                    <span className="hidden xs:inline sm:inline">Review</span>
+                    <span className="hidden xs:inline sm:inline">Final</span>
                   </button>
                   <button
                     type="button"
@@ -2307,7 +2353,7 @@ function addEditJurusanUnitOption() {
           <div className="w-full max-w-[680px] bg-[#EFEFF1] rounded-xl shadow-xl border border-[#DBDDE3] flex flex-col max-h-[90vh]">
             <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-[#D5D7DD]">
               <div>
-                <h3 className="text-[17px] font-bold text-gray-900">Review Pengajuan</h3>
+                <h3 className="text-[17px] font-bold text-gray-900">Final Pengajuan</h3>
                 <p className="text-[12px] text-gray-700 mt-0.5">{reviewItem.judulPengajuan}</p>
               </div>
               <button type="button" onClick={() => setReviewItem(null)} className="text-gray-400 hover:text-gray-600">
@@ -2378,6 +2424,9 @@ function addEditJurusanUnitOption() {
                 <div className="rounded-lg border border-[#D9DCE4] bg-white p-4">
                   <p className="text-[12px] font-semibold text-gray-900 mb-3">Upload Final Berkas</p>
                   <p className="text-[10px] text-gray-600 mb-1">Unggah dokumen final yang telah disetujui untuk disimpan sebagai arsip.</p>
+                  <p className="text-[10px] font-medium text-amber-700 mb-1">
+                    Dokumen yang disetujui (ACC) pada tahap ini merupakan berkas final yang telah ditandatangani oleh kedua belah pihak. Mohon pastikan dokumen yang diunggah adalah versi final yang sah dan telah ditandatangani, bukan berupa draf.
+                  </p>
                   <p className="text-[10px] text-gray-500 mb-3">
                     Ukuran maksimal 10 MB. Kalau dokumennya lebih besar dari itu, pakai tautan (mis. Google Drive) di kolom bawah saja — tidak perlu upload, biar penyimpanan server tidak cepat penuh.
                   </p>
@@ -2789,25 +2838,77 @@ function addEditJurusanUnitOption() {
                 </div>
 
                 <p className="mt-3 text-[10px] font-semibold text-slate-700">Daftar Unit Kerja</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="mt-2 space-y-2">
                   {masterUnitRows.length === 0 ? (
                     <span className="text-[10.5px] text-slate-400">Belum ada unit kerja.</span>
                   ) : (
-                    masterUnitRows.map((unit) => (
-                      <div key={unit.id} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-700">
-                        <span>{unit.kode ? `${unit.kode} - ` : ''}{unit.nama}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void handleDeleteUnitKerja(unit.id);
-                          }}
-                          disabled={masterSaving}
-                          className="rounded px-1 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Hapus Unit
-                        </button>
-                      </div>
-                    ))
+                    masterUnitRows.map((unit) => {
+                      const isEditing = editingUnitId === unit.id;
+
+                      if (isEditing) {
+                        return (
+                          <div key={unit.id} className="grid gap-1.5 rounded-lg border border-slate-200 bg-white p-2 sm:grid-cols-[96px_1fr_auto_auto]">
+                            <input
+                              value={editingUnitKode}
+                              onChange={(e) => setEditingUnitKode(e.target.value)}
+                              placeholder="Kode"
+                              className="input-field h-8 rounded-md px-2 text-[10.5px]"
+                            />
+                            <input
+                              value={editingUnitNama}
+                              onChange={(e) => setEditingUnitNama(e.target.value)}
+                              placeholder="Nama unit"
+                              className="input-field h-8 rounded-md px-2 text-[10.5px]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void saveEditUnit(unit.id);
+                              }}
+                              disabled={masterSaving}
+                              className="h-8 rounded-md bg-[#1E376C] px-2 text-[10.5px] font-semibold text-white hover:bg-[#2A4A8F] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Simpan
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditUnit}
+                              className="h-8 rounded-md border border-slate-300 bg-white px-2 text-[10.5px] font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div key={unit.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-2">
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-medium text-slate-700">
+                            {unit.kode ? `${unit.kode} - ` : ''}{unit.nama}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => startEditUnit(unit)}
+                              disabled={masterSaving}
+                              className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10.5px] font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleDeleteUnitKerja(unit.id);
+                              }}
+                              disabled={masterSaving}
+                              className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10.5px] font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Hapus Unit
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>

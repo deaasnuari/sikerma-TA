@@ -174,9 +174,9 @@ class DokumenKerjasamaController extends Controller
             // parent dimuat supaya Jurusan bisa diturunkan saat unitProdi-nya berupa Prodi (anak dari Jurusan).
             'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
             'unitProdi.parent:id,nama,jenis_node,kategori_unit',
-            'mitra:id,nama_mitra,kode_mitra,kategori_mitra,bidang_usaha,tingkat_perusahaan,negara,email_mitra,email_kontak_utama,alamat,nama_kontak_utama,jabatan_kontak_utama,telepon_kontak_utama',
+            'mitra:id,nama_mitra,kode_mitra,kategori_mitra,bidang_usaha,tingkat_perusahaan,negara,email_mitra,email_kontak_utama,alamat,nama_kontak_utama,jabatan_kontak_utama,telepon_kontak_utama,whatsapp_mitra,no_telepon_mitra',
             'dokumenFiles' => function ($q) {
-                $q->whereIn('peran_berkas', ['dokumen_final', 'dokumen_perpanjangan', 'dokumen_pendukung']);
+                $q->whereIn('peran_berkas', ['dokumen_final', 'dokumen_perpanjangan', 'dokumen_pendukung', 'bukti_tidak_diperpanjang']);
             },
             // Dipakai untuk kolom "Hasil Monitoring Triwulan 1-4" & "Laporan Kegiatan" di Rekap Data.
             'laporanPelaksanaan:id,dokumen_kerjasama_id,tahun,triwulan,file_path,file_nama',
@@ -315,7 +315,7 @@ class DokumenKerjasamaController extends Controller
             'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul',
             'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
             'unitProdi.parent:id,nama,jenis_node,kategori_unit',
-            'mitra:id,nama_mitra,kode_mitra,kategori_mitra,bidang_usaha,tingkat_perusahaan,negara,email_mitra,email_kontak_utama,alamat,nama_kontak_utama,jabatan_kontak_utama,telepon_kontak_utama',
+            'mitra:id,nama_mitra,kode_mitra,kategori_mitra,bidang_usaha,tingkat_perusahaan,negara,email_mitra,email_kontak_utama,alamat,nama_kontak_utama,jabatan_kontak_utama,telepon_kontak_utama,whatsapp_mitra,no_telepon_mitra',
         ]);
 
         return response([
@@ -939,10 +939,12 @@ class DokumenKerjasamaController extends Controller
         }
 
         $validated = $request->validate([
-            'file' => ['required', 'file', 'mimes:pdf', 'max:10240'],
+            // 'bukti_tidak_diperpanjang' butuh mime lebih longgar (bisa foto/scan bukti, bukan
+            // cuma PDF) — dipakai saat admin menandai kerja sama TIDAK diperpanjang di Monitoring.
+            'file' => ['required', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:10240'],
             // 'dokumen_pendukung' dipakai buat TOR/KAK/Proposal (peran terpisah dari dokumen utama
             // 'dokumen_final') supaya upload keduanya tidak saling timpa — lihat delete-by-peran di bawah.
-            'peran_berkas' => ['nullable', 'in:dokumen_final,dokumen_pendukung'],
+            'peran_berkas' => ['nullable', 'in:dokumen_final,dokumen_pendukung,bukti_tidak_diperpanjang'],
         ]);
 
         $peranBerkas = $validated['peran_berkas'] ?? 'dokumen_final';

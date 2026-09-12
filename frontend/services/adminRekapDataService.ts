@@ -8,6 +8,9 @@ export type RekapJenis = 'MoA' | 'MoU' | 'IA' | 'Lainnya';
 export interface DokumenTerkait {
   nama: string;
   url: string;
+  // Path API buat unduh dengan nama ASLI berkasnya (lewat downloadFileWithAuth) — kalau
+  // kosong, berarti berkas ini tidak/belum bisa diunduh lewat jalur ini (fallback ke `url`).
+  downloadUrl?: string;
   ukuran: string;
   tanggal: string;
 }
@@ -28,6 +31,13 @@ export interface RekapDokumen {
   tahun: string;
   status: RekapStatus;
   whatsappNumber?: string;
+  // No. Telepon mitra — terpisah dari WhatsApp di atas (master_mitra.no_telepon_mitra).
+  noTeleponMitra?: string;
+  buktiPdfDownloadUrl?: string | null;
+  buktiPdfNama?: string | null;
+  buktiTidakDiperpanjang?: string | null;
+  buktiTidakDiperpanjangDownloadUrl?: string | null;
+  buktiTidakDiperpanjangNama?: string | null;
   ruangLingkup?: string[];
   ruangLingkupIds?: number[];
   mitraNegara?: string;
@@ -94,6 +104,8 @@ export interface DokumenData {
   tanggalBerakhir: string;
   alamatMitra: string;
   whatsappMitra: string;
+  // No. Telepon mitra — terpisah dari WhatsApp di atas (master_mitra.no_telepon_mitra).
+  noTeleponMitra?: string;
   asalKategori: 'Jurusan' | 'Unit';
   unitKerja: string;
   // Terisi kalau asalKategori === 'Jurusan' dan Prodi-nya sudah dipilih — dikirim sebagai
@@ -117,6 +129,7 @@ export interface RekapFilterOptions {
   filterTahun: string | null;
   filterJenisMitra: string;
   filterTingkatPerusahaan: string;
+  filterRuangLingkup: string;
   search: string;
 }
 
@@ -298,6 +311,7 @@ function mapDokumenDataToRekap(data: DokumenData): RekapDokumen {
     tahun,
     status: (data.status as RekapStatus) || 'Aktif',
     whatsappNumber: data.whatsappMitra,
+    noTeleponMitra: data.noTeleponMitra,
     dokumenTerkait: data.dokumenTerkait,
     manfaatKerjasama: data.manfaatKerjasama || undefined,
     kodePerusahaan: data.kodePerusahaan,
@@ -478,6 +492,14 @@ export function getRekapTingkatPerusahaanOptions(items: RekapDokumen[]): string[
   ];
 }
 
+// Ambil daftar ruang lingkup unik untuk dropdown filter — dari data dokumen yang ter-load,
+// sama seperti getRekapUnitOptions (bukan daftar hardcode) supaya nama yang tidak lagi
+// dipakai dokumen manapun tidak nyampah di dropdown.
+export function getRekapRuangLingkupOptions(items: RekapDokumen[]): string[] {
+  const semua = items.flatMap((item) => item.ruangLingkup || []);
+  return ['Semua Ruang Lingkup', ...Array.from(new Set(semua)).sort((a, b) => a.localeCompare(b))];
+}
+
 // Ambil daftar tahun unik yang tersedia untuk filter tahun.
 export function getAvailableYears(items: RekapDokumen[]): number[] {
   return Array.from(new Set(items.map((item) => Number(item.tahun)))).sort((a, b) => a - b);
@@ -493,12 +515,39 @@ export function filterRekapData(items: RekapDokumen[], filters: RekapFilterOptio
     const matchesJenisMitra = filters.filterJenisMitra === 'Semua Jenis Mitra' || item.jenisMitra === filters.filterJenisMitra;
     const matchesTingkatPerusahaan =
       filters.filterTingkatPerusahaan === 'Semua Tingkat Perusahaan' || item.tingkatPerusahaan === filters.filterTingkatPerusahaan;
+    const matchesRuangLingkup =
+      filters.filterRuangLingkup === 'Semua Ruang Lingkup' || (item.ruangLingkup || []).includes(filters.filterRuangLingkup);
     const keyword = filters.search.toLowerCase().trim();
-    const matchesSearch =
-      keyword === '' ||
-      item.namaMitra.toLowerCase().includes(keyword) ||
-      item.noDokumen.toLowerCase().includes(keyword) ||
-      (item.manfaatKerjasama || '').toLowerCase().includes(keyword);
+    // Pencarian mencakup semua kolom yang tampil di tabel Rekap Data — bukan cuma nama
+    // mitra/no dokumen — supaya admin bisa cari lewat bidang usaha, PIC, judul kegiatan,
+    // ruang lingkup, jurusan/unit, status, dst.
+    const searchableText = [
+      item.noDokumen,
+      item.namaMitra,
+      item.bidangUsaha,
+      item.alamatMitra,
+      item.picMitra,
+      item.kodePerusahaan,
+      item.tingkatPerusahaan,
+      item.judulKegiatan,
+      ...(item.ruangLingkup || []),
+      item.manfaatSebenarnya,
+      item.manfaatKerjasama,
+      item.luaranKerjaSama,
+      item.tanggalMulai,
+      item.berlakuHingga,
+      item.durasiTahun !== undefined ? String(item.durasiTahun) : '',
+      item.jurusanNama,
+      item.prodiNama,
+      item.unitKerjaNama,
+      item.unit,
+      item.status,
+      item.jenis,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    const matchesSearch = keyword === '' || searchableText.includes(keyword);
 
     return (
       matchesJenis &&
@@ -507,6 +556,7 @@ export function filterRekapData(items: RekapDokumen[], filters: RekapFilterOptio
       matchesTahun &&
       matchesJenisMitra &&
       matchesTingkatPerusahaan &&
+      matchesRuangLingkup &&
       matchesSearch
     );
   });
@@ -585,6 +635,7 @@ if (item.sourcePengajuanId) {
     tanggalBerakhir: toDateInputValue(item.berlakuHinggaRaw || item.berlakuHingga),
     alamatMitra: item.alamatMitra || pengajuanData?.mitraAlamat || '',
     whatsappMitra: pengajuanData?.whatsappPengusul || item.whatsappNumber || '',
+    noTeleponMitra: item.noTeleponMitra || '',
     negara: item.mitraNegara || 'Indonesia',
     asalKategori,
     unitKerja: item.unit,

@@ -6,6 +6,8 @@ import { Activity, CalendarDays, ChevronLeft, ChevronRight, Filter, Pencil, Plus
 import TambahDokumenModal from './TambahDokumenModal';
 import MonevTriwulanSection from './MonevTriwulanSection';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
+import FileDownloadLink from '@/components/FileDownloadLink';
+import { downloadFileWithAuth } from '@/lib/api';
 import {
   createDokumenFormData,
   deleteRekapDokumen,
@@ -13,6 +15,7 @@ import {
   getAvailableYears,
   getRekapJenisMitraOptions,
   getRekapJenisOptions,
+  getRekapRuangLingkupOptions,
   getRekapStats,
   getRekapTingkatPerusahaanOptions,
   getRekapUnitOptions,
@@ -52,7 +55,8 @@ async function resolveMitraId(data: DokumenData): Promise<number | undefined> {
   // yang tersimpan dari modal ini, jadi Alamat Mitra dan PIC di Rekap Data selalu kosong.
   const mitraExtra = {
     alamat: data.alamatMitra?.trim() || undefined,
-    telepon_mitra: data.whatsappMitra?.trim() || undefined,
+    whatsapp_mitra: data.whatsappMitra?.trim() || undefined,
+    no_telepon_mitra: data.noTeleponMitra?.trim() || undefined,
     email_mitra: data.emailMitra?.trim() || undefined,
     nama_kontak_utama: data.namaPIC?.trim() || undefined,
     jabatan_kontak_utama: data.jabatanMitra?.trim() || undefined,
@@ -105,6 +109,7 @@ export default function RekapDataPage() {
   const [filterTahun, setFilterTahun] = useState<string | null>(null);
   const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
   const [filterTingkatPerusahaan, setFilterTingkatPerusahaan] = useState('Semua Tingkat Perusahaan');
+  const [filterRuangLingkup, setFilterRuangLingkup] = useState('Semua Ruang Lingkup');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -255,11 +260,15 @@ export default function RekapDataPage() {
   const statusOptions = rekapStatusOptions;
   const jenisMitraOptions = useMemo(() => getRekapJenisMitraOptions(rekapData), [rekapData]);
   const tingkatPerusahaanOptions = useMemo(() => getRekapTingkatPerusahaanOptions(rekapData), [rekapData]);
+  const ruangLingkupOptions = useMemo(() => getRekapRuangLingkupOptions(rekapData), [rekapData]);
   const availableYears = useMemo(() => getAvailableYears(rekapData), [rekapData]);
   const currentYear = new Date().getFullYear();
   const defaultYearRangeStart = Math.min(currentYear - 4, availableYears[0] ?? currentYear);
   const [yearRangeStart, setYearRangeStart] = useState(defaultYearRangeStart);
-  const yearGrid = Array.from({ length: 12 }, (_, index) => yearRangeStart + index);
+  // 24 tahun sekaligus (bukan 12) supaya rentang tahun yang bisa dipilih lebih panjang —
+  // jangan sampai terkesan mentok di satu jangkauan pendek kayak "cuma sampai 2033".
+  const YEAR_PICKER_SIZE = 24;
+  const yearGrid = Array.from({ length: YEAR_PICKER_SIZE }, (_, index) => yearRangeStart + index);
 
   const filteredBase = filterRekapData(rekapData, {
     filterJenis,
@@ -268,6 +277,7 @@ export default function RekapDataPage() {
     filterTahun,
     filterJenisMitra,
     filterTingkatPerusahaan,
+    filterRuangLingkup,
     search,
   });
   const filteredRows = sortOrder === 'oldest' ? [...filteredBase].reverse() : filteredBase;
@@ -280,7 +290,7 @@ export default function RekapDataPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, filterJenis, filterUnit, filterStatus, filterTahun, filterJenisMitra, filterTingkatPerusahaan, sortOrder]);
+  }, [search, filterJenis, filterUnit, filterStatus, filterTahun, filterJenisMitra, filterTingkatPerusahaan, filterRuangLingkup, sortOrder]);
 
   const { totalKerjasama, totalAktif, totalAkanBerakhir, totalKadaluarsa } = getRekapStats(rekapData);
 
@@ -297,6 +307,7 @@ export default function RekapDataPage() {
       'Nasional',
       'Lokal/Wilayah',
       'Judul Kegiatan Kerja Sama',
+      'Ruang Lingkup',
       'Manfaat bagi Polibatam/Prodi',
       'Luaran Kerja Sama',
       'Tanggal Awal Kerja Sama',
@@ -331,6 +342,7 @@ export default function RekapDataPage() {
       row.tingkatNasional ? 'Ya' : '',
       row.tingkatLokal ? 'Ya' : '',
       row.judulKegiatan || row.noDokumen,
+      (row.ruangLingkup && row.ruangLingkup.length > 0) ? row.ruangLingkup.join(', ') : '',
       row.manfaatSebenarnya || row.manfaatKerjasama || '',
       row.luaranKerjaSama || '',
       row.tanggalMulai,
@@ -484,8 +496,8 @@ export default function RekapDataPage() {
     }
   };
 
-  const downloadDokumen = async (url: string, fileName: string) => {
-    if (!url) {
+  const downloadDokumen = async (url: string, fileName: string, downloadUrl?: string | null) => {
+    if (!url && !downloadUrl) {
       return;
     }
 
@@ -501,6 +513,19 @@ export default function RekapDataPage() {
       document.body.removeChild(anchor);
       URL.revokeObjectURL(objectUrl);
       return;
+    }
+
+    // Untuk berkas di storage server: WAJIB lewat endpoint API yang login (bukan <a download>
+    // langsung ke URL storage) — atribut `download` HTML cuma dihormati browser untuk URL
+    // same-origin, jadi kalau langsung ke URL storage (beda origin dari frontend), browser
+    // abaikan nama filenya dan pakai nama acak hasil penyimpanan di server.
+    if (downloadUrl) {
+      try {
+        await downloadFileWithAuth(downloadUrl, fileName);
+        return;
+      } catch {
+        // lanjut ke fallback di bawah kalau gagal (mis. sesi habis)
+      }
     }
 
     const anchor = document.createElement('a');
@@ -588,6 +613,13 @@ export default function RekapDataPage() {
               groups={[{ label: '', options: tingkatPerusahaanOptions.slice(1) }]}
             />
 
+            <GroupedFilterSelect
+              value={filterRuangLingkup}
+              onChange={setFilterRuangLingkup}
+              allLabel={ruangLingkupOptions[0]}
+              groups={[{ label: '', options: ruangLingkupOptions.slice(1) }]}
+            />
+
             <div className="relative">
               <button
                 type="button"
@@ -599,28 +631,28 @@ export default function RekapDataPage() {
               </button>
 
               {yearPickerOpen && (
-                <div className="absolute right-0 top-[calc(100%+8px)] z-20 w-[280px] rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                <div className="absolute right-0 top-[calc(100%+8px)] z-20 w-[320px] rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
                   <div className="mb-3 flex items-center justify-between">
                     <button
                       type="button"
-                      onClick={() => setYearRangeStart((prev) => prev - 12)}
+                      onClick={() => setYearRangeStart((prev) => prev - YEAR_PICKER_SIZE)}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
                     >
                       <ChevronLeft size={16} />
                     </button>
                     <p className="text-[12px] font-semibold text-gray-800">
-                      {yearRangeStart} - {yearRangeStart + 11}
+                      {yearRangeStart} - {yearRangeStart + YEAR_PICKER_SIZE - 1}
                     </p>
                     <button
                       type="button"
-                      onClick={() => setYearRangeStart((prev) => prev + 12)}
+                      onClick={() => setYearRangeStart((prev) => prev + YEAR_PICKER_SIZE)}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
                     >
                       <ChevronRight size={16} />
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-4 gap-2">
                     {yearGrid.map((year) => {
                       const isSelected = String(year) === filterTahun;
                       const hasData = availableYears.includes(year);
@@ -633,7 +665,7 @@ export default function RekapDataPage() {
                             setFilterTahun(String(year));
                             setYearPickerOpen(false);
                           }}
-                          className={`rounded-lg border px-3 py-2 text-[12px] font-medium transition-colors ${
+                          className={`rounded-lg border px-2 py-2 text-[11.5px] font-medium transition-colors ${
                             isSelected
                               ? 'border-[#1E376C] bg-[#1E376C] text-white'
                               : hasData
@@ -681,7 +713,7 @@ export default function RekapDataPage() {
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Cari berdasarkan nama mitra"
+                placeholder="Cari di semua kolom (nama mitra, judul, ruang lingkup, dll.)"
                 className="input-field h-10 w-full pl-10 pr-3 text-[12px] text-gray-700 placeholder:text-gray-400"
               />
             </label>
@@ -712,7 +744,7 @@ export default function RekapDataPage() {
 
       <section className="table-shell">
         <div className="overflow-x-auto">
-          <table className="min-w-[2400px] w-full border-collapse">
+          <table className="min-w-[2650px] w-full border-collapse">
             <thead>
               <tr className="table-head border-b border-gray-200 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-700">
                 <th rowSpan={2} className="px-4 py-3 align-middle">
@@ -726,6 +758,7 @@ export default function RekapDataPage() {
                 <th colSpan={5} className="px-4 py-2 border-b border-gray-200">Lembaga Mitra</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Tingkat Perusahaan</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Judul Kegiatan Kerja Sama</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Ruang Lingkup</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Manfaat bagi Polibatam/Prodi</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Luaran Kerja Sama</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Tanggal Awal Kerja Sama</th>
@@ -749,7 +782,7 @@ export default function RekapDataPage() {
             <tbody>
               {filteredRows.length === 0 ? (
                 <tr key="empty">
-                  <td colSpan={18} className="px-4 py-10 text-center text-[12px] text-gray-500">
+                  <td colSpan={19} className="px-4 py-10 text-center text-[12px] text-gray-500">
                     Data tidak ditemukan berdasarkan filter saat ini.
                   </td>
                 </tr>
@@ -760,6 +793,8 @@ export default function RekapDataPage() {
                   // pada dokumen ini (dokumen_final/dokumen_perpanjangan) — bukan file acak, karena
                   // tiap dokumen_kerjasama cuma punya satu jenis_dokumen jadi filenya pasti sejenis.
                   const linkBukti = row.dokumenTerkait && row.dokumenTerkait.length > 0 ? row.dokumenTerkait[0].url : null;
+                  const linkBuktiDownloadUrl = row.dokumenTerkait && row.dokumenTerkait.length > 0 ? row.dokumenTerkait[0].downloadUrl : null;
+                  const linkBuktiNama = row.dokumenTerkait && row.dokumenTerkait.length > 0 ? row.dokumenTerkait[0].nama : null;
                   // Jurusan/Unit digabung jadi satu kolom: pilihan Jurusan -> "Jurusan / Prodi",
                   // pilihan Unit -> "Unit" saja. Detail PIC-nya ada di modal Lihat Detail.
                   const jurusanUnitDisplay = row.jurusanNama
@@ -785,7 +820,10 @@ export default function RekapDataPage() {
                     <td className="px-4 py-3">{row.picMitra || '-'}</td>
                     <td className="px-4 py-3 text-[10px] text-gray-600">{row.kodePerusahaan || '-'}</td>
                     <td className="px-4 py-3">{row.tingkatPerusahaan || '-'}</td>
-                    <td className="px-4 py-3 max-w-[180px]"><p className="line-clamp-2">{row.judulKegiatan || row.noDokumen}</p></td>
+                    <td className="px-4 py-3 max-w-[220px]"><p>{row.judulKegiatan || row.noDokumen}</p></td>
+                    <td className="px-4 py-3 max-w-[220px]">
+                      <p>{(row.ruangLingkup && row.ruangLingkup.length > 0) ? row.ruangLingkup.join(', ') : '-'}</p>
+                    </td>
                     <td className="px-4 py-3 max-w-[180px]"><p className="text-[10px] text-gray-600 line-clamp-2">{row.manfaatSebenarnya || row.manfaatKerjasama || '-'}</p></td>
                     <td className="px-4 py-3 max-w-[180px]"><p className="text-[10px] text-gray-600 line-clamp-2">{row.luaranKerjaSama || '-'}</p></td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.tanggalMulai}</td>
@@ -800,9 +838,9 @@ export default function RekapDataPage() {
                         kalau sudah ada yang diupload untuk dokumen ini, kalau belum tampil biasa saja. */}
                     <td className="px-4 py-3">
                       {linkBukti ? (
-                        <a href={linkBukti} target="_blank" rel="noreferrer" title="Lihat bukti kerja sama">
-                          <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2 ${rekapJenisBadgeMap[row.jenis]}`}>{row.jenis}</span>
-                        </a>
+                        <FileDownloadLink url={linkBukti} downloadUrl={linkBuktiDownloadUrl} fileName={linkBuktiNama} className="cursor-pointer" >
+                          <span title="Lihat bukti kerja sama" className={`rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2 ${rekapJenisBadgeMap[row.jenis]}`}>{row.jenis}</span>
+                        </FileDownloadLink>
                       ) : (
                         <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${rekapJenisBadgeMap[row.jenis]}`} title="Belum ada file bukti kerja sama yang diupload">{row.jenis}</span>
                       )}
@@ -912,6 +950,8 @@ export default function RekapDataPage() {
         // Dokumen final yang sudah diupload untuk kerjasama ini (kalau ada) — dipakai supaya
         // badge Jenis Dokumen bisa langsung dibuka untuk lihat filenya.
         const detailLinkBukti = detailItem.dokumenTerkait && detailItem.dokumenTerkait.length > 0 ? detailItem.dokumenTerkait[0].url : null;
+        const detailLinkBuktiDownloadUrl = detailItem.dokumenTerkait && detailItem.dokumenTerkait.length > 0 ? detailItem.dokumenTerkait[0].downloadUrl : null;
+        const detailLinkBuktiNama = detailItem.dokumenTerkait && detailItem.dokumenTerkait.length > 0 ? detailItem.dokumenTerkait[0].nama : null;
         return (
         <div className="fixed inset-0 z-[70] bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center px-4 py-6">
           <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh]">
@@ -957,15 +997,15 @@ export default function RekapDataPage() {
                   <div>
                     <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Jenis Dokumen</p>
                     {detailLinkBukti ? (
-                      <a
-                        href={detailLinkBukti}
-                        target="_blank"
-                        rel="noreferrer"
+                      <FileDownloadLink
+                        url={detailLinkBukti}
+                        downloadUrl={detailLinkBuktiDownloadUrl}
+                        fileName={detailLinkBuktiNama}
                         title="Lihat dokumen bukti kerja sama"
                         className={`mt-1 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2 ${jenisBadge[detailItem.jenis] || 'bg-gray-200 text-gray-700'}`}
                       >
                         {detailItem.jenis}
-                      </a>
+                      </FileDownloadLink>
                     ) : (
                       <span className={`mt-1 inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${jenisBadge[detailItem.jenis] || 'bg-gray-200 text-gray-700'}`}>
                         {detailItem.jenis}
@@ -1269,7 +1309,7 @@ export default function RekapDataPage() {
                           </a>
                           <button
                             type="button"
-                            onClick={() => { void downloadDokumen(doc.url, doc.nama); }}
+                            onClick={() => { void downloadDokumen(doc.url, doc.nama, doc.downloadUrl); }}
                             className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E376C] px-3 py-1.5 text-[10px] font-semibold text-white hover:bg-[#2B4A93] transition-colors"
                           >
                             <Download size={12} />

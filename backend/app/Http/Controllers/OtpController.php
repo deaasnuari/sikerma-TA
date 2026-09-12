@@ -129,7 +129,7 @@ class OtpController extends Controller
                     'website' => null,
                     'alamat' => null,
                     'email_mitra' => $emailLower,
-                    'telepon_mitra' => $formData['phone'],
+                    'whatsapp_mitra' => $formData['phone'],
                     'nama_kontak_utama' => $formData['name'],
                     'jabatan_kontak_utama' => $formData['position'],
                     'email_kontak_utama' => $emailLower,

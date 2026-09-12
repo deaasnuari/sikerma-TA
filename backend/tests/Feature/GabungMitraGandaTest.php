@@ -71,14 +71,14 @@ class GabungMitraGandaTest extends TestCase
     public function test_field_kosong_di_induk_diisi_dari_duplikat(): void
     {
         $induk = $this->mitra(['nama_mitra' => 'PT Feen Marine', 'kode_mitra' => 'PTF01', 'email_mitra' => null]);
-        $this->mitra(['nama_mitra' => 'PT Feen Marine ', 'email_mitra' => 'feen@contoh.co.id', 'telepon_mitra' => '0812']);
+        $this->mitra(['nama_mitra' => 'PT Feen Marine ', 'email_mitra' => 'feen@contoh.co.id', 'whatsapp_mitra' => '0812']);
 
         $this->artisan('sikerma:gabung-mitra-ganda --apply')->assertSuccessful();
 
         $this->assertSame(1, MasterMitra::count());
         $this->assertDatabaseHas('master_mitra', [
             'id' => $induk->id, 'kode_mitra' => 'PTF01',
-            'email_mitra' => 'feen@contoh.co.id', 'telepon_mitra' => '0812',
+            'email_mitra' => 'feen@contoh.co.id', 'whatsapp_mitra' => '0812',
         ]);
     }
 

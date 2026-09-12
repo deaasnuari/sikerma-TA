@@ -778,7 +778,7 @@ Artisan::command('legacy:backfill-relasi-from-sikerma', function () {
                         'nama_mitra' => $namaInstitusi,
                         'kategori_mitra' => trim((string) ($row['kategori_institusi'] ?? '')) ?: null,
                         'email_mitra' => trim((string) ($row['email'] ?? '')) ?: null,
-                        'telepon_mitra' => trim((string) ($row['wa_pemohon'] ?? '')) ?: null,
+                        'whatsapp_mitra' => trim((string) ($row['wa_pemohon'] ?? '')) ?: null,
                         'aktif' => true,
                         'created_at' => now(),
                         'updated_at' => now(),

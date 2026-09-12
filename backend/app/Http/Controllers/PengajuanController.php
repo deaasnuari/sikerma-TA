@@ -44,7 +44,8 @@ class PengajuanController extends Controller
             'kategori_mitra' => trim((string) ($input['jenis_mitra'] ?? '')) ?: null,
             'bidang_usaha' => trim((string) ($input['bidang_usaha'] ?? '')) ?: null,
             'tingkat_perusahaan' => trim((string) ($input['tingkat_perusahaan'] ?? '')) ?: null,
-            'telepon_mitra' => trim((string) ($input['telepon_mitra'] ?? '')) ?: null,
+            'whatsapp_mitra' => trim((string) ($input['whatsapp_mitra'] ?? '')) ?: null,
+            'no_telepon_mitra' => trim((string) ($input['no_telepon_mitra'] ?? '')) ?: null,
             'alamat' => trim((string) ($input['mitra_alamat'] ?? '')) ?: null,
             'nama_kontak_utama' => trim((string) ($input['mitra_nama_kontak_utama'] ?? '')) ?: null,
             'jabatan_kontak_utama' => trim((string) ($input['mitra_jabatan_kontak_utama'] ?? '')) ?: null,
@@ -1060,7 +1061,7 @@ class PengajuanController extends Controller
         if ($this->shouldLoadPengajuanRelations()) {
             $query->with([
                 'unitProdi:id,nama,jenis_node,kategori_unit',
-                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,telepon_mitra',
+                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra',
                 'userPengusul:id,name,username',
                 'dokumenFiles',
                 'dokumenKerjasama:id,no_permohonan,nomor_dokumen,file',
@@ -1165,7 +1166,7 @@ class PengajuanController extends Controller
         if ($this->shouldLoadPengajuanRelations()) {
             $pengajuan->load([
                 'unitProdi:id,nama,jenis_node,kategori_unit',
-                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,telepon_mitra',
+                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra',
                 'userPengusul:id,name,username',
                 'dokumenFiles',
                 'dokumenKerjasama:id,no_permohonan,nomor_dokumen,file',
@@ -1222,7 +1223,8 @@ class PengajuanController extends Controller
             'jenis_mitra' => ['nullable', 'string', 'max:150'],
             'bidang_usaha' => ['nullable', 'string', 'max:150'],
             'tingkat_perusahaan' => ['nullable', 'string', 'max:50'],
-            'telepon_mitra' => ['nullable', 'string', 'max:50'],
+            'whatsapp_mitra' => ['nullable', 'string', 'max:50'],
+            'no_telepon_mitra' => ['nullable', 'string', 'max:50'],
     
             'mitra_alamat' => ['nullable', 'string'],
             'mitra_nama_kontak_utama' => ['nullable', 'string', 'max:200'],
@@ -1306,7 +1308,7 @@ class PengajuanController extends Controller
         if ($this->shouldLoadPengajuanRelations()) {
             $pengajuan->load([
                 'unitProdi:id,nama,jenis_node,kategori_unit',
-                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,telepon_mitra',
+                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra',
                 'dokumenFiles',
             ]);
         }
@@ -1401,7 +1403,8 @@ class PengajuanController extends Controller
             'jenis_mitra' => ['nullable', 'string', 'max:150'],
             'bidang_usaha' => ['nullable', 'string', 'max:150'],
             'tingkat_perusahaan' => ['nullable', 'string', 'max:50'],
-            'telepon_mitra' => ['nullable', 'string', 'max:50'],
+            'whatsapp_mitra' => ['nullable', 'string', 'max:50'],
+            'no_telepon_mitra' => ['nullable', 'string', 'max:50'],
             // Field transien (bukan kolom pengajuan_v2) — cuma dipakai untuk sinkron ke
             // master_mitra di bawah, supaya internal/eksternal (yang tidak boleh akses
             // endpoint /master/mitra langsung) tetap bisa melengkapi data mitra lewat
@@ -1567,7 +1570,7 @@ class PengajuanController extends Controller
         if ($freshPengajuan && $this->shouldLoadPengajuanRelations()) {
             $freshPengajuan->load([
                 'unitProdi:id,nama,jenis_node,kategori_unit',
-                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,telepon_mitra',
+                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra',
                 'dokumenFiles',
             ]);
         }

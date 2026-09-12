@@ -11,7 +11,8 @@ export interface MasterMitra {
   website: string | null;
   alamat: string | null;
   email_mitra: string | null;
-  telepon_mitra: string | null;
+  whatsapp_mitra: string | null;
+  no_telepon_mitra: string | null;
   nama_kontak_utama: string | null;
   jabatan_kontak_utama: string | null;
   email_kontak_utama: string | null;
@@ -31,7 +32,8 @@ export interface MasterMitraPayload {
   website?: string | null;
   alamat?: string | null;
   email_mitra?: string | null;
-  telepon_mitra?: string | null;
+  whatsapp_mitra?: string | null;
+  no_telepon_mitra?: string | null;
   nama_kontak_utama?: string | null;
   jabatan_kontak_utama?: string | null;
   email_kontak_utama?: string | null;

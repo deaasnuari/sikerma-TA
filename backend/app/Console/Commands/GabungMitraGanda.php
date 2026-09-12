@@ -34,7 +34,7 @@ class GabungMitraGanda extends Command
     /** Field yang boleh di-backfill ke INDUK dari baris duplikat. */
     private const FIELD_BACKFILL = [
         'kategori_mitra', 'tingkat_perusahaan', 'bidang_usaha', 'negara', 'website', 'alamat',
-        'email_mitra', 'telepon_mitra', 'kode_mitra', 'kode_perusahaan',
+        'email_mitra', 'whatsapp_mitra', 'no_telepon_mitra', 'kode_mitra', 'kode_perusahaan',
         'nama_kontak_utama', 'jabatan_kontak_utama', 'email_kontak_utama', 'telepon_kontak_utama',
     ];
 

@@ -95,6 +95,7 @@ const emptyFormData: DokumenData = {
   tanggalBerakhir: '',
   alamatMitra: '',
   whatsappMitra: '',
+  noTeleponMitra: '',
   negara: 'Indonesia',
   asalKategori: 'Jurusan',
   unitKerja: '',
@@ -994,6 +995,15 @@ export default function TambahDokumenModal({
                 type="tel"
                 value={formData.whatsappMitra}
                 onChange={(e) => handleInputChange('whatsappMitra', e.target.value)}
+              />
+            </Field>
+
+            <Field label="No. Telepon">
+              <TextInput
+                placeholder="0778 ..."
+                type="tel"
+                value={formData.noTeleponMitra}
+                onChange={(e) => handleInputChange('noTeleponMitra', e.target.value)}
               />
             </Field>
 

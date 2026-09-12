@@ -80,6 +80,7 @@ export function generateNoDokumen({
 // File ini dipakai agar data, tipe, dan helper bisnis tidak bercampur dengan komponen UI Next.js.
 
 import { apiRequest } from '@/lib/api';
+import { buildLegacyFileUrl } from '@/services/dokumenKerjasamaApiService';
 import { getCachedMasterRuangLingkup, getMasterRuangLingkup } from '@/services/masterRuangLingkupService';
 import { rekapJenisMitraOptions, rekapTingkatPerusahaanOptions } from '@/services/adminRekapDataService';
 
@@ -110,19 +111,6 @@ export interface MonitoringNotification {
   emailMitra: string;
 }
 
-export interface NonactiveRecord {
-  id: string;
-  tanggalDinonaktifkan: string;
-  alasan: string;
-  buktiFile?: {
-    nama: string;
-    ukuran: string;
-    tipe: string;
-    uploadedAt: string;
-  };
-  status: 'pending' | 'confirmed';
-}
-
 export type StatusKerjasama = 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
 export type TabKey = 'Semua' | 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
 
@@ -144,6 +132,12 @@ export interface Kerjasama {
   ruangLingkup: string[];
   whatsappNumber: string;
   emailMitra: string;
+  // Catatan & bukti kalau kerja sama ini pernah ditandai TIDAK diperpanjang — sama dengan
+  // yang tampil di kolom "Catatan/Bukti Tidak Diperpanjang" pada tabel Arsip Dokumen.
+  alasanArsip?: string | null;
+  buktiTidakDiperpanjang?: string | null;
+  buktiTidakDiperpanjangDownloadUrl?: string | null;
+  buktiTidakDiperpanjangNama?: string | null;
 }
 
 const STORAGE_KEY = 'adminMonitoringKerjasamaData';
@@ -539,6 +533,19 @@ export async function fetchMonitoringDataFromApi(options?: { forceRefresh?: bool
         ruangLingkup,
         whatsappNumber: row.pengajuan?.whatsapp_pengusul || '-',
         emailMitra: row.mitra?.email_mitra || row.mitra?.email_kontak_utama || row.pengajuan?.email_pengusul || '-',
+        alasanArsip: row.alasan_arsip || null,
+        buktiTidakDiperpanjang: (() => {
+          const file = (row.dokumen_files || []).find((f: any) => f.peran_berkas === 'bukti_tidak_diperpanjang');
+          return file ? buildLegacyFileUrl(file.path_file || '') : null;
+        })(),
+        buktiTidakDiperpanjangDownloadUrl: (() => {
+          const file = (row.dokumen_files || []).find((f: any) => f.peran_berkas === 'bukti_tidak_diperpanjang');
+          return file ? `/dokumen-kerjasama/${row.id}/documents/${file.id}/download` : null;
+        })(),
+        buktiTidakDiperpanjangNama: (() => {
+          const file = (row.dokumen_files || []).find((f: any) => f.peran_berkas === 'bukti_tidak_diperpanjang');
+          return file?.nama_file || null;
+        })(),
       } as Kerjasama;
     });
     
@@ -678,26 +685,6 @@ export function createRenewalRecord(
   };
 }
 
-
-// Helper untuk membuat data penonaktifan kerjasama.
-export function createNonactiveRecord(
-  kerjasamaId: number,
-  alasan: string,
-  buktiFile?: { nama: string; ukuran: string; tipe: string }
-): NonactiveRecord {
-  return {
-    id: `nonactive-${kerjasamaId}-${Date.now()}`,
-    tanggalDinonaktifkan: new Date().toLocaleDateString('id-ID'),
-    alasan,
-    buktiFile: buktiFile
-      ? {
-          ...buktiFile,
-          uploadedAt: new Date().toLocaleDateString('id-ID'),
-        }
-      : undefined,
-    status: 'confirmed',
-  };
-}
 
 type PengajuanSyncPayload = {
   id: number;

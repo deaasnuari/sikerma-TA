@@ -233,6 +233,7 @@ export default function DetailStoryAktivitasPage() {
   const [laporanLoading, setLaporanLoading] = useState(false);
   const [deletingLaporanId, setDeletingLaporanId] = useState<number | null>(null);
   const [filterAktivitasStatus, setFilterAktivitasStatus] = useState<'semua' | 'selesai' | 'berlangsung' | 'direncanakan'>('semua');
+  const [filterJurusanProdi, setFilterJurusanProdi] = useState('Semua Jurusan/Prodi/Unit');
   const [konfirmasi, setKonfirmasi] = useState<{ jenis: 'aktivitas' | 'laporan'; id: number } | null>(null);
   const [konfirmasiLoading, setKonfirmasiLoading] = useState(false);
   const [pesanError, setPesanError] = useState<string | null>(null);
@@ -349,13 +350,39 @@ export default function DetailStoryAktivitasPage() {
     return { total, selesai, berlangsung, direncanakan };
   }, [timelineItems]);
 
-  const filteredTimelineItems = useMemo(() => {
-    if (filterAktivitasStatus === 'semua') {
-      return timelineItems;
-    }
+  // Jurusan/Prodi tiap aktivitas ikut pengajuan sumbernya (satu story bisa gabungan
+  // beberapa dokumen kerja sama dari jurusan/prodi yang beda-beda).
+  const pengajuanUnitMap = useMemo(() => {
+    const map = new Map<number, string>();
+    (storyGroup?.pengajuan ?? []).forEach((p) => {
+      map.set(p.id, p.namaUnitProdi || '-');
+    });
+    return map;
+  }, [storyGroup]);
 
-    return timelineItems.filter((item) => item.status === filterAktivitasStatus);
-  }, [timelineItems, filterAktivitasStatus]);
+  const jurusanProdiOptions = useMemo(
+    () => ['Semua Jurusan/Prodi/Unit', ...(storyGroup?.jurusanTerlibat ?? [])],
+    [storyGroup]
+  );
+
+  // Dokumen kerja sama (kartu di section "Story Kerja Sama") ikut disaring oleh dropdown
+  // Jurusan/Prodi/Unit yang sama — supaya keduanya (daftar dokumen & timeline aktivitas)
+  // selalu konsisten menampilkan cakupan jurusan/prodi/unit yang sama.
+  const filteredPengajuan = useMemo(() => {
+    if (!storyGroup) return [];
+    if (filterJurusanProdi === 'Semua Jurusan/Prodi/Unit') return storyGroup.pengajuan;
+    return storyGroup.pengajuan.filter((p) => (p.namaUnitProdi || '-') === filterJurusanProdi);
+  }, [storyGroup, filterJurusanProdi]);
+
+  const filteredTimelineItems = useMemo(() => {
+    return timelineItems.filter((item) => {
+      const matchStatus = filterAktivitasStatus === 'semua' || item.status === filterAktivitasStatus;
+      const matchJurusan =
+        filterJurusanProdi === 'Semua Jurusan/Prodi/Unit' ||
+        pengajuanUnitMap.get(item.sourcePengajuanId) === filterJurusanProdi;
+      return matchStatus && matchJurusan;
+    });
+  }, [timelineItems, filterAktivitasStatus, filterJurusanProdi, pengajuanUnitMap]);
 
   const laporanData = useMemo(() => {
     if (!storyGroup) {
@@ -598,22 +625,41 @@ export default function DetailStoryAktivitasPage() {
             Story Kerja Sama
             <span className="ml-2 text-[11px] font-medium text-slate-500">({storyGroup.pengajuan.length} dokumen kerja sama)</span>
           </h2>
-          <div className="flex flex-wrap gap-2 text-[10px] font-semibold">
-            {(['Aktif', 'Akan Berakhir', 'Kadaluarsa'] as const).map((label) => {
-              const jumlah = storyGroup.pengajuan.filter(
-                (p) => docStatus(p) === label
-              ).length;
-              return (
-                <span key={label} className={`rounded-full border px-2.5 py-1 ${kerjasamaStatusBadge[label]}`}>
-                  {jumlah} {label}
-                </span>
-              );
-            })}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <select
+                value={filterJurusanProdi}
+                onChange={(e) => setFilterJurusanProdi(e.target.value)}
+                className="appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-3 pr-8 text-[12px] font-medium text-slate-700 outline-none focus:border-slate-400"
+              >
+                {jurusanProdiOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            </div>
+            <div className="flex flex-wrap gap-2 text-[10px] font-semibold">
+              {(['Aktif', 'Akan Berakhir', 'Kadaluarsa'] as const).map((label) => {
+                const jumlah = filteredPengajuan.filter(
+                  (p) => docStatus(p) === label
+                ).length;
+                return (
+                  <span key={label} className={`rounded-full border px-2.5 py-1 ${kerjasamaStatusBadge[label]}`}>
+                    {jumlah} {label}
+                  </span>
+                );
+              })}
+            </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-3">
-          {storyGroup.pengajuan.map((pengajuan) => {
+          {filteredPengajuan.length === 0 && (
+            <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-[12px] text-slate-500">
+              Tidak ada dokumen kerja sama dari jurusan/prodi/unit &quot;{filterJurusanProdi}&quot;.
+            </p>
+          )}
+          {filteredPengajuan.map((pengajuan) => {
             const statusDok = docStatus(pengajuan);
             return (
             <article key={pengajuan.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
@@ -743,7 +789,7 @@ export default function DetailStoryAktivitasPage() {
       <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-[15px] font-bold text-slate-900">Timeline Aktivitas Gabungan</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowLaporanModal(true)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#0e1d34] px-3 py-2 text-[12px] font-medium text-[#0e1d34] hover:bg-[#0e1d34]/5"
@@ -924,7 +970,11 @@ export default function DetailStoryAktivitasPage() {
           <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-[12px] text-slate-500">
             {timelineItems.length === 0
               ? 'Belum ada aktivitas. Tambahkan aktivitas pertama untuk mitra ini.'
-              : `Belum ada aktivitas dengan status "${filterAktivitasStatus}".`}
+              : filterJurusanProdi !== 'Semua Jurusan/Prodi/Unit' && filterAktivitasStatus !== 'semua'
+                ? `Belum ada aktivitas dengan status "${filterAktivitasStatus}" dari jurusan/prodi "${filterJurusanProdi}".`
+                : filterJurusanProdi !== 'Semua Jurusan/Prodi/Unit'
+                  ? `Belum ada aktivitas dari jurusan/prodi "${filterJurusanProdi}".`
+                  : `Belum ada aktivitas dengan status "${filterAktivitasStatus}".`}
           </div>
         ) : (
           <ol className="relative ml-3 border-l border-slate-200">

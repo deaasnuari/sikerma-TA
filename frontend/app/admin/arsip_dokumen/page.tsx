@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { fetchArsipDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
 import { exportToExcel } from '@/lib/exportExcel';
+import FileDownloadLink from '@/components/FileDownloadLink';
 
 interface ArsipDokumen {
   id: number;
@@ -27,6 +28,11 @@ interface ArsipDokumen {
   berlakuHingga: string;
   alasanArsip: string | null;
   buktiPdf: string | null;
+  buktiPdfDownloadUrl: string | null;
+  buktiPdfNama: string | null;
+  buktiTidakDiperpanjang: string | null;
+  buktiTidakDiperpanjangDownloadUrl: string | null;
+  buktiTidakDiperpanjangNama: string | null;
 }
 
 function toDisplayDate(value?: string): string {
@@ -91,6 +97,11 @@ export default function ArsipDokumenPage() {
             berlakuHingga: item.berlakuHingga,
             alasanArsip: item.alasanArsip,
             buktiPdf: item.buktiPdf,
+            buktiPdfDownloadUrl: item.buktiPdfDownloadUrl,
+            buktiPdfNama: item.buktiPdfNama,
+            buktiTidakDiperpanjang: item.buktiTidakDiperpanjang,
+            buktiTidakDiperpanjangDownloadUrl: item.buktiTidakDiperpanjangDownloadUrl,
+            buktiTidakDiperpanjangNama: item.buktiTidakDiperpanjangNama,
           }))
         );
       } catch {
@@ -133,7 +144,7 @@ export default function ArsipDokumenPage() {
   }
 
   const handleExportExcel = () => {
-    const headers = ['No', 'No Dokumen', 'Nama Mitra', 'Jenis', 'Tanggal Mulai', 'Berlaku Hingga', 'Alasan Arsip', 'Bukti PDF'];
+    const headers = ['No', 'No Dokumen', 'Nama Mitra', 'Jenis', 'Tanggal Mulai', 'Berlaku Hingga', 'Catatan Tidak Diperpanjang', 'Bukti Tidak Diperpanjang', 'Bukti PDF'];
     const rows = filtered.map((item, index) => [
       index + 1,
       item.noDokumen,
@@ -142,6 +153,7 @@ export default function ArsipDokumenPage() {
       item.tanggalMulai,
       item.berlakuHingga,
       item.alasanArsip || '-',
+      item.buktiTidakDiperpanjang || '-',
       item.buktiPdf || '-',
     ]);
     const dateStamp = new Date().toISOString().slice(0, 10);
@@ -227,6 +239,9 @@ export default function ArsipDokumenPage() {
                 Dokumen yang sudah kadaluarsa dapat diperpanjang — klik tombol <span className="font-semibold">Perpanjang</span> untuk langsung membuka form perpanjangan di halaman Status dan Progres Kerja Sama
               </li>
               <li>
+                Kalau kerja sama ditandai <span className="font-semibold">tidak diperpanjang</span> (dari halaman Monitoring), catatan dan buktinya otomatis muncul di kolom <span className="font-semibold">Catatan/Bukti Tidak Diperpanjang</span> di bawah
+              </li>
+              <li>
                 Arsip dapat dihapus permanen oleh admin jika tidak diperlukan lagi
               </li>
             </ul>
@@ -294,7 +309,8 @@ export default function ArsipDokumenPage() {
                 <th className="py-3 px-4 whitespace-nowrap">Tgl Mulai</th>
                 <th className="py-3 px-4 whitespace-nowrap">Berlaku Hingga</th>
                 <th className="py-3 px-4 whitespace-nowrap">Status</th>
-                <th className="py-3 px-4">Alasan Arsip</th>
+                <th className="py-3 px-4">Catatan Tidak Diperpanjang</th>
+                <th className="py-3 px-4 whitespace-nowrap text-center">Bukti Tidak Diperpanjang</th>
                 <th className="py-3 px-4 whitespace-nowrap text-center">Bukti PDF</th>
                 <th className="py-3 px-4 whitespace-nowrap text-center">Aksi</th>
               </tr>
@@ -302,7 +318,7 @@ export default function ArsipDokumenPage() {
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-gray-400">
+                  <td colSpan={10} className="py-10 text-center text-gray-400">
                     Tidak ada data ditemukan
                   </td>
                 </tr>
@@ -346,16 +362,31 @@ export default function ArsipDokumenPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center">
+                      {item.buktiTidakDiperpanjang ? (
+                        <FileDownloadLink
+                          url={item.buktiTidakDiperpanjang}
+                          downloadUrl={item.buktiTidakDiperpanjangDownloadUrl}
+                          fileName={item.buktiTidakDiperpanjangNama}
+                          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-[10px] font-medium whitespace-nowrap"
+                        >
+                          <FileText size={13} />
+                          Lihat Bukti
+                        </FileDownloadLink>
+                      ) : (
+                        <span className="text-[10px] text-gray-400 italic">-</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center">
                       {item.buktiPdf ? (
-                        <a
-                          href={item.buktiPdf}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <FileDownloadLink
+                          url={item.buktiPdf}
+                          downloadUrl={item.buktiPdfDownloadUrl}
+                          fileName={item.buktiPdfNama}
                           className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-[10px] font-medium whitespace-nowrap"
                         >
                           <FileText size={13} />
                           Lihat PDF
-                        </a>
+                        </FileDownloadLink>
                       ) : (
                         <span className="text-[10px] text-gray-400 italic">-</span>
                       )}

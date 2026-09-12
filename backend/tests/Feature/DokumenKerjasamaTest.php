@@ -8,6 +8,8 @@ use App\Models\MasterUnitProdi;
 use App\Models\Pengajuan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class DokumenKerjasamaTest extends TestCase
@@ -317,7 +319,41 @@ class DokumenKerjasamaTest extends TestCase
             'alasan_arsip'  => 'Masa berlaku habis',
         ])->assertOk();
 
-        $this->assertEquals('archived', $dokumen->fresh()->status_siklus);
+        $dokumen->refresh();
+        $this->assertEquals('archived', $dokumen->status_siklus);
+        $this->assertEquals('Masa berlaku habis', $dokumen->alasan_arsip);
+    }
+
+    // Kerja sama yang TIDAK diperpanjang (ditandai admin di Monitoring): catatannya lewat
+    // alasan_arsip (di atas), buktinya lewat upload-file dengan peran_berkas terpisah —
+    // supaya beda dari "Bukti PDF" (dokumen final) yang sudah ada di tabel Arsip Dokumen.
+    public function test_admin_dapat_upload_bukti_tidak_diperpanjang(): void
+    {
+        Storage::fake('public');
+        $admin   = $this->admin();
+        $dokumen = $this->buatDokumen(['nomor_dokumen' => 'UPD-004']);
+
+        $file = UploadedFile::fake()->create('bukti-tidak-diperpanjang.pdf', 100, 'application/pdf');
+
+        $response = $this->actingAs($admin)->postJson("/api/dokumen-kerjasama/{$dokumen->id}/upload-file", [
+            'file'         => $file,
+            'peran_berkas' => 'bukti_tidak_diperpanjang',
+        ]);
+
+        $response->assertOk()->assertJsonPath('data.peran_berkas', 'bukti_tidak_diperpanjang');
+
+        $this->assertDatabaseHas('dokumen_file', [
+            'dokumen_id'   => $dokumen->id,
+            'peran_berkas' => 'bukti_tidak_diperpanjang',
+        ]);
+
+        // Harus ikut muncul lagi di index() (dipakai Rekap Data & Arsip Dokumen) — bukan
+        // cuma tersimpan tapi tidak pernah dikirim balik ke frontend.
+        $indexResponse = $this->actingAs($admin)->getJson('/api/dokumen-kerjasama');
+        $indexResponse->assertOk();
+        $peranList = collect($indexResponse->json('data.data'))
+            ->firstWhere('id', $dokumen->id)['dokumen_files'] ?? [];
+        $this->assertTrue(collect($peranList)->contains(fn ($f) => $f['peran_berkas'] === 'bukti_tidak_diperpanjang'));
     }
 
     public function test_update_dokumen_ditolak_bukan_admin(): void

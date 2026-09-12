@@ -13,7 +13,7 @@ function getBackendOrigin(): string {
   return API_BASE_URL.startsWith('http') ? new URL(API_BASE_URL).origin : 'http://127.0.0.1:8000';
 }
 
-function buildLegacyFileUrl(filePath: string): string {
+export function buildLegacyFileUrl(filePath: string): string {
   if (filePath.startsWith('http')) return filePath;
   const origin = getBackendOrigin();
   //ini untuk menghapus prefix /storage/ di filePath, karena di backend sudah diubah ke dokumen/
@@ -69,6 +69,7 @@ type ApiDokumenRow = {
     nama_kontak_utama?: string | null;
     jabatan_kontak_utama?: string | null;
     telepon_kontak_utama?: string | null;
+    no_telepon_mitra?: string | null;
   } | null;
   unit_prodi?: {
     id: number;
@@ -162,11 +163,17 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
   }
 
   rekapDokumenInFlight = (async () => {
-    const [response] = await Promise.all([
+    // Selalu ambil ULANG daftar master ruang lingkup (semua status, aktif maupun nonaktif) —
+    // JANGAN cuma andalkan cache lokal yang bisa basi (ruang lingkup baru/diubah namanya/
+    // dinonaktifkan tidak langsung kepakai) atau cuma cakup yang aktif (bikin id yang sudah
+    // nonaktif gagal ter-resolve jadi nama, tampil sebagai angka mentah). Ini yang bikin kolom
+    // Ruang Lingkup di Rekap Data bisa beda dari kartu "Top 5 Ruang Lingkup" yang dihitung
+    // langsung di backend dari master_ruang_lingkup tanpa cache.
+    const [response, freshRuangLingkup] = await Promise.all([
       apiRequest<ApiPaginatedResponse<ApiDokumenRow & { sumber_pengajuan_id?: number | null; keterangan?: string | null }>>('/dokumen-kerjasama?per_page=2000'),
-      getCachedMasterRuangLingkup().length === 0 ? getMasterRuangLingkup({ aktif: true }).catch(() => []) : Promise.resolve([]),
+      getMasterRuangLingkup().catch(() => getCachedMasterRuangLingkup()),
     ]);
-    const rlLookup = getCachedMasterRuangLingkup();
+    const rlLookup = freshRuangLingkup.length > 0 ? freshRuangLingkup : getCachedMasterRuangLingkup();
     const mapped = (response.data?.data ?? []).map((row) => {
     const nomor = row.nomor_dokumen || row.pengajuan?.nomor_pengajuan || `DOK-${row.id}`;
     const tanggalMulaiRaw = row.tanggal_mulai || '';
@@ -199,17 +206,22 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
     }
 
     // dokumen_files dari controller sudah dibatasi ke peran_berkas 'dokumen_final',
-    // 'dokumen_perpanjangan', atau 'dokumen_pendukung' — pisahkan lagi di sini supaya dokumen
-    // pendukung (TOR/KAK/Proposal) tidak ikut nyampur ke kartu dokumen utama.
+    // 'dokumen_perpanjangan', 'dokumen_pendukung', atau 'bukti_tidak_diperpanjang' —
+    // pisahkan lagi di sini supaya dokumen pendukung (TOR/KAK/Proposal) dan bukti "tidak
+    // diperpanjang" (diunggah admin di Monitoring) tidak ikut nyampur ke kartu dokumen utama.
     // Fallback ke kolom 'file' hanya untuk record lama yang belum punya dokumen_files.
     let dokumenTerkait: any[] = [];
     const allFiles = row.dokumen_files ?? [];
-    const finalFiles = allFiles.filter((f) => f.peran_berkas !== 'dokumen_pendukung');
+    const finalFiles = allFiles.filter((f) => f.peran_berkas !== 'dokumen_pendukung' && f.peran_berkas !== 'bukti_tidak_diperpanjang');
+    const buktiTidakDiperpanjangFile = allFiles.find((f) => f.peran_berkas === 'bukti_tidak_diperpanjang');
     const dokumenPendukungTerkait = allFiles
       .filter((f) => f.peran_berkas === 'dokumen_pendukung')
       .map((f) => ({
         nama: f.nama_file,
         url: buildLegacyFileUrl(f.path_file || ''),
+        // Dipakai untuk mengunduh dengan nama ASLI berkasnya (lewat downloadFileWithAuth) —
+        // bukan nama acak hasil penyimpanan di server.
+        downloadUrl: `/dokumen-kerjasama/${row.id}/documents/${f.id}/download`,
         tipe: f.mime_type || (f.nama_file.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'),
         ukuran: f.ukuran_file_bytes ? `${Math.round(f.ukuran_file_bytes / 1024)} KB` : 'Dokumen Pendukung',
         tanggal: toDisplayDate(tanggalMulaiRaw),
@@ -232,16 +244,19 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
         return {
           nama: f.nama_file,
           url: fileUrl,
+          downloadUrl: `/dokumen-kerjasama/${row.id}/documents/${f.id}/download`,
           tipe: f.mime_type || (f.nama_file.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'),
           ukuran: sizeLabel,
           tanggal: toDisplayDate(tanggalMulaiRaw),
         };
       });
     } else if (row.file) {
-      // Legacy: record lama yang hanya punya kolom 'file'
+      // Legacy: record lama yang hanya punya kolom 'file' (bukan dokumen_files) — endpoint
+      // download/view backend sudah mendukung penanda khusus 'legacy' untuk kasus ini.
       dokumenTerkait.push({
         nama: row.file.split('/').pop() || row.file,
         url: buildLegacyFileUrl(row.file),
+        downloadUrl: `/dokumen-kerjasama/${row.id}/documents/legacy/download`,
         tipe: row.file.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
         ukuran: 'File System',
         tanggal: toDisplayDate(tanggalMulaiRaw),
@@ -336,6 +351,16 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       jurusanUnitProdiId: row.unit_prodi?.jenis_node === 'prodi' ? (row.unit_prodi?.parent?.id ?? undefined) : undefined,
       alasanArsip: row.alasan_arsip || null,
       buktiPdf: dokumenTerkait.length > 0 ? dokumenTerkait[0].url : null,
+      // Path API buat unduh "Bukti PDF" pakai nama asli berkasnya (lihat downloadFileWithAuth).
+      buktiPdfDownloadUrl: dokumenTerkait.length > 0 ? dokumenTerkait[0].downloadUrl : null,
+      buktiPdfNama: dokumenTerkait.length > 0 ? dokumenTerkait[0].nama : null,
+      // Bukti kalau kerja sama ini ditandai TIDAK diperpanjang (upload terpisah dari dokumen
+      // final) — dipakai di kolom "Bukti Tidak Diperpanjang" pada tabel Arsip Dokumen.
+      buktiTidakDiperpanjang: buktiTidakDiperpanjangFile ? buildLegacyFileUrl(buktiTidakDiperpanjangFile.path_file || '') : null,
+      buktiTidakDiperpanjangDownloadUrl: buktiTidakDiperpanjangFile
+        ? `/dokumen-kerjasama/${row.id}/documents/${buktiTidakDiperpanjangFile.id}/download`
+        : null,
+      buktiTidakDiperpanjangNama: buktiTidakDiperpanjangFile?.nama_file || null,
       manfaatKerjasama: (row.keterangan && !row.keterangan.includes('Mitra:')) ? row.keterangan : undefined,
       mitraId: row.mitra?.id ?? undefined,
       kodePerusahaan: row.mitra?.kode_mitra || undefined,
@@ -346,6 +371,7 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
 
       bidangUsaha: row.mitra?.bidang_usaha || row.snap_bidang_usaha || undefined,
       alamatMitra: row.mitra?.alamat || undefined,
+      noTeleponMitra: row.mitra?.no_telepon_mitra || undefined,
       picMitra: row.mitra?.nama_kontak_utama || undefined,
       jabatanPicMitra: row.mitra?.jabatan_kontak_utama || undefined,
       picJurusanUnit: row.pengajuan?.nama_pengusul || row.snap_nama_pengusul || undefined,
@@ -411,6 +437,9 @@ export async function updateDokumenKerjasamaById(
     tanggal_mulai?: string | null;
     tanggal_berakhir?: string | null;
     status_siklus?: 'active' | 'expiring' | 'archived';
+    // Catatan kenapa kerja sama diarsipkan/tidak diperpanjang — tampil di kolom "Catatan Tidak
+    // Diperpanjang" pada tabel Arsip Dokumen.
+    alasan_arsip?: string | null;
     keterangan?: string | null;
     follow_up?: string | null;
     manfaat?: string | null;
@@ -463,7 +492,7 @@ export async function uploadDokumenFile(
   id: number,
   blob: Blob,
   fileName: string,
-  peranBerkas?: 'dokumen_final' | 'dokumen_pendukung'
+  peranBerkas?: 'dokumen_final' | 'dokumen_pendukung' | 'bukti_tidak_diperpanjang'
 ): Promise<void> {
   const formData = new FormData();
   formData.append('file', blob, fileName);
@@ -511,6 +540,11 @@ export type ArsipDokumenApiItem = {
   berlakuHingga: string;
   alasanArsip: string | null;
   buktiPdf: string | null;
+  buktiPdfDownloadUrl: string | null;
+  buktiPdfNama: string | null;
+  buktiTidakDiperpanjang: string | null;
+  buktiTidakDiperpanjangDownloadUrl: string | null;
+  buktiTidakDiperpanjangNama: string | null;
 };
 
 export async function fetchArsipDokumenFromApi(): Promise<ArsipDokumenApiItem[]> {
@@ -518,7 +552,12 @@ export async function fetchArsipDokumenFromApi(): Promise<ArsipDokumenApiItem[]>
   return items
     .filter((item) => item.status === 'Akan Berakhir' || item.status === 'Kadaluarsa')
     .map((item, index) => ({
-      id: index + 1,
+      // PENTING: pakai id ASLI dokumen_kerjasama (item.id), BUKAN index+1 — id ini dipakai
+      // tombol "Perpanjang" untuk membuka dokumen yang benar di halaman Monitoring. Kalau
+      // pakai index+1, angka kecil seperti 1/2/3 gampang KEBETULAN cocok dengan id dokumen
+      // LAIN yang tidak ada hubungannya, jadi salah sasaran (lihat insiden "GAK MAU" ke
+      // dokumen id=1 padahal yang dimaksud dokumen lain).
+      id: item.id ?? index + 1,
       noDokumen: item.noDokumen,
       namaMitra: item.namaMitra,
       // Sudah difilter di atas ke 'Akan Berakhir' | 'Kadaluarsa' saja.
@@ -528,5 +567,10 @@ export async function fetchArsipDokumenFromApi(): Promise<ArsipDokumenApiItem[]>
       berlakuHingga: item.berlakuHingga,
       alasanArsip: (item as any).alasanArsip || null,
       buktiPdf: (item as any).buktiPdf || null,
+      buktiPdfDownloadUrl: (item as any).buktiPdfDownloadUrl || null,
+      buktiPdfNama: (item as any).buktiPdfNama || null,
+      buktiTidakDiperpanjang: (item as any).buktiTidakDiperpanjang || null,
+      buktiTidakDiperpanjangDownloadUrl: (item as any).buktiTidakDiperpanjangDownloadUrl || null,
+      buktiTidakDiperpanjangNama: (item as any).buktiTidakDiperpanjangNama || null,
     }));
 }

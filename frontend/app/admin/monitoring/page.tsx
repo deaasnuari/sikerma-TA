@@ -2,7 +2,7 @@
 
 import * as XLSX from 'xlsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Archive, Bell, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Eye, Filter, HandshakeIcon, Mail, MessageCircle, Phone, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { AlertCircle, Archive, Bell, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Eye, Filter, HandshakeIcon, Mail, MessageCircle, Phone, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -15,10 +15,10 @@ import RenewalForm from './RenewalForm';
 import NotificationHistoryModal from './NotificationHistoryModal';
 import NonactiveConfirmationModal from './NonactiveConfirmationModal';
 import {
-  createNonactiveRecord,
   createRenewalRecord,
   createWhatsAppLink,
   deleteMonitoringItem,
+  fetchMonitoringDataFromApi,
   fetchNotifikasiKerjasama,
   filterMonitoringData,
   findKerjasamaById,
@@ -35,7 +35,6 @@ import {
   monitoringStatusConfig,
   type Kerjasama,
   type MonitoringNotification,
-  type NonactiveRecord,
   type RenewalRecord,
   type TabKey,
 } from '@/services/adminMonitoringService';
@@ -44,6 +43,7 @@ import { addAdminNotification } from '@/services/adminService';
 import { addRenewalRequest } from '@/services/adminRenewalRequestService';
 import { logPerpanjanganDiajukan, logNotifikasiDikirim } from '@/services/kerjasamaEventLogService';
 import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
+import { updateDokumenKerjasamaById, uploadDokumenFile } from '@/services/dokumenKerjasamaApiService';
 import { getPageNumbers } from '@/lib/pagination';
 
 
@@ -57,7 +57,6 @@ export default function MonitoringdanstatusPage() {
   const [notificationModal, setNotificationModal] = useState<{ open: boolean; kerjasamaId: number | null }>({ open: false, kerjasamaId: null });
   const [notificationHistories, setNotificationHistories] = useState<Record<number, MonitoringNotification[]>>({});
   const [nonactiveModal, setNonactiveModal] = useState<{ open: boolean; kerjasamaId: number | null }>({ open: false, kerjasamaId: null });
-  const [nonactiveHistories, setNonactiveHistories] = useState<Record<number, NonactiveRecord[]>>({});
   const [monitoringData, setMonitoringData] = useState<Kerjasama[]>([]);
   const [hapusTarget, setHapusTarget] = useState<Kerjasama | null>(null);
   // State untuk toggle form sederhana/baru
@@ -69,6 +68,7 @@ export default function MonitoringdanstatusPage() {
   const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
   const [filterTingkatPerusahaan, setFilterTingkatPerusahaan] = useState('Semua Tingkat Perusahaan');
   const [filterTahun, setFilterTahun] = useState<string | null>(null);
+  const [yearPickerOpen, setYearPickerOpen] = useState(false);
   // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) supaya dropdown filter bisa
   // dikelompokkan pakai <optgroup>, sama seperti dropdown "Semua Unit" di landing page.
   const [masterJurusanOptions, setMasterJurusanOptions] = useState<string[]>([]);
@@ -86,6 +86,8 @@ export default function MonitoringdanstatusPage() {
   // Toast hint setelah perpanjangan berhasil diajukan
   const [perpanjanganHint, setPerpanjanganHint] = useState(false);
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Modal konfirmasi setelah kerja sama berhasil dinonaktifkan — pengganti alert() bawaan browser.
+  const [nonaktifSuccessMessage, setNonaktifSuccessMessage] = useState<string | null>(null);
 
   const showPerpanjanganHint = () => {
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
@@ -119,9 +121,15 @@ export default function MonitoringdanstatusPage() {
     };
   };
 
+  // Data asli dari server baru boleh dipakai untuk auto-buka form perpanjangan setelah
+  // benar-benar termuat — sebelum itu monitoringData masih cache lama (localStorage) yang
+  // ID-nya bisa kebetulan cocok tapi menunjuk ke mitra yang SALAH (beda dari data server
+  // yang sebenarnya), bikin modal "Tidak Perpanjang" kebuka untuk dokumen yang salah.
+  const [isRealDataLoaded, setIsRealDataLoaded] = useState(false);
+
   // Auto-buka form perpanjangan jika diarahkan dari halaman Arsip Dokumen
   useEffect(() => {
-    if (monitoringData.length === 0) return;
+    if (!isRealDataLoaded) return;
     const pendingId = sessionStorage.getItem('open-perpanjang-id');
     if (!pendingId) return;
     sessionStorage.removeItem('open-perpanjang-id');
@@ -130,7 +138,7 @@ export default function MonitoringdanstatusPage() {
     if (found) {
       setRenewalChoiceModal({ open: true, kerjasamaId: targetId });
     }
-  }, [monitoringData]);
+  }, [isRealDataLoaded, monitoringData]);
 
   useEffect(() => {
     let mounted = true;
@@ -139,10 +147,10 @@ export default function MonitoringdanstatusPage() {
       setMonitoringData(getMonitoringData());
 
       // Then fetch real data from API and update
-      const { fetchMonitoringDataFromApi } = await import('@/services/adminMonitoringService');
       const realData = await fetchMonitoringDataFromApi();
       if (mounted) {
         setMonitoringData(realData);
+        setIsRealDataLoaded(true);
       }
     };
 
@@ -220,6 +228,12 @@ export default function MonitoringdanstatusPage() {
   const jenisMitraOptions = useMemo(() => getMonitoringJenisMitraOptions(monitoringData), [monitoringData]);
   const tingkatPerusahaanOptions = useMemo(() => getMonitoringTingkatOptions(monitoringData), [monitoringData]);
   const availableYears = useMemo(() => getMonitoringYearOptions(monitoringData), [monitoringData]);
+  const currentYear = new Date().getFullYear();
+  const defaultYearRangeStart = Math.min(currentYear - 4, availableYears[0] ?? currentYear);
+  const [yearRangeStart, setYearRangeStart] = useState(defaultYearRangeStart);
+  // 24 tahun sekaligus, sama seperti kalender tahun di Rekap Data.
+  const YEAR_PICKER_SIZE = 24;
+  const yearGrid = Array.from({ length: YEAR_PICKER_SIZE }, (_, index) => yearRangeStart + index);
 
   const filteredByDropdowns = filterMonitoringData(filteredByTab, {
     filterJenis,
@@ -459,14 +473,81 @@ export default function MonitoringdanstatusPage() {
             groups={[{ label: '', options: tingkatPerusahaanOptions.slice(1) }]}
           />
 
-          <GroupedFilterSelect
-            value={filterTahun ?? ''}
-            onChange={(next) => setFilterTahun(next === '' ? null : next)}
-            allLabel="Semua Tahun"
-            allValue=""
-            buttonClassName="rounded-lg border border-gray-300 bg-white px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C] flex items-center justify-between gap-2 min-w-[130px]"
-            groups={[{ label: '', options: availableYears.map(String) }]}
-          />
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setYearPickerOpen((prev) => !prev)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C] inline-flex min-w-[150px] items-center justify-between gap-2"
+            >
+              <span>{filterTahun ?? 'Semua Tahun'}</span>
+              <CalendarDays size={16} className="text-gray-500" />
+            </button>
+
+            {yearPickerOpen && (
+              <div className="absolute right-0 top-[calc(100%+8px)] z-20 w-[320px] rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                <div className="mb-3 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setYearRangeStart((prev) => prev - YEAR_PICKER_SIZE)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <p className="text-[12px] font-semibold text-gray-800">
+                    {yearRangeStart} - {yearRangeStart + YEAR_PICKER_SIZE - 1}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setYearRangeStart((prev) => prev + YEAR_PICKER_SIZE)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2">
+                  {yearGrid.map((year) => {
+                    const isSelected = String(year) === filterTahun;
+                    const hasData = availableYears.includes(year);
+
+                    return (
+                      <button
+                        key={year}
+                        type="button"
+                        onClick={() => {
+                          setFilterTahun(String(year));
+                          setYearPickerOpen(false);
+                        }}
+                        className={`rounded-lg border px-2 py-2 text-[11.5px] font-medium transition-colors ${
+                          isSelected
+                            ? 'border-[#1E376C] bg-[#1E376C] text-white'
+                            : hasData
+                              ? 'border-gray-200 bg-white text-gray-800 hover:border-[#1E376C] hover:text-[#1E376C]'
+                              : 'border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-200'
+                        }`}
+                      >
+                        {year}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+                  <p className="text-[10px] text-gray-500">Pilih tahun untuk menampilkan data tahunan</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterTahun(null);
+                      setYearPickerOpen(false);
+                    }}
+                    className="text-[10px] font-semibold text-[#1E376C] transition-colors hover:text-[#2B4A93]"
+                  >
+                    Semua Tahun
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -900,16 +981,36 @@ export default function MonitoringdanstatusPage() {
         noDokumen={selectedNonactiveItem?.noDokumen || ''}
         tanggalBerakhir={selectedNonactiveItem?.tanggalBerakhir || ''}
         sisaMasaBerlaku={selectedNonactiveItem?.sisaMasaBerlaku || null}
-        nonactiveHistory={nonactiveHistories[nonactiveModal.kerjasamaId || 0] || []}
-        onConfirmNonactive={(alasan: string, buktiFile?: { nama: string; ukuran: string; tipe: string }) => {
+        existingDecision={
+          selectedNonactiveItem?.alasanArsip
+            ? {
+                catatan: selectedNonactiveItem.alasanArsip,
+                buktiUrl: selectedNonactiveItem.buktiTidakDiperpanjang || null,
+                buktiDownloadUrl: selectedNonactiveItem.buktiTidakDiperpanjangDownloadUrl || null,
+                buktiNama: selectedNonactiveItem.buktiTidakDiperpanjangNama || null,
+              }
+            : null
+        }
+        onConfirmNonactive={async (alasan, file) => {
           if (!nonactiveModal.kerjasamaId) return;
-          const newRecord = createNonactiveRecord(nonactiveModal.kerjasamaId, alasan, buktiFile);
-          setNonactiveHistories((prev) => ({
-            ...prev,
-            [nonactiveModal.kerjasamaId]: [...(prev[nonactiveModal.kerjasamaId] || []), newRecord],
-          }));
-          alert(`Kerjasama "${selectedNonactiveItem?.namaMitra || ''}" telah berhasil dinonaktifkan.`);
-          setNonactiveModal({ open: false, kerjasamaId: null });
+          const id = nonactiveModal.kerjasamaId;
+
+          // Catatan tersimpan lewat alasan_arsip (kolom yang sama dipakai kolom "Catatan
+          // Tidak Diperpanjang" di Arsip Dokumen) — sekaligus tandai statusnya archived.
+          await updateDokumenKerjasamaById(id, {
+            status_siklus: 'archived',
+            alasan_arsip: alasan,
+          });
+
+          // Bukti (opsional) diunggah terpisah dari dokumen final supaya tidak saling timpa.
+          if (file) {
+            await uploadDokumenFile(id, file, file.name, 'bukti_tidak_diperpanjang');
+          }
+
+          const namaMitra = selectedNonactiveItem?.namaMitra || '';
+          const realData = await fetchMonitoringDataFromApi({ forceRefresh: true });
+          setMonitoringData(realData);
+          setNonaktifSuccessMessage(`Kerjasama "${namaMitra}" telah berhasil dinonaktifkan.`);
         }}
       />
 
@@ -959,6 +1060,38 @@ export default function MonitoringdanstatusPage() {
             >
               <X size={14} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Konfirmasi berhasil dinonaktifkan — pengganti alert() bawaan browser */}
+      {nonaktifSuccessMessage && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 backdrop-blur-[1px]"
+          onClick={() => setNonaktifSuccessMessage(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100">
+                <CheckCircle2 size={20} className="text-green-600" />
+              </div>
+              <div className="min-w-0 flex-1 pt-0.5">
+                <p className="text-[13px] font-bold text-gray-900">Berhasil Dinonaktifkan</p>
+                <p className="mt-1 text-[12px] leading-relaxed text-gray-600">{nonaktifSuccessMessage}</p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setNonaktifSuccessMessage(null)}
+                className="rounded-lg bg-[#1E376C] px-5 py-2 text-[12px] font-semibold text-white transition-colors hover:bg-[#2B4A93]"
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
       )}

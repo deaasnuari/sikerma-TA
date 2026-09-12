@@ -91,7 +91,7 @@ class AuthController extends Controller
                     'website' => null,
                     'alamat' => null,
                     'email_mitra' => Str::lower($validated['email']),
-                    'telepon_mitra' => $validated['phone'],
+                    'whatsapp_mitra' => $validated['phone'],
                     'nama_kontak_utama' => $validated['name'],
                     'jabatan_kontak_utama' => $validated['position'],
                     'email_kontak_utama' => Str::lower($validated['email']),
