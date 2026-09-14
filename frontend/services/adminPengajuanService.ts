@@ -246,7 +246,7 @@ type ApiPengajuanRow = {
   diajukan_pada?: string | null;
   unit_prodi?: { id: number; nama: string } | null;
   user_pengusul?: { id: number; name: string; username?: string | null } | null;
-  mitra?: { id: number; nama_mitra: string; kategori_mitra?: string | null; bidang_usaha?: string | null; tingkat_perusahaan?: string | null; negara?: string | null; alamat?: string | null; email_mitra?: string | null; whatsapp_mitra?: string | null; no_telepon_mitra?: string | null; } | string | null;
+  mitra?: { id: number; nama_mitra: string; kategori_mitra?: string | null; bidang_usaha?: string | null; tingkat_perusahaan?: string | null; negara?: string | null; alamat?: string | null; email_mitra?: string | null; whatsapp_mitra?: string | null; no_telepon_mitra?: string | null; nama_kontak_utama?: string | null; jabatan_kontak_utama?: string | null; email_kontak_utama?: string | null; telepon_kontak_utama?: string | null; } | string | null;
   // Legacy schema keys (from recent pulled backend)
   judul?: string;
   deskripsi?: string | null;
@@ -492,6 +492,10 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
     mitraEmail: typeof row.mitra === 'object' && row.mitra !== null && 'email_mitra' in row.mitra ? row.mitra.email_mitra || pickOptionalString((row as Record<string, unknown>).email_mitra) : pickOptionalString((row as Record<string, unknown>).email_mitra),
     mitraTelepon: typeof row.mitra === 'object' && row.mitra !== null && 'whatsapp_mitra' in row.mitra ? row.mitra.whatsapp_mitra || pickOptionalString((row as Record<string, unknown>).whatsapp_mitra) : pickOptionalString((row as Record<string, unknown>).whatsapp_mitra),
     mitraNoTelepon: typeof row.mitra === 'object' && row.mitra !== null && 'no_telepon_mitra' in row.mitra ? row.mitra.no_telepon_mitra || pickOptionalString((row as Record<string, unknown>).no_telepon_mitra) : pickOptionalString((row as Record<string, unknown>).no_telepon_mitra),
+    mitraPicNama: typeof row.mitra === 'object' && row.mitra !== null ? pickOptionalString(row.mitra.nama_kontak_utama) : undefined,
+    mitraPicJabatan: typeof row.mitra === 'object' && row.mitra !== null ? pickOptionalString(row.mitra.jabatan_kontak_utama) : undefined,
+    mitraPicEmail: typeof row.mitra === 'object' && row.mitra !== null ? pickOptionalString(row.mitra.email_kontak_utama) : undefined,
+    mitraPicTelepon: typeof row.mitra === 'object' && row.mitra !== null ? pickOptionalString(row.mitra.telepon_kontak_utama) : undefined,
     jenisDokumen: mapJenisDokumenFromApi(row.jenis_dokumen),
     unitProdiId: row.unit_prodi_id ?? undefined,
     namaUnitProdi: row.unit_prodi?.nama || row.jurusan || '-',
@@ -652,6 +656,7 @@ export async function updatePengajuanItemApi(
   const payload: Record<string, unknown> = {};
   if (typeof updates.judulPengajuan === 'string') payload.judul_pengajuan = updates.judulPengajuan;
   if (typeof updates.deskripsiPengajuan === 'string') payload.deskripsi_pengajuan = updates.deskripsiPengajuan;
+  if (typeof updates.manfaat === 'string') payload.manfaat = updates.manfaat;
   if (typeof updates.namaPengusul === 'string') payload.nama_pengusul = updates.namaPengusul;
   if (typeof updates.jabatanPengusul === 'string') payload.jabatan_pengusul = updates.jabatanPengusul;
   if (typeof updates.emailPengusul === 'string') payload.email_pengusul = updates.emailPengusul;

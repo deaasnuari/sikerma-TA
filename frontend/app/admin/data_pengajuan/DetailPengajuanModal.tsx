@@ -1,6 +1,6 @@
 'use client';
 
-import { X, FileText, CheckCircle2, Clock3, XCircle, ExternalLink, Paperclip, Download, ShieldCheck } from 'lucide-react';
+import { X, FileText, CheckCircle2, Clock3, XCircle, ExternalLink, Paperclip, Download, ShieldCheck, Phone } from 'lucide-react';
 import type { PengajuanItem, PengajuanStatus } from '@/services/adminPengajuanService';
 import CatatanAdminPanel from '@/components/CatatanAdminPanel';
 
@@ -154,6 +154,21 @@ export default function DetailPengajuanModal({ item, onClose }: Props) {
           <div className="mb-2 text-[10px] text-slate-500">ACC Internal: {item.accInternalAt || '-'}</div>
           <div className="mb-2 text-[10px] text-slate-500">ACC Mitra: {item.accMitraAt || '-'}</div>
           <div className="mb-2 text-[10px] text-slate-500">Final Approved At: {item.finalApprovedAt || '-'}</div>
+
+          <div className="mt-4 rounded-lg border border-slate-200 p-3">
+            <p className="mb-2 text-[10px] font-semibold text-slate-700">Kontak Mitra</p>
+            <p className="mb-2 text-[10px] text-slate-600">Email Mitra: {item.mitraEmail || '-'}</p>
+            <p className="mb-2 flex items-center gap-1 text-[10px] text-slate-600">
+              <Phone size={12} />
+              Nomor Telepon Mitra:
+              {item.mitraNoTelepon ? (
+                <a href={`tel:${item.mitraNoTelepon.replace(/[^\d+]/g, '')}`} className="text-slate-800 underline hover:text-slate-600">
+                  {item.mitraNoTelepon}
+                </a>
+              ) : '-'}
+            </p>
+            <p className="text-[10px] text-slate-600">WhatsApp Aktif Mitra: {item.mitraTelepon || '-'}</p>
+          </div>
 
           <div className="mt-4 rounded-lg border border-slate-200 p-3">
             <p className="text-[10px] font-semibold text-slate-700 mb-2">Kontak PIC</p>

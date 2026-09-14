@@ -176,6 +176,18 @@ const templateFileNameByJenis: Record<string, string> = {
 
 const MAX_EDIT_FILE_SIZE = 10 * 1024 * 1024;
 
+function toDateInputValue(value?: string | null): string {
+  if (!value) return '';
+
+  const normalized = value.trim();
+  const dayFirstMatch = normalized.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+  if (dayFirstMatch) {
+    return `${dayFirstMatch[3]}-${dayFirstMatch[2].padStart(2, '0')}-${dayFirstMatch[1].padStart(2, '0')}`;
+  }
+
+  return normalized.slice(0, 10);
+}
+
 function triggerBrowserDownload(url: string, fileName: string) {
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -864,21 +876,22 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
       jenisMitra: editingItem.mitraKategori || '',
       bidangUsaha: editingItem.mitraBidangUsaha || '',
       tingkatPerusahaan: editingItem.mitraTingkatPerusahaan || '',
-      teleponMitra: editingItem.mitraTelepon || editingItem.whatsappPengusul || '',
+      teleponMitra: editingItem.mitraTelepon || '',
       noTeleponMitra: editingItem.mitraNoTelepon || '',
       emailMitra: editingItem.mitraEmail || editingItem.emailPengusul || '',
       alamatMitra: editingItem.mitraAlamat || '',
       negara: editingItem.mitraNegara || 'Indonesia',
       jenisKerjasama: editingItem.jenisDokumen,
       unitPelaksana: editingItem.namaUnitProdi,
-      tanggalMulai: editingItem.tanggalMulai || '',
-      tanggalBerakhir: editingItem.tanggalBerakhir || '',
+      selectedProdiId: editingItem.unitProdiId ?? null,
+      tanggalMulai: toDateInputValue(editingItem.tanggalMulai),
+      tanggalBerakhir: toDateInputValue(editingItem.tanggalBerakhir),
       judulKerjasama: editingItem.judulPengajuan,
-      deskripsi: editingItem.deskripsiPengajuan || '',
-      namaKontak: editingItem.namaPengusul,
-      jabatanKontak: editingItem.jabatanPengusul || '',
-      emailKontak: editingItem.emailPengusul || '',
-      teleponKontak: editingItem.whatsappPengusul || '',
+      deskripsi: editingItem.manfaat || editingItem.deskripsiPengajuan || '',
+      namaKontak: editingItem.mitraPicNama || editingItem.namaPengusul,
+      jabatanKontak: editingItem.mitraPicJabatan || editingItem.jabatanPengusul || '',
+      emailKontak: editingItem.mitraPicEmail || editingItem.emailPengusul || '',
+      teleponKontak: editingItem.mitraPicTelepon || editingItem.whatsappPengusul || '',
       selectedRuangLingkup: editingItem.ruangLingkup,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1385,15 +1398,15 @@ function addEditJurusanUnitOption() {
     // yang tersimpan di sini, jadi Alamat Mitra dan PIC di Rekap Data selalu kosong walau
     // sudah diisi di form.
     const mitraExtra = {
-      alamat: payload.formData.alamatMitra?.trim() || undefined,
-      whatsapp_mitra: payload.formData.teleponMitra?.trim() || undefined,
-      no_telepon_mitra: payload.formData.noTeleponMitra?.trim() || undefined,
-      email_mitra: payload.formData.emailMitra?.trim() || undefined,
-      negara: payload.formData.negara?.trim() || undefined,
-      nama_kontak_utama: payload.formData.namaKontak?.trim() || undefined,
-      jabatan_kontak_utama: payload.formData.jabatanKontak?.trim() || undefined,
-      email_kontak_utama: payload.formData.emailKontak?.trim() || undefined,
-      telepon_kontak_utama: payload.formData.teleponKontak?.trim() || undefined,
+      alamat: payload.formData.alamatMitra?.trim() || editingItem.mitraAlamat || undefined,
+      whatsapp_mitra: payload.formData.teleponMitra?.trim() || editingItem.mitraTelepon || undefined,
+      no_telepon_mitra: payload.formData.noTeleponMitra?.trim() || editingItem.mitraNoTelepon || undefined,
+      email_mitra: payload.formData.emailMitra?.trim() || editingItem.mitraEmail || undefined,
+      negara: payload.formData.negara?.trim() || editingItem.mitraNegara || undefined,
+      nama_kontak_utama: payload.formData.namaKontak?.trim() || editingItem.mitraPicNama || undefined,
+      jabatan_kontak_utama: payload.formData.jabatanKontak?.trim() || editingItem.mitraPicJabatan || undefined,
+      email_kontak_utama: payload.formData.emailKontak?.trim() || editingItem.mitraPicEmail || undefined,
+      telepon_kontak_utama: payload.formData.teleponKontak?.trim() || editingItem.mitraPicTelepon || undefined,
     };
 
     try {
@@ -1420,6 +1433,10 @@ function addEditJurusanUnitOption() {
       console.error('Gagal sinkron data mitra ke Data Kemitraan:', err);
     }
 
+    const resolvedRuangLingkupIds = (payload.selectedRuangLingkup || [])
+      .map((name) => ruangLingkupRows.find((r) => r.nama_ruang_lingkup === name)?.id)
+      .filter((id): id is number => typeof id === 'number');
+
     const editPayload = {
       judulPengajuan: payload.formData.judulKerjasama.trim(),
       namaMitra: namaMitraTrimmed,
@@ -1432,19 +1449,20 @@ function addEditJurusanUnitOption() {
         if (payload.selectedProdiId !== null) return payload.selectedProdiId;
         const unitName = payload.formData.unitPelaksana.trim().toLowerCase();
         const allUnits = [...masterJurusanRows, ...masterUnitRows, ...masterProdiRows];
-        return allUnits.find((u) => u.nama.toLowerCase() === unitName)?.id ?? undefined;
+        return allUnits.find((u) => u.nama.toLowerCase() === unitName)?.id ?? editingItem.unitProdiId;
       })(),
       jenisDokumen: payload.formData.jenisKerjasama.trim() || editingItem.jenisDokumen,
       tanggalMulai: payload.formData.tanggalMulai || undefined,
       tanggalBerakhir: payload.formData.tanggalBerakhir || undefined,
       ruangLingkup: payload.selectedRuangLingkup,
-      ruangLingkupIds: (payload.selectedRuangLingkup || []).map((name) => ruangLingkupRows.find((r) => r.nama_ruang_lingkup === name)?.id).filter(Boolean) as number[],
-      emailPengusul: payload.formData.emailKontak || editingItem.emailPengusul,
-      whatsappPengusul: payload.formData.teleponKontak || editingItem.whatsappPengusul,
+      ruangLingkupIds: resolvedRuangLingkupIds.length > 0 ? resolvedRuangLingkupIds : editingItem.ruangLingkupIds,
+      emailPengusul: payload.formData.emailKontak || editingItem.mitraPicEmail || editingItem.emailPengusul,
+      whatsappPengusul: payload.formData.teleponKontak || editingItem.mitraPicTelepon || editingItem.whatsappPengusul,
       mitraTelepon: payload.formData.teleponMitra || editingItem.mitraTelepon,
       mitraNoTelepon: payload.formData.noTeleponMitra || editingItem.mitraNoTelepon,
-      deskripsiPengajuan: payload.formData.deskripsi.trim() || undefined,
-      jabatanPengusul: payload.formData.jabatanKontak.trim() || undefined,
+      deskripsiPengajuan: payload.formData.deskripsi.trim().slice(0, 100) || editingItem.deskripsiPengajuan,
+      manfaat: payload.formData.deskripsi.trim() || editingItem.manfaat,
+      jabatanPengusul: payload.formData.jabatanKontak.trim() || editingItem.mitraPicJabatan || editingItem.jabatanPengusul,
       ...(filesWereModified
         ? {
             fileName: allFileAttachments.map((f) => f.name).join(', '),
@@ -2201,6 +2219,19 @@ function addEditJurusanUnitOption() {
                       >
                         {detailItem.whatsappPengusul}
                         <ExternalLink size={12} />
+                      </a>
+                    ) : (
+                      <p className="text-gray-900 font-medium">-</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Nomor Telepon Mitra</p>
+                    {detailItem.mitraNoTelepon ? (
+                      <a
+                        href={`tel:${detailItem.mitraNoTelepon.replace(/[^\d+]/g, '')}`}
+                        className="mt-1 inline-flex items-center gap-1 font-semibold text-gray-900 underline hover:text-gray-700"
+                      >
+                        {detailItem.mitraNoTelepon}
                       </a>
                     ) : (
                       <p className="text-gray-900 font-medium">-</p>

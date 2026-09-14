@@ -69,6 +69,9 @@ Route::middleware('auth:sanctum')->group(function () {
 		->whereNumber('dokumen_kerjasama');
 	Route::patch('/dokumen-kerjasama/perpanjangan/{dokumen_log}/status', [DokumenKerjasamaController::class, 'decideRenewalRequest'])
 		->whereNumber('dokumen_log');
+	Route::get('/dokumen-kerjasama/perpanjangan/{dokumen_log}/download', [DokumenKerjasamaController::class, 'downloadRenewalDocument'])
+		->whereNumber('dokumen_log')
+		->name('dokumen-kerjasama.perpanjangan.download');
 	Route::apiResource('/dokumen-kerjasama', DokumenKerjasamaController::class)
 		->parameters(['dokumen-kerjasama' => 'dokumen_kerjasama']);
 

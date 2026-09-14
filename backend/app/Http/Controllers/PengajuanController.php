@@ -1061,7 +1061,7 @@ class PengajuanController extends Controller
         if ($this->shouldLoadPengajuanRelations()) {
             $query->with([
                 'unitProdi:id,nama,jenis_node,kategori_unit',
-                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra',
+                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra,nama_kontak_utama,jabatan_kontak_utama,email_kontak_utama,telepon_kontak_utama',
                 'userPengusul:id,name,username',
                 'dokumenFiles',
                 'dokumenKerjasama:id,no_permohonan,nomor_dokumen,file',
@@ -1166,7 +1166,7 @@ class PengajuanController extends Controller
         if ($this->shouldLoadPengajuanRelations()) {
             $pengajuan->load([
                 'unitProdi:id,nama,jenis_node,kategori_unit',
-                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra',
+                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra,nama_kontak_utama,jabatan_kontak_utama,email_kontak_utama,telepon_kontak_utama',
                 'userPengusul:id,name,username',
                 'dokumenFiles',
                 'dokumenKerjasama:id,no_permohonan,nomor_dokumen,file',
@@ -1308,7 +1308,7 @@ class PengajuanController extends Controller
         if ($this->shouldLoadPengajuanRelations()) {
             $pengajuan->load([
                 'unitProdi:id,nama,jenis_node,kategori_unit',
-                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra',
+                'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra,nama_kontak_utama,jabatan_kontak_utama,email_kontak_utama,telepon_kontak_utama',
                 'dokumenFiles',
             ]);
         }

@@ -179,6 +179,8 @@ type InternalAjukanKerjasamaFormProps = {
   initialData?: Partial<typeof initialForm> & {
     asal?: 'Jurusan' | 'Unit';
     selectedRuangLingkup?: string[];
+    selectedJurusanId?: number | null;
+    selectedProdiId?: number | null;
     nomorPengajuan?: string;
   };
   initialFileAttachments?: PengajuanFileAttachment[];
@@ -441,6 +443,10 @@ export default function AdminAjukanKerjasamaForm({
   }, [initialMasterUnitProdiTree]);
 
   useEffect(() => {
+    if (masterUnitProdiTree.length === 0) {
+      return;
+    }
+
     if (asal !== 'Jurusan') {
       if (selectedJurusanId !== null) {
         setSelectedJurusanId(null);
@@ -452,6 +458,10 @@ export default function AdminAjukanKerjasamaForm({
     }
 
     if (!selectedJurusanNode) {
+      if (initialData?.selectedProdiId) {
+        return;
+      }
+
       if (selectedProdiId !== null) {
         setSelectedProdiId(null);
       }
@@ -462,7 +472,22 @@ export default function AdminAjukanKerjasamaForm({
     if (!prodiStillAvailable && selectedProdiId !== null) {
       setSelectedProdiId(null);
     }
-  }, [asal, prodiOptionsForJurusan, selectedJurusanNode, selectedJurusanId, selectedProdiId]);
+  }, [asal, initialData?.selectedProdiId, masterUnitProdiTree.length, prodiOptionsForJurusan, selectedJurusanNode, selectedJurusanId, selectedProdiId]);
+
+  useEffect(() => {
+    if (asal !== 'Jurusan' || !initialData?.selectedProdiId || masterUnitProdiTree.length === 0) {
+      return;
+    }
+
+    const parent = masterUnitProdiTree.find(
+      (item) => item.jenis_node === 'unit' && item.kategori_unit === 'jurusan'
+        && (item.children ?? []).some((child) => child.id === initialData.selectedProdiId),
+    );
+
+    if (parent) {
+      setSelectedJurusanId(parent.id);
+    }
+  }, [asal, initialData?.selectedProdiId, masterUnitProdiTree]);
 
   useEffect(() => {
     if (initialData) {
@@ -471,7 +496,12 @@ export default function AdminAjukanKerjasamaForm({
         setAsal(nextAsal);
       }
 
-      setFormData((prev) => ({ ...prev, ...initialData }));
+      setFormData({ ...initialForm, ...initialData });
+      setSelectedJurusanId(initialData.selectedJurusanId ?? null);
+      setSelectedProdiId(initialData.selectedProdiId ?? null);
+      setExistingFileAttachments(initialFileAttachments ?? []);
+      setDokumen([]);
+      setDokumenPendukung([]);
 
       if (Array.isArray(initialData.selectedRuangLingkup)) {
         setSelectedRuangLingkup(initialData.selectedRuangLingkup.filter(Boolean));
@@ -506,7 +536,7 @@ export default function AdminAjukanKerjasamaForm({
     } catch {
       // Abaikan draft rusak agar form tetap bisa dipakai normal.
     }
-  }, [initialData]);
+  }, [initialData, initialFileAttachments]);
 
   useEffect(() => {
     if (!enableAppearanceEdit || typeof window === 'undefined') {

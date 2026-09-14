@@ -1346,15 +1346,17 @@ export default function RekapDataPage() {
                               <p className="mt-0.5 text-[10.5px] text-gray-500 leading-snug">{r.catatan}</p>
                             )}
                             {r.buktiPerpanjanganUrl && (
-                              <a
-                                href={r.buktiPerpanjanganUrl}
+                              <FileDownloadLink
+                                url={r.buktiPerpanjanganUrl}
+                                downloadUrl={`/dokumen-kerjasama/perpanjangan/${r.id}/download`}
+                                fileName={r.buktiPerpanjanganNama || `dokumen-perpanjangan-${r.noDokumen}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="mt-1 inline-flex items-center gap-1 text-[10.5px] font-semibold text-blue-600 hover:underline"
                               >
                                 <FileText size={11} />
                                 Lihat Dokumen
-                              </a>
+                              </FileDownloadLink>
                             )}
                           </div>
                           <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[9.5px] font-semibold text-green-700">
@@ -1480,29 +1482,60 @@ export default function RekapDataPage() {
             return;
           }
 
+          const mergedData: DokumenData = {
+            ...data,
+            nomorDokumen: data.nomorDokumen || editingItem.noDokumen,
+            jenisDokumen: data.jenisDokumen || editingItem.jenis,
+            namaPIC: data.namaPIC || editingItem.picMitra || '',
+            kategoriMitra: data.kategoriMitra || editingItem.jenisMitra || '',
+            bidangUsaha: data.bidangUsaha || editingItem.bidangUsaha || '',
+            tingkatPerusahaan: data.tingkatPerusahaan || editingItem.tingkatPerusahaan || '',
+            namaMitra: data.namaMitra || editingItem.namaMitra,
+            status: data.status || editingItem.status,
+            jabatanMitra: data.jabatanMitra || editingItem.jabatanPicMitra || '',
+            emailMitra: data.emailMitra || editingItem.emailMitra || '',
+            tanggalMulai: data.tanggalMulai || editingItem.tanggalMulaiRaw || editingItem.tanggalMulai,
+            tanggalBerakhir: data.tanggalBerakhir || editingItem.berlakuHinggaRaw || editingItem.berlakuHingga,
+            alamatMitra: data.alamatMitra || editingItem.alamatMitra || '',
+            whatsappMitra: data.whatsappMitra || editingItem.whatsappNumber || '',
+            noTeleponMitra: data.noTeleponMitra || editingItem.noTeleponMitra || '',
+            negara: data.negara || editingItem.mitraNegara || 'Indonesia',
+            asalKategori: data.asalKategori || editingItem.kategoriUnit || 'Unit',
+            unitKerja: data.unitKerja || editingItem.unit,
+            prodiId: data.prodiId ?? (editingItem.jurusanUnitProdiId ? editingItem.unitProdiId : null),
+            ruangLingkup: data.ruangLingkup?.length ? data.ruangLingkup : (editingItem.ruangLingkup || []),
+            ruangLingkupIds: data.ruangLingkupIds?.length ? data.ruangLingkupIds : (editingItem.ruangLingkupIds || []),
+            dokumenTerkait: data.dokumenTerkait?.length ? data.dokumenTerkait : editingItem.dokumenTerkait,
+            dokumenPendukung: data.dokumenPendukung?.length ? data.dokumenPendukung : editingItem.dokumenPendukungTerkait,
+            judulKegiatan: data.judulKegiatan || editingItem.judulKegiatan || '',
+            manfaatKerjasama: data.manfaatKerjasama || editingItem.manfaatSebenarnya || editingItem.manfaatKerjasama || '',
+            luaranKerjaSama: data.luaranKerjaSama || editingItem.luaranKerjaSama || '',
+            keterangan: data.keterangan || editingItem.keteranganAsli || '',
+          };
+
           // Optimistic update sementara menunggu API selesai
           setRekapData((prev) => prev.map((r) =>
             r.noDokumen === editingItem.noDokumen
               ? {
                   ...r,
-                  namaMitra: data.namaMitra,
-                  mitraId: data.mitraId,
-                  kodePerusahaan: data.kodePerusahaan,
-                  bidangUsaha: data.bidangUsaha || undefined,
-                  tingkatPerusahaan: data.tingkatPerusahaan || undefined,
-                  alamatMitra: data.alamatMitra || undefined,
-                  picMitra: data.namaPIC || undefined,
-                  judulKegiatan: data.judulKegiatan || undefined,
-                  manfaatKerjasama: data.manfaatKerjasama || undefined,
-                  manfaatSebenarnya: data.manfaatKerjasama || undefined,
-                  luaranKerjaSama: data.luaranKerjaSama || undefined,
-                  keteranganAsli: data.keterangan || undefined,
-                  jenis: data.jenisDokumen as 'MoU' | 'MoA' | 'IA',
-                  unit: data.unitKerja,
-                  tanggalMulai: data.tanggalMulai || r.tanggalMulai,
-                  berlakuHingga: data.tanggalBerakhir || r.berlakuHingga,
-                  status: data.status as 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa',
-                  noDokumen: data.nomorDokumen || r.noDokumen,
+                  namaMitra: mergedData.namaMitra,
+                  mitraId: mergedData.mitraId,
+                  kodePerusahaan: mergedData.kodePerusahaan,
+                  bidangUsaha: mergedData.bidangUsaha || undefined,
+                  tingkatPerusahaan: mergedData.tingkatPerusahaan || undefined,
+                  alamatMitra: mergedData.alamatMitra || undefined,
+                  picMitra: mergedData.namaPIC || undefined,
+                  judulKegiatan: mergedData.judulKegiatan || undefined,
+                  manfaatKerjasama: mergedData.manfaatKerjasama || undefined,
+                  manfaatSebenarnya: mergedData.manfaatKerjasama || undefined,
+                  luaranKerjaSama: mergedData.luaranKerjaSama || undefined,
+                  keteranganAsli: mergedData.keterangan || undefined,
+                  jenis: mergedData.jenisDokumen as 'MoU' | 'MoA' | 'IA',
+                  unit: mergedData.unitKerja,
+                  tanggalMulai: mergedData.tanggalMulai || r.tanggalMulai,
+                  berlakuHingga: mergedData.tanggalBerakhir || r.berlakuHingga,
+                  status: mergedData.status as 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa',
+                  noDokumen: mergedData.nomorDokumen || r.noDokumen,
                 }
               : r
           ));
@@ -1513,43 +1546,43 @@ export default function RekapDataPage() {
 
             if (typeof editingItem.id === 'number') {
               // Sinkronkan kategori/bidang usaha/tingkat ke master_mitra juga (bukan cuma mitra_id).
-              const resolvedMitraId = await resolveMitraId(data);
+              const resolvedMitraId = await resolveMitraId(mergedData);
               // Sebelumnya unit_prodi_id tidak pernah dikirim saat edit, jadi ganti Jurusan/Unit/Prodi
               // di modal ini diam-diam tidak tersimpan — resolve & kirim sekarang juga.
-              const unitProdiId = await resolveUnitProdiId(data.unitKerja, data.prodiId);
+              const unitProdiId = await resolveUnitProdiId(mergedData.unitKerja, mergedData.prodiId);
 
               const apiPayload: Parameters<typeof updateDokumenKerjasamaById>[1] = {
-                nomor_dokumen: data.nomorDokumen || undefined,
-                judul_dokumen: data.judulKegiatan?.trim() || null,
-                jenis_dokumen: mapJenisToApi(data.jenisDokumen),
+                nomor_dokumen: mergedData.nomorDokumen || undefined,
+                judul_dokumen: mergedData.judulKegiatan?.trim() || null,
+                jenis_dokumen: mapJenisToApi(mergedData.jenisDokumen),
                 unit_prodi_id: unitProdiId ?? undefined,
-                tanggal_mulai: data.tanggalMulai || null,
-                tanggal_berakhir: data.tanggalBerakhir || null,
-                status_siklus: mapStatusToApi(data.status),
+                tanggal_mulai: mergedData.tanggalMulai || null,
+                tanggal_berakhir: mergedData.tanggalBerakhir || null,
+                status_siklus: mapStatusToApi(mergedData.status),
                 // Kode Perusahaan mengikuti master_mitra lewat relasi mitra_id — tidak dikirim manual.
                 mitra_id: resolvedMitraId ?? null,
-                keterangan: data.keterangan?.trim() || null,
-                manfaat: data.manfaatKerjasama?.trim() || null,
-                luaran_kerja_sama: data.luaranKerjaSama?.trim() || null,
-                ruang_lingkup_ids: data.ruangLingkupIds && data.ruangLingkupIds.length > 0 ? data.ruangLingkupIds : null,
+                keterangan: mergedData.keterangan?.trim() || null,
+                manfaat: mergedData.manfaatKerjasama?.trim() || null,
+                luaran_kerja_sama: mergedData.luaranKerjaSama?.trim() || null,
+                ruang_lingkup_ids: mergedData.ruangLingkupIds && mergedData.ruangLingkupIds.length > 0 ? mergedData.ruangLingkupIds : null,
               };
               promises.push(updateDokumenKerjasamaById(editingItem.id, apiPayload));
             }
 
-            if (typeof editingItem.sourcePengajuanId === 'number' && data.namaMitra && data.namaMitra !== editingItem.namaMitra) {
-              promises.push(updatePengajuanNamaMitra(editingItem.sourcePengajuanId, data.namaMitra));
+            if (typeof editingItem.sourcePengajuanId === 'number' && mergedData.namaMitra !== editingItem.namaMitra) {
+              promises.push(updatePengajuanNamaMitra(editingItem.sourcePengajuanId, mergedData.namaMitra));
             }
 
             await Promise.all(promises);
 
             // Upload file baru jika user memilih "Ganti Dokumen"
-            const newDoc = data.dokumenTerkait?.[0];
+            const newDoc = mergedData.dokumenTerkait?.[0];
             if (typeof editingItem.id === 'number' && newDoc?.url?.startsWith('data:')) {
               const blob = dataUrlToBlob(newDoc.url);
               await uploadDokumenFile(editingItem.id, blob, newDoc.nama);
             }
 
-            const newDocPendukung = data.dokumenPendukung?.[0];
+            const newDocPendukung = mergedData.dokumenPendukung?.[0];
             if (typeof editingItem.id === 'number' && newDocPendukung?.url?.startsWith('data:')) {
               const blob = dataUrlToBlob(newDocPendukung.url);
               await uploadDokumenFile(editingItem.id, blob, newDocPendukung.nama, 'dokumen_pendukung');

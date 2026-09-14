@@ -369,6 +369,29 @@ class DokumenKerjasamaController extends Controller
     }
 
     /**
+     * Nama file yang ditampilkan/dipakai saat mengunduh dokumen bukti perpanjangan.
+     * Untuk permintaan yang diajukan sebelum kolom bukti_perpanjangan_nama ada, nama asli
+     * sudah tidak mungkin didapat lagi (tidak pernah disimpan) — jadi dibuatkan nama yang
+     * lebih enak dibaca daripada nama acak hasil penyimpanan di disk, bukan nama aslinya.
+     */
+    private function renewalDisplayFileName(DokumenLog $log): ?string
+    {
+        if ($log->bukti_perpanjangan_nama) {
+            return $log->bukti_perpanjangan_nama;
+        }
+
+        if (!$log->bukti_perpanjangan) {
+            return null;
+        }
+
+        $ext = pathinfo($log->bukti_perpanjangan, PATHINFO_EXTENSION);
+        $noDokumen = $log->dokumen?->nomor_dokumen ?: $log->nomor;
+        $label = $noDokumen ? str_replace('/', '-', $noDokumen) : (string) $log->id;
+
+        return 'Dokumen Perpanjangan - ' . $label . ($ext ? '.' . $ext : '');
+    }
+
+    /**
      //ini guard untuk memastikan dokumen kerjasama yang diakses user memang bisa dilihat oleh user tersebut
      */
     public function documents(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
@@ -1049,6 +1072,7 @@ class DokumenKerjasamaController extends Controller
             'tanggal_berakhir_baru' => ['required', 'date', 'after_or_equal:tanggal_mulai_baru'],
             'catatan_perpanjangan' => ['required', 'string'],
             'bukti_perpanjangan' => ['nullable', 'string'],
+            'bukti_perpanjangan_nama' => ['nullable', 'string', 'max:255'],
             'ruang_lingkup' => ['nullable', 'array'],
             'ruang_lingkup.*' => ['string', 'max:150'],
             'requester_role' => ['nullable', 'in:admin,internal,eksternal,pimpinan'],
@@ -1084,6 +1108,9 @@ class DokumenKerjasamaController extends Controller
             // Fallback: simpan nama file saja jika bukan data URL.
             $buktiNama = $buktiRaw;
         }
+        // Nama asli file yang diupload user (dikirim terpisah dari frontend) — dipakai supaya
+        // unduhan dokumen perpanjangan tidak memakai nama acak hasil penyimpanan di disk.
+        $buktiNamaAsli = $validated['bukti_perpanjangan_nama'] ?? $buktiNama;
 
         $ruangLingkupBaru = $validated['ruang_lingkup'] ?? [];
 
@@ -1111,6 +1138,7 @@ class DokumenKerjasamaController extends Controller
             'tgl_monitoring' => Carbon::today(),
             'catatan_perpanjangan' => $validated['catatan_perpanjangan'],
             'bukti_perpanjangan' => $buktiPath ?? $buktiNama,
+            'bukti_perpanjangan_nama' => $buktiNamaAsli,
             'tanggal_mulai_perpanjangan' => $validated['tanggal_mulai_baru'],
             'tanggal_berakhir_perpanjangan' => $validated['tanggal_berakhir_baru'],
             'status_perpanjangan' => 'menunggu',
@@ -1177,7 +1205,11 @@ class DokumenKerjasamaController extends Controller
                     DokumenFile::create([
                         'dokumen_id' => $dokumen->id,
                         'peran_berkas' => 'dokumen_perpanjangan',
-                        'nama_file' => basename($buktiPath),
+                        // Nama asli file yang diupload user, BUKAN basename($buktiPath) — path di
+                        // disk pakai nama acak (lihat persistDataUrlFile()), jadi kalau dipakai
+                        // langsung sebagai nama_file, nama itu ikut kebawa ke Arsip Dokumen/Rekap
+                        // Data/dst. sebagai "nama dokumen" yang diunduh (lihat renewalDisplayFileName()).
+                        'nama_file' => $this->renewalDisplayFileName($dokumen_log) ?: basename($buktiPath),
                         'path_file' => $buktiPath,
                         'mime_type' => $mimeMap[$ext] ?? null,
                         'diunggah_oleh_user_id' => $request->user()?->id,
@@ -1225,6 +1257,43 @@ class DokumenKerjasamaController extends Controller
         ]);
     }
 
+    /**
+     * Unduh dokumen bukti perpanjangan dengan nama file aslinya (bukan nama acak hasil
+     * penyimpanan di disk) — dipakai admin untuk memeriksa dokumen sebelum menyetujui/menolak
+     * permintaan perpanjangan di halaman Status dan Progres Kerja Sama.
+     */
+    public function downloadRenewalDocument(Request $request, DokumenLog $dokumen_log): Response|\Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        if ($dokumen_log->tipe_log !== 'perpanjangan') {
+            return response([
+                'success' => false,
+                'message' => 'Log yang dipilih bukan log perpanjangan.',
+            ], 404);
+        }
+
+        $path = $dokumen_log->bukti_perpanjangan;
+        if ($path && str_starts_with($path, 'http')) {
+            return redirect()->away($path);
+        }
+
+        $resolvedPath = $this->resolveDokumenFilePath($path);
+        if (!$resolvedPath) {
+            return response([
+                'success' => false,
+                'message' => 'File dokumen tidak ditemukan.',
+            ], 404);
+        }
+
+        $dokumen_log->loadMissing('dokumen:id,nomor_dokumen');
+        $displayName = $this->renewalDisplayFileName($dokumen_log) ?: basename($resolvedPath);
+
+        return Storage::disk('public')->download($resolvedPath, $displayName);
+    }
+
     private function mapRenewalLogToResponse(DokumenLog $log): array
     {
         $dokumen = $log->dokumen;
@@ -1264,6 +1333,9 @@ class DokumenKerjasamaController extends Controller
                     ? $log->bukti_perpanjangan
                     : url('storage/' . ltrim($log->bukti_perpanjangan, '/')))
                 : null,
+            // Nama asli file untuk ditampilkan/dipakai sebagai nama unduhan — bukan nama acak
+            // hasil penyimpanan di disk (lihat persistDataUrlFile() dan renewalDisplayFileName()).
+            'buktiPerpanjanganNama' => $this->renewalDisplayFileName($log),
             'ruangLingkup' => $log->payload_json['ruang_lingkup'] ?? [],
             'status' => $log->status_perpanjangan ?: 'menunggu',
             'requestedAt' => optional($log->dibuat_pada)->toIso8601String(),

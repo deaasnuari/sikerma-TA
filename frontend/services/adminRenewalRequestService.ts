@@ -12,6 +12,7 @@ export interface RenewalRequestItem {
   catatan: string;
   buktiPerpanjangan?: string | null;
   buktiPerpanjanganUrl?: string | null;
+  buktiPerpanjanganNama?: string | null;
   ruangLingkup?: string[];
   status: RenewalRequestStatus;
   requestedAt: string;
@@ -66,6 +67,7 @@ export async function addRenewalRequest(payload: {
   tanggalBerakhirBaru: string;
   catatan?: string;
   buktiPerpanjangan?: string | null;
+  buktiPerpanjanganNama?: string | null;
   ruangLingkup?: string[];
   requesterRole?: 'admin' | 'internal' | 'eksternal' | 'pimpinan';
   notificationHref?: string;
@@ -77,6 +79,7 @@ export async function addRenewalRequest(payload: {
       tanggal_berakhir_baru: payload.tanggalBerakhirBaru,
       catatan_perpanjangan: payload.catatan || '-',
       bukti_perpanjangan: payload.buktiPerpanjangan || null,
+      bukti_perpanjangan_nama: payload.buktiPerpanjanganNama || null,
       ruang_lingkup: payload.ruangLingkup ?? [],
       requester_role: payload.requesterRole ?? 'admin',
       notification_href: payload.notificationHref ?? '/admin/monitoring/perpanjangan',

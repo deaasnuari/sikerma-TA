@@ -49,6 +49,10 @@ type ApiDokumenRow = {
   jenis_dokumen: string;
   tanggal_mulai?: string | null;
   tanggal_berakhir?: string | null;
+  // Kapan baris dokumen_kerjasama ini benar-benar dibuat di sistem — dipakai untuk urutkan
+  // Story & Aktivitas dari yang PALING BARU DIAJUKAN, beda dari tanggal_mulai (tanggal mulai
+  // kontraktual kerja sama, bisa jauh dari kapan pengajuannya sendiri masuk).
+  created_at?: string | null;
   status_siklus?: 'active' | 'expiring' | 'archived' | null;
   // Status terhitung dari backend (DokumenKerjasama::status_efektif) — SATU-SATUNYA
   // sumber kebenaran status kerjasama, dipakai bersama oleh Rekap Data, Monitoring,
@@ -66,8 +70,11 @@ type ApiDokumenRow = {
     tingkat_perusahaan?: string | null;
     alamat?: string | null;
     negara?: string | null;
+    email_mitra?: string | null;
+    whatsapp_mitra?: string | null;
     nama_kontak_utama?: string | null;
     jabatan_kontak_utama?: string | null;
+    email_kontak_utama?: string | null;
     telepon_kontak_utama?: string | null;
     no_telepon_mitra?: string | null;
   } | null;
@@ -336,9 +343,11 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       berlakuHingga: toDisplayDate(row.tanggal_berakhir),
       tanggalMulaiRaw: tanggalMulaiRaw || undefined,
       berlakuHinggaRaw: row.tanggal_berakhir || undefined,
+      dibuatPada: row.created_at || undefined,
       tahun: (tanggalMulaiRaw || new Date().toISOString()).slice(0, 4),
       status: mapStatus(row),
-      whatsappNumber: row.pengajuan?.whatsapp_pengusul || row.snap_whatsapp_pengusul || undefined,
+      whatsappNumber: row.mitra?.whatsapp_mitra || row.pengajuan?.whatsapp_pengusul || row.snap_whatsapp_pengusul || undefined,
+          emailMitra: row.mitra?.email_mitra || row.snap_email_pengusul || undefined,
       dokumenTerkait,
       dokumenPendukungTerkait: dokumenPendukungTerkait.length > 0 ? dokumenPendukungTerkait : undefined,
       ruangLingkup,
@@ -374,6 +383,7 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       noTeleponMitra: row.mitra?.no_telepon_mitra || undefined,
       picMitra: row.mitra?.nama_kontak_utama || undefined,
       jabatanPicMitra: row.mitra?.jabatan_kontak_utama || undefined,
+      emailPicMitra: row.mitra?.email_kontak_utama || undefined,
       picJurusanUnit: row.pengajuan?.nama_pengusul || row.snap_nama_pengusul || undefined,
       tingkatInternasional,
       tingkatNasional,

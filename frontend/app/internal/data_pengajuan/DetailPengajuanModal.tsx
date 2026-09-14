@@ -1,6 +1,6 @@
 'use client';
 
-import { X, FileText, User, Building2, CalendarDays, Tag, CheckCircle2, Clock3, XCircle, MessageSquareText, ExternalLink, Paperclip, GitBranch, ShieldCheck, Download } from 'lucide-react';
+import { X, FileText, User, Building2, CalendarDays, Tag, CheckCircle2, Clock3, XCircle, MessageSquareText, ExternalLink, Paperclip, GitBranch, ShieldCheck, Download, Phone } from 'lucide-react';
 import type { PengajuanItem, PengajuanStatus } from '@/services/adminPengajuanService';
 import { pengajuanDokumenBadge } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
@@ -151,7 +151,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
           )}
 
           {/* Kontak / info tambahan */}
-          {(item.emailPengusul || item.whatsappPengusul || item.mitraTelepon) && (
+          {(item.emailPengusul || item.whatsappPengusul || item.mitraTelepon || item.mitraNoTelepon) && (
             <section>
               <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
                 Kontak
@@ -165,6 +165,9 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
                 )}
                 {item.mitraTelepon && (
                   <InfoRow icon={<Building2 size={15} />} label="Nomor WhatsApp Aktif Mitra" value={<WhatsAppLink number={item.mitraTelepon} />} />
+                )}
+                {item.mitraNoTelepon && (
+                  <InfoRow icon={<Phone size={15} />} label="Nomor Telepon Mitra" value={<PhoneLink number={item.mitraNoTelepon} />} />
                 )}
               </div>
             </section>
@@ -337,6 +340,16 @@ function WhatsAppLink({ number }: { number: string }) {
     >
       {number}
       <ExternalLink size={13} />
+    </a>
+  );
+}
+
+function PhoneLink({ number }: { number: string }) {
+  const href = `tel:${number.replace(/[^\d+]/g, '')}`;
+
+  return (
+    <a href={href} className="text-slate-800 underline hover:text-slate-600">
+      {number}
     </a>
   );
 }

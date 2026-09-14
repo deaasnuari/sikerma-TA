@@ -28,9 +28,13 @@ export interface RekapDokumen {
   berlakuHingga: string;
   tanggalMulaiRaw?: string;
   berlakuHinggaRaw?: string;
+  // Kapan dokumen kerja sama ini dibuat di sistem (bukan tanggal_mulai kontraktualnya) —
+  // dipakai untuk mengurutkan Story & Aktivitas dari yang PALING BARU DIAJUKAN.
+  dibuatPada?: string;
   tahun: string;
   status: RekapStatus;
   whatsappNumber?: string;
+  emailMitra?: string;
   // No. Telepon mitra — terpisah dari WhatsApp di atas (master_mitra.no_telepon_mitra).
   noTeleponMitra?: string;
   buktiPdfDownloadUrl?: string | null;
@@ -61,6 +65,7 @@ export interface RekapDokumen {
   alamatMitra?: string;
   picMitra?: string;
   jabatanPicMitra?: string;
+  emailPicMitra?: string;
   picJurusanUnit?: string;
   tingkatInternasional?: boolean;
   tingkatNasional?: boolean;
@@ -287,7 +292,13 @@ function toDateInputValue(dateValue: string): string {
     return '';
   }
 
-  const parsedDate = new Date(dateValue);
+  const normalized = dateValue.trim();
+  const dayFirstMatch = normalized.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (dayFirstMatch) {
+    return `${dayFirstMatch[3]}-${dayFirstMatch[2].padStart(2, '0')}-${dayFirstMatch[1].padStart(2, '0')}`;
+  }
+
+  const parsedDate = new Date(normalized);
 
   if (Number.isNaN(parsedDate.getTime())) {
     return dateValue;
@@ -598,7 +609,8 @@ function getPengajuanById(pengajuanId: number) {
 // Ubah data rekap menjadi format awal untuk modal edit.
 // Jika item memiliki sourcePengajuanId, ambil juga data dari pengajuan terkait untuk prefill.
 export function createDokumenFormData(item: RekapDokumen): DokumenData {
-  const asalKategori = item.kategoriUnit || (rekapJurusanOptions.includes(item.unit) ? 'Jurusan' : 'Unit');
+  const isProdi = Boolean(item.jurusanUnitProdiId);
+  const asalKategori = isProdi ? 'Jurusan' : (item.kategoriUnit || (rekapJurusanOptions.includes(item.unit) ? 'Jurusan' : 'Unit'));
 
   // Ambil data pengajuan jika sourcePengajuanId ada
   let pengajuanData: {
@@ -609,7 +621,14 @@ export function createDokumenFormData(item: RekapDokumen): DokumenData {
     mitraAlamat?: string;
     mitraEmail?: string;
     mitraTelepon?: string;
+    mitraNoTelepon?: string;
     mitraKategori?: string;
+    mitraPicNama?: string;
+    mitraPicJabatan?: string;
+    mitraPicEmail?: string;
+    mitraPicTelepon?: string;
+    manfaat?: string;
+    luaranKerjaSama?: string;
   } | null = null;
 
 if (item.sourcePengajuanId) {
@@ -619,7 +638,7 @@ if (item.sourcePengajuanId) {
   return {
     nomorDokumen: item.noDokumen,
     jenisDokumen: item.jenis,
-    namaPIC: pengajuanData?.namaPengusul || item.picMitra || '',
+    namaPIC: item.picMitra || pengajuanData?.mitraPicNama || pengajuanData?.namaPengusul || '',
     kategoriMitra: item.jenisMitra || pengajuanData?.mitraKategori || '',
     bidangUsaha: item.bidangUsaha || '',
     tingkatPerusahaan: item.tingkatPerusahaan || '',
@@ -627,18 +646,18 @@ if (item.sourcePengajuanId) {
     mitraId: item.mitraId,
     kodePerusahaan: item.kodePerusahaan,
     status: item.status,
-    jabatanMitra: pengajuanData?.jabatanPengusul || item.jabatanPicMitra || '',
-    emailMitra: pengajuanData?.emailPengusul || '',
+    jabatanMitra: item.jabatanPicMitra || pengajuanData?.mitraPicJabatan || '',
+    emailMitra: item.emailPicMitra || item.emailMitra || pengajuanData?.mitraPicEmail || pengajuanData?.mitraEmail || pengajuanData?.emailPengusul || '',
     // Pakai versi ISO mentah (bukan item.tanggalMulai/berlakuHingga yang sudah diformat
     // DD/MM/YYYY untuk tampilan tabel) supaya tidak salah tafsir jadi tanggal lain.
     tanggalMulai: toDateInputValue(item.tanggalMulaiRaw || item.tanggalMulai),
     tanggalBerakhir: toDateInputValue(item.berlakuHinggaRaw || item.berlakuHingga),
     alamatMitra: item.alamatMitra || pengajuanData?.mitraAlamat || '',
-    whatsappMitra: pengajuanData?.whatsappPengusul || item.whatsappNumber || '',
-    noTeleponMitra: item.noTeleponMitra || '',
+    whatsappMitra: item.whatsappNumber || pengajuanData?.mitraTelepon || '',
+    noTeleponMitra: item.noTeleponMitra || pengajuanData?.mitraNoTelepon || '',
     negara: item.mitraNegara || 'Indonesia',
     asalKategori,
-    unitKerja: item.unit,
+    unitKerja: isProdi ? (item.jurusanNama || item.unit) : item.unit,
     // prodiId cuma terisi kalau unitProdiId dokumen ini memang menunjuk ke Prodi (bukan Jurusan/Unit).
     prodiId: item.jurusanUnitProdiId ? item.unitProdiId ?? null : null,
     ruangLingkup: item.ruangLingkup || [],
@@ -646,8 +665,8 @@ if (item.sourcePengajuanId) {
     dokumenTerkait: item.dokumenTerkait,
     dokumenPendukung: item.dokumenPendukungTerkait,
     judulKegiatan: item.judulKegiatan || '',
-    manfaatKerjasama: item.manfaatSebenarnya || item.manfaatKerjasama || '',
-    luaranKerjaSama: item.luaranKerjaSama || '',
+    manfaatKerjasama: item.manfaatSebenarnya || item.manfaatKerjasama || pengajuanData?.manfaat || '',
+    luaranKerjaSama: item.luaranKerjaSama || pengajuanData?.luaranKerjaSama || '',
     keterangan: item.keteranganAsli || '',
   };
 }

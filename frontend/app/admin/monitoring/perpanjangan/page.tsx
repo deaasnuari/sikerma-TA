@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock3, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock3, XCircle, Paperclip, Eye, AlertTriangle } from 'lucide-react';
+import FileDownloadLink from '@/components/FileDownloadLink';
 import { applyApprovedRenewalToMonitoring } from '@/services/adminMonitoringService';
 import { applyApprovedRenewalToRekap } from '@/services/adminRekapDataService';
 import { applyApprovedRenewalToPengajuan } from '@/services/adminPengajuanService';
@@ -25,6 +26,17 @@ const statusStyle: Record<RenewalRequestStatus, string> = {
 export default function MonitoringPerpanjanganPage() {
   const [filter, setFilter] = useState<FilterKey>('semua');
   const [items, setItems] = useState<RenewalRequestItem[]>([]);
+  // Dokumen yang sudah dibuka admin — Setujui/Tolak baru aktif setelah dokumen dicek
+  const [viewedDocIds, setViewedDocIds] = useState<Set<number>>(new Set());
+
+  const markDocViewed = (id: number) => {
+    setViewedDocIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     // Tandai notifikasi perpanjangan sebagai sudah dibaca saat halaman ini dibuka
@@ -199,26 +211,64 @@ export default function MonitoringPerpanjanganPage() {
                 )}
               </div>
 
+              {/* Dokumen bukti perpanjangan — admin wajib cek dulu sebelum bisa memutuskan */}
               {item.status === 'menunggu' && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleDecision(item, 'disetujui')}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[10px] font-semibold text-green-700 hover:bg-green-100"
-                  >
-                    <CheckCircle2 size={14} />
-                    Setujui
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDecision(item, 'ditolak')}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[10px] font-semibold text-red-700 hover:bg-red-100"
-                  >
-                    <XCircle size={14} />
-                    Tolak
-                  </button>
+                <div className="mt-3" onClick={() => markDocViewed(item.id)}>
+                  {item.buktiPerpanjanganUrl ? (
+                    <FileDownloadLink
+                      url={item.buktiPerpanjanganUrl}
+                      downloadUrl={`/dokumen-kerjasama/perpanjangan/${item.id}/download`}
+                      fileName={item.buktiPerpanjanganNama || `dokumen-perpanjangan-${item.noDokumen}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                    >
+                      <Paperclip size={13} />
+                      Lihat Dokumen Perpanjangan
+                      <Eye size={13} />
+                    </FileDownloadLink>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-700">
+                      <AlertTriangle size={13} />
+                      Tidak ada dokumen bukti perpanjangan
+                    </div>
+                  )}
                 </div>
               )}
+
+              {item.status === 'menunggu' && (() => {
+                const hasDoc = Boolean(item.buktiPerpanjanganUrl);
+                const canDecide = !hasDoc || viewedDocIds.has(item.id);
+                return (
+                  <div className="mt-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={!canDecide}
+                        onClick={() => handleDecision(item, 'disetujui')}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[10px] font-semibold text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-green-50"
+                      >
+                        <CheckCircle2 size={14} />
+                        Setujui
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canDecide}
+                        onClick={() => handleDecision(item, 'ditolak')}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[10px] font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-red-50"
+                      >
+                        <XCircle size={14} />
+                        Tolak
+                      </button>
+                    </div>
+                    {hasDoc && !canDecide && (
+                      <p className="mt-1.5 text-[10px] text-amber-600">
+                        Buka dan periksa dokumen terlebih dahulu sebelum menyetujui atau menolak.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           ))
         )}

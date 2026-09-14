@@ -34,6 +34,7 @@ class DokumenLog extends Model
         'tgl_monitoring',
         'catatan_perpanjangan',
         'bukti_perpanjangan',
+        'bukti_perpanjangan_nama',
         'tanggal_mulai_perpanjangan',
         'tanggal_berakhir_perpanjangan',
         'status_perpanjangan',

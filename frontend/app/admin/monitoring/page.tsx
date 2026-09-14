@@ -889,6 +889,7 @@ export default function MonitoringdanstatusPage() {
                     tanggalBerakhirBaru: data.tanggalBerakhirBaru,
                     catatan: data.catatanPerpanjangan,
                     buktiPerpanjangan: data?.dokumen?.url || null,
+                    buktiPerpanjanganNama: data?.dokumen?.nama || null,
                     ruangLingkup: data?.ruangLingkup || [],
                     requesterRole: renewalNotificationTarget.targetRole,
                     notificationHref: renewalNotificationTarget.href,

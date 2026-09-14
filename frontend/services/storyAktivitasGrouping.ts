@@ -100,6 +100,19 @@ function compareAsc(left?: string, right?: string): number {
   return -compareDesc(left, right);
 }
 
+// Tanggal pengajuan TERBARU di antara semua pengajuan dalam satu grup mitra — dipakai untuk
+// mengurutkan daftar Story & Aktivitas, TERPISAH dari `pengajuan[0]` yang dipilih berdasarkan
+// tanggal_berakhir paling jauh (lihat buildGroup). Kalau mitra yang sudah lama aktif tiba-tiba
+// mengajukan kerja sama baru, mitra itu harus naik ke atas daftar meski kerjasama lamanya masih
+// berlaku lebih panjang — bukan malah tetap di posisi lama karena "primary"-nya tidak berubah.
+function latestDiajukanPada(items: PengajuanItem[]): string | undefined {
+  return items.reduce<string | undefined>((latest, item) => {
+    if (!latest) return item.diajukanPada;
+    if (!item.diajukanPada) return latest;
+    return compareDesc(item.diajukanPada, latest) < 0 ? item.diajukanPada : latest;
+  }, undefined);
+}
+
 function uniqueStrings(values: Array<string | undefined | null>): string[] {
   return Array.from(
     new Set(
@@ -227,7 +240,10 @@ export function groupStoryAktivitasByMitra(items: PengajuanItem[], hiddenStoryId
 
   return Array.from(grouped.entries())
     .map(([key, value]) => buildGroup(value, key))
-    .sort((left, right) => compareDesc(left.pengajuan[0]?.diajukanPada, right.pengajuan[0]?.diajukanPada));
+    // Urutkan dari yang PALING BARU DIAJUKAN, bukan dari tanggal pengajuan "primary" (yang
+    // dipilih berdasarkan tanggal_berakhir). Jadi mitra yang baru saja mengajukan kerja sama
+    // baru langsung muncul di paling atas.
+    .sort((left, right) => compareDesc(latestDiajukanPada(left.pengajuan), latestDiajukanPada(right.pengajuan)));
 }
 
 // ── Sumber data: Rekap Data (dokumen_kerjasama) ─────────────────────────────
@@ -242,12 +258,16 @@ function mapRekapDokumenToPengajuanItem(dok: RekapDokumen): PengajuanItem {
     nomorPengajuan: dok.noDokumen,
     judulPengajuan: dok.noDokumen,
     namaPengusul: dok.picMitra ?? '-',
-    diajukanPada: dok.tanggalMulaiRaw ?? dok.tanggalMulai ?? '',
     mitraId: dok.mitraId,
     namaMitra: dok.namaMitra,
     jenisDokumen: dok.jenis,
     unitProdiId: dok.unitProdiId,
     namaUnitProdi: dok.unit,
+    // diajukanPada dipakai buat urutkan Story & Aktivitas dari yang paling baru diajukan
+    // (lihat latestDiajukanPada) — pakai dibuatPada (created_at dokumen_kerjasama, kapan
+    // baris ini benar-benar masuk sistem), BUKAN tanggal_mulai (tanggal mulai kontraktual
+    // kerja sama yang bisa jauh berbeda dari kapan pengajuannya sendiri diajukan).
+    diajukanPada: dok.dibuatPada ?? dok.tanggalMulaiRaw ?? dok.tanggalMulai ?? '',
     tanggalMulai: dok.tanggalMulaiRaw ?? dok.tanggalMulai,
     tanggalBerakhir: dok.berlakuHinggaRaw ?? dok.berlakuHingga,
     ruangLingkupIds: dok.ruangLingkupIds ?? [],
