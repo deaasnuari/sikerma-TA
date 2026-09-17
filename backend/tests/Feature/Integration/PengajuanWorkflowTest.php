@@ -451,12 +451,13 @@ class PengajuanWorkflowTest extends TestCase
 
         $this->assertEquals('archived', DokumenKerjasama::find($dokumenId)->status_siklus);
 
-        // Hapus dokumen oleh admin — hapus PERMANEN dari database (lihat DokumenKerjasamaTest
-        // untuk pengecekan detail visibilitas & cascade ke pengajuan sumbernya).
+        // Hapus dokumen oleh admin — pindah ke Sampah (soft delete), bukan permanen (lihat
+        // DokumenKerjasamaTest untuk pengecekan detail visibilitas, restore & cascade ke
+        // pengajuan sumbernya).
         $this->actingAs($this->admin)->deleteJson("/api/dokumen-kerjasama/{$dokumenId}")
             ->assertOk();
 
-        $this->assertDatabaseMissing('dokumen_kerjasama', ['id' => $dokumenId]);
+        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumenId]);
 
         $adminIds = collect($this->actingAs($this->admin)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
             ->pluck('id');

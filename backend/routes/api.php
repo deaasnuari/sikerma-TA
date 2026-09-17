@@ -65,6 +65,11 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/monev', [DokumenKerjasamaController::class, 'monev']);
 	Route::post('/dokumen-kerjasama/manual', [DokumenKerjasamaController::class, 'storeManual']);
 	Route::get('/dokumen-kerjasama/perpanjangan/requests', [DokumenKerjasamaController::class, 'renewalRequests']);
+	Route::get('/dokumen-kerjasama/trash/list', [DokumenKerjasamaController::class, 'trashed']);
+	Route::post('/dokumen-kerjasama/{dokumen_kerjasama}/restore', [DokumenKerjasamaController::class, 'restore'])
+		->whereNumber('dokumen_kerjasama');
+	Route::delete('/dokumen-kerjasama/{dokumen_kerjasama}/permanent', [DokumenKerjasamaController::class, 'destroyPermanent'])
+		->whereNumber('dokumen_kerjasama');
 	Route::post('/dokumen-kerjasama/{dokumen_kerjasama}/perpanjangan', [DokumenKerjasamaController::class, 'submitRenewalRequest'])
 		->whereNumber('dokumen_kerjasama');
 	Route::patch('/dokumen-kerjasama/perpanjangan/{dokumen_log}/status', [DokumenKerjasamaController::class, 'decideRenewalRequest'])

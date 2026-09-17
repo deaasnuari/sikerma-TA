@@ -47,7 +47,12 @@ const defaultMenuItems: SidebarMenuItem[] = [
     children: [{ label: 'Permintaan Perpanjangan', href: '/admin/monitoring/perpanjangan' }],
   },
   { icon: BookOpen, label: 'Story & Aktivitas', href: '/admin/story_aktivitas' },
-  { icon: Archive, label: 'Arsip Dokumen', href: '/admin/arsip_dokumen' },
+  {
+    icon: Archive,
+    label: 'Arsip Dokumen',
+    href: '/admin/arsip_dokumen',
+    children: [{ label: 'Sampah', href: '/admin/arsip_dokumen/sampah' }],
+  },
   { icon: Users, label: 'Manajemen User', href: '/admin/manajemen_users' },
   { icon: Handshake, label: 'Data Kemitraan', href: '/admin/master_mitra' },
 ];

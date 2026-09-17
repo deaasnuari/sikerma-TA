@@ -537,6 +537,91 @@ export async function deleteDokumenKerjasamaById(id: number): Promise<void> {
   rekapDokumenCache = null;
 }
 
+export type TrashDokumenApiItem = {
+  id: number;
+  noDokumen: string;
+  namaMitra: string;
+  jenis: 'MoA' | 'MoU' | 'IA' | 'Lainnya';
+  status: 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
+  tanggalMulai: string;
+  berlakuHingga: string;
+  // Siapa yang menghapus & kapan — dihapusAdminPada = dihapus oleh admin (dilihat di sini
+  // supaya admin bisa audit siapa yang menghapus), dihapusUserPada = dihapus oleh pemiliknya
+  // sendiri dari Rekap Data mereka.
+  dihapusOlehAdmin: boolean;
+  dihapusOlehPemilik: boolean;
+  dihapusPada: string | null;
+  // File dokumen final (kontrak/MoU/MoA/IA) — dipakai admin buat buka & pastikan isinya
+  // sebelum memutuskan pulihkan atau hapus permanen. null kalau memang belum pernah diunggah.
+  dokumenUrl: string | null;
+  dokumenDownloadUrl: string | null;
+  dokumenNama: string | null;
+};
+
+type ApiTrashRow = ApiDokumenRow & {
+  dihapus_admin_pada?: string | null;
+  dihapus_user_pada?: string | null;
+};
+
+export async function fetchTrashDokumenFromApi(): Promise<TrashDokumenApiItem[]> {
+  const response = await apiRequest<ApiPaginatedResponse<ApiTrashRow>>('/dokumen-kerjasama/trash/list?per_page=200');
+  return (response.data?.data ?? []).map((row) => {
+    const nomor = row.nomor_dokumen || row.pengajuan?.nomor_pengajuan || `DOK-${row.id}`;
+    const namaMitra = row.mitra?.nama_mitra || row.pengajuan?.nama_mitra || row.snap_nama_mitra || '-';
+    const dihapusPada = row.dihapus_admin_pada || row.dihapus_user_pada || null;
+
+    // Prioritas sama seperti Rekap Data: dokumen_files (dokumen_final/perpanjangan) →
+    // fallback kolom 'file' legacy.
+    const allFiles = row.dokumen_files ?? [];
+    const finalFiles = allFiles.filter((f) => f.peran_berkas !== 'dokumen_pendukung' && f.peran_berkas !== 'bukti_tidak_diperpanjang');
+    let dokumenUrl: string | null = null;
+    let dokumenDownloadUrl: string | null = null;
+    let dokumenNama: string | null = null;
+    if (finalFiles.length > 0) {
+      const f = finalFiles[0];
+      dokumenUrl = buildLegacyFileUrl(f.path_file || '');
+      dokumenDownloadUrl = `/dokumen-kerjasama/${row.id}/documents/${f.id}/download`;
+      dokumenNama = f.nama_file;
+    } else if (row.file) {
+      dokumenUrl = buildLegacyFileUrl(row.file);
+      dokumenDownloadUrl = `/dokumen-kerjasama/${row.id}/documents/legacy/download`;
+      dokumenNama = row.file.split('/').pop() || row.file;
+    }
+
+    return {
+      id: row.id,
+      noDokumen: nomor,
+      namaMitra,
+      jenis: mapJenis(row.jenis_dokumen),
+      status: mapStatus(row),
+      tanggalMulai: toDisplayDate(row.tanggal_mulai),
+      berlakuHingga: toDisplayDate(row.tanggal_berakhir),
+      dihapusOlehAdmin: !!row.dihapus_admin_pada,
+      dihapusOlehPemilik: !!row.dihapus_user_pada,
+      dihapusPada: dihapusPada ? toDisplayDate(dihapusPada) : null,
+      dokumenUrl,
+      dokumenDownloadUrl,
+      dokumenNama,
+    };
+  });
+}
+
+export async function restoreDokumenKerjasamaById(id: number): Promise<void> {
+  await apiRequest(`/dokumen-kerjasama/${id}/restore`, {
+    method: 'POST',
+  });
+
+  rekapDokumenCache = null;
+}
+
+export async function permanentDeleteDokumenKerjasamaById(id: number): Promise<void> {
+  await apiRequest(`/dokumen-kerjasama/${id}/permanent`, {
+    method: 'DELETE',
+  });
+
+  rekapDokumenCache = null;
+}
+
 export type ArsipDokumenApiItem = {
   id: number;
   noDokumen: string;

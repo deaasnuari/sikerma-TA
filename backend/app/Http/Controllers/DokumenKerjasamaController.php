@@ -53,11 +53,7 @@ class DokumenKerjasamaController extends Controller
 
     private function ensureAdmin(Request $request): ?Response
     {
-        $user = $request->user();
-        $rawRole = (string) ($user?->role ?? '');
-        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim($rawRole)));
-
-        if (!in_array($normalizedRole, ['admin', 'admin-humas'], true)) {
+        if (!$this->isAdminUser($request)) {
             return response([
                 'success' => false,
                 'message' => 'Only admin can modify dokumen kerjasama',
@@ -65,6 +61,14 @@ class DokumenKerjasamaController extends Controller
         }
 
         return null;
+    }
+
+    private function isAdminUser(Request $request): bool
+    {
+        $user = $request->user();
+        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+
+        return in_array($normalizedRole, ['admin', 'admin-humas'], true);
     }
 
     /**
@@ -462,8 +466,12 @@ class DokumenKerjasamaController extends Controller
      */
     public function downloadDocument(Request $request, DokumenKerjasama $dokumen_kerjasama, string $dokumen_file): Response|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        if ($response = $this->guardVisibility($request, $dokumen_kerjasama)) {
-            return $response;
+        // Admin selalu boleh unduh file-nya, termasuk dokumen yang sedang di Sampah (dihapus_admin_pada)
+        // — supaya bisa dipastikan isinya dulu sebelum memulihkan atau menghapus permanen.
+        if (!$this->isAdminUser($request)) {
+            if ($response = $this->guardVisibility($request, $dokumen_kerjasama)) {
+                return $response;
+            }
         }
 
         $path = null;
@@ -502,8 +510,12 @@ class DokumenKerjasamaController extends Controller
      */
     public function viewDocument(Request $request, DokumenKerjasama $dokumen_kerjasama, string $dokumen_file): Response|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        if ($response = $this->guardVisibility($request, $dokumen_kerjasama)) {
-            return $response;
+        // Admin selalu boleh lihat file-nya, termasuk dokumen yang sedang di Sampah (dihapus_admin_pada)
+        // — supaya bisa dipastikan isinya dulu sebelum memulihkan atau menghapus permanen.
+        if (!$this->isAdminUser($request)) {
+            if ($response = $this->guardVisibility($request, $dokumen_kerjasama)) {
+                return $response;
+            }
         }
 
         $path = null;
@@ -1029,16 +1041,113 @@ class DokumenKerjasamaController extends Controller
             ], 403);
         }
 
-        // Hapus PERMANEN dari database — baik dihapus admin maupun dihapus pemiliknya sendiri
-        // (internal/eksternal/kampus-LDAP, tombol Hapus di Rekap Data mereka). Rekap Data dan
-        // Data Pengajuan (pengajuan_v2) masing-masing dihapus terpisah lewat halamannya
+        // Pindah ke Sampah (soft delete), BUKAN hapus permanen — supaya kalau data yang sudah
+        // kadaluarsa/dihapus di Rekap Data ternyata masih dibutuhkan, admin bisa mengembalikannya
+        // lewat menu Sampah (tanpa batas waktu — tidak ada auto-purge). dihapus_admin_pada dipakai
+        // kalau yang menghapus admin, dihapus_user_pada kalau pemiliknya sendiri (lihat index()
+        // untuk bagaimana dua kolom ini menyembunyikan baris dari masing-masing sisi). Rekap Data
+        // dan Data Pengajuan (pengajuan_v2) masing-masing dihapus terpisah lewat halamannya
         // sendiri-sendiri — hapus di sini TIDAK ikut menghapus pengajuan sumbernya.
+        if ($isAdmin) {
+            $dokumen_kerjasama->dihapus_admin_pada = now();
+        } else {
+            $dokumen_kerjasama->dihapus_user_pada = now();
+        }
+        $dokumen_kerjasama->save();
+
+        return response([
+            'success' => true,
+            'data' => null,
+            'message' => 'Dokumen kerjasama dipindahkan ke Sampah',
+        ]);
+    }
+
+    public function trashed(Request $request): Response
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        $query = DokumenKerjasama::query()
+            ->with([
+                'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul,user_pengusul_id',
+                'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
+                'mitra:id,nama_mitra,kode_mitra,kategori_mitra',
+                // Supaya admin bisa buka & pastikan isi dokumennya dulu sebelum memulihkan atau
+                // menghapus permanen dari Sampah — sama seperti dokumen_final di Rekap Data.
+                'dokumenFiles' => function ($q) {
+                    $q->whereIn('peran_berkas', ['dokumen_final', 'dokumen_perpanjangan', 'dokumen_pendukung', 'bukti_tidak_diperpanjang']);
+                },
+            ])
+            ->where(function ($builder) {
+                $builder->whereNotNull('dihapus_admin_pada')->orWhereNotNull('dihapus_user_pada');
+            });
+
+        if ($request->filled('search')) {
+            $keyword = strtolower($request->string('search')->trim()->toString());
+            $query->where(function ($builder) use ($keyword) {
+                $builder
+                    ->whereRaw('LOWER(COALESCE(nomor_dokumen, \'\')) LIKE ?', ['%' . $keyword . '%'])
+                    ->orWhereRaw('LOWER(COALESCE(nama_dokumen, \'\')) LIKE ?', ['%' . $keyword . '%'])
+                    ->orWhereRaw('LOWER(COALESCE(judul_dokumen, \'\')) LIKE ?', ['%' . $keyword . '%']);
+            });
+        }
+
+        $data = $query->orderByDesc('updated_at')->paginate((int) $request->integer('per_page', 20));
+
+        return response([
+            'success' => true,
+            'data' => $data,
+            'message' => 'Dokumen kerjasama di Sampah retrieved successfully',
+        ]);
+    }
+
+    public function restore(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        if (!$dokumen_kerjasama->dihapus_admin_pada && !$dokumen_kerjasama->dihapus_user_pada) {
+            return response([
+                'success' => false,
+                'message' => 'Dokumen kerjasama ini tidak sedang berada di Sampah.',
+            ], 422);
+        }
+
+        // Admin memulihkan dari Sampah menghapus KEDUA penanda sekaligus (baik yang dihapus
+        // admin maupun dihapus pemiliknya sendiri) — begitu dipulihkan, dokumen tampil normal
+        // lagi untuk semua pihak yang berhak melihatnya.
+        $dokumen_kerjasama->dihapus_admin_pada = null;
+        $dokumen_kerjasama->dihapus_user_pada = null;
+        $dokumen_kerjasama->save();
+
+        return response([
+            'success' => true,
+            'data' => null,
+            'message' => 'Dokumen kerjasama berhasil dikembalikan dari Sampah',
+        ]);
+    }
+
+    public function destroyPermanent(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        if (!$dokumen_kerjasama->dihapus_admin_pada && !$dokumen_kerjasama->dihapus_user_pada) {
+            return response([
+                'success' => false,
+                'message' => 'Dokumen harus dipindahkan ke Sampah dulu sebelum dihapus permanen.',
+            ], 422);
+        }
+
         $dokumen_kerjasama->delete();
 
         return response([
             'success' => true,
             'data' => null,
-            'message' => 'Dokumen kerjasama deleted successfully',
+            'message' => 'Dokumen kerjasama dihapus permanen',
         ]);
     }
 

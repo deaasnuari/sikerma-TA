@@ -370,10 +370,12 @@ class DokumenKerjasamaTest extends TestCase
     // destroy
     // ------------------------------------------------------------------
 
-    public function test_admin_dapat_hapus_dokumen(): void
+    public function test_admin_hapus_dokumen_pindah_ke_sampah_bukan_permanen(): void
     {
-        // "Hapus" oleh admin sekarang hapus PERMANEN dari database (bukan cuma disembunyikan) —
-        // hilang dari semua orang termasuk pembuatnya sendiri.
+        // "Hapus" oleh admin sekarang cuma memindahkan ke Sampah (soft delete) — barisnya
+        // TETAP ada di database, cuma disembunyikan dari daftar kelola admin & pengguna lain.
+        // Pembuatnya sendiri (internal/eksternal/kampus-LDAP) tetap bisa melihatnya di riwayat
+        // dokumennya, sesuai desain dihapus_admin_pada di index().
         $admin   = $this->admin();
         $pemilik = $this->internal();
         $pengajuanPemilik = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
@@ -388,30 +390,31 @@ class DokumenKerjasamaTest extends TestCase
         $this->actingAs($admin)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")
             ->assertOk()->assertJsonPath('success', true);
 
-        // Baris sudah benar-benar hilang dari database.
-        $this->assertDatabaseMissing('dokumen_kerjasama', ['id' => $dokumen->id]);
+        // Baris MASIH ada di database, cuma dihapus_admin_pada ke-isi.
+        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
+        $this->assertNotNull($dokumen->fresh()->dihapus_admin_pada);
 
         // Hilang dari daftar kelola admin.
         $adminIds = collect($this->actingAs($admin)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
             ->pluck('id');
         $this->assertNotContains($dokumen->id, $adminIds);
 
-        // Sekarang hapus admin sungguhan hilang permanen, jadi pembuatnya sendiri pun sudah
-        // tidak bisa melihatnya lagi di daftar maupun detail.
+        // Pembuatnya sendiri tetap bisa melihatnya di riwayat dokumennya.
         $pemilikIds = collect($this->actingAs($pemilik)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
             ->pluck('id');
-        $this->assertNotContains($dokumen->id, $pemilikIds);
-        $this->actingAs($pemilik)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertNotFound();
+        $this->assertContains($dokumen->id, $pemilikIds);
 
-        // Akun pembuatnya sendiri (login/profil) tidak ikut tersentuh sama sekali.
-        $this->assertDatabaseHas('users', ['id' => $pemilik->id, 'email' => $pemilik->email]);
+        // Muncul di daftar Sampah admin.
+        $trashIds = collect($this->actingAs($admin)->getJson('/api/dokumen-kerjasama/trash/list?per_page=100')->json('data.data'))
+            ->pluck('id');
+        $this->assertContains($dokumen->id, $trashIds);
     }
 
     public function test_admin_hapus_dokumen_tidak_ikut_hapus_pengajuan_sumbernya(): void
     {
         // Kebalikan dari test_admin_hapus_pengajuan_tidak_ikut_hapus_dokumen_kerjasama_terkait:
-        // hapus dari Rekap Data (dokumen kerjasama) oleh admin cuma hapus permanen dokumennya
-        // saja. Pengajuan sumbernya di Data Pengajuan TIDAK ikut terhapus — masing-masing
+        // hapus dari Rekap Data (dokumen kerjasama) oleh admin cuma memindahkan dokumennya ke
+        // Sampah. Pengajuan sumbernya di Data Pengajuan TIDAK ikut terhapus — masing-masing
         // halaman punya tombol hapus sendiri-sendiri.
         $admin   = $this->admin();
         $pemilik = $this->internal();
@@ -426,7 +429,7 @@ class DokumenKerjasamaTest extends TestCase
 
         $this->actingAs($admin)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
 
-        $this->assertDatabaseMissing('dokumen_kerjasama', ['id' => $dokumen->id]);
+        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
         $this->assertDatabaseHas('pengajuan_v2', ['id' => $pengajuanPemilik->id]);
     }
 
@@ -442,8 +445,9 @@ class DokumenKerjasamaTest extends TestCase
     public function test_pemilik_internal_dapat_hapus_dokumen_miliknya_sendiri(): void
     {
         // Internal/eksternal/kampus-LDAP juga punya tombol Hapus sendiri di Rekap Data mereka —
-        // sama seperti admin sekarang, ini hapus PERMANEN dari database, hilang dari semua orang
-        // termasuk admin.
+        // sama seperti admin, ini juga cuma soft delete (dihapus_user_pada), bukan hapus
+        // permanen. Bedanya dari dihapus_admin_pada: ini cuma sembunyi dari akunnya sendiri,
+        // admin tetap melihatnya untuk keperluan audit/rekap institusi.
         $admin   = $this->admin();
         $pemilik = $this->internal();
         $pengajuanPemilik = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
@@ -458,8 +462,9 @@ class DokumenKerjasamaTest extends TestCase
         $this->actingAs($pemilik)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")
             ->assertOk()->assertJsonPath('success', true);
 
-        // Baris sudah benar-benar hilang dari database.
-        $this->assertDatabaseMissing('dokumen_kerjasama', ['id' => $dokumen->id]);
+        // Baris MASIH ada di database.
+        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
+        $this->assertNotNull($dokumen->fresh()->dihapus_user_pada);
 
         // Hilang dari daftar & detail milik pemiliknya sendiri.
         $pemilikIds = collect($this->actingAs($pemilik)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
@@ -467,19 +472,19 @@ class DokumenKerjasamaTest extends TestCase
         $this->assertNotContains($dokumen->id, $pemilikIds);
         $this->actingAs($pemilik)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertNotFound();
 
-        // Hilang juga dari admin — hapus sekarang permanen buat siapa saja yang menghapus.
+        // Admin tetap bisa melihatnya (di daftar biasa maupun detail) untuk audit.
         $adminIds = collect($this->actingAs($admin)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
             ->pluck('id');
-        $this->assertNotContains($dokumen->id, $adminIds);
-        $this->actingAs($admin)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertNotFound();
+        $this->assertContains($dokumen->id, $adminIds);
+        $this->actingAs($admin)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
     }
 
     public function test_hapus_dokumen_tidak_ikut_hapus_pengajuan_sumbernya(): void
     {
         // Kebalikan dari test_hapus_pengajuan_tidak_ikut_hapus_dokumen_kerjasama_terkait di
         // PengajuanTest: pemiliknya sendiri menghapus dari Rekap Data (dokumen kerjasama) cuma
-        // menghapus baris dokumen itu saja — pengajuan sumbernya di Data Pengajuan TIDAK ikut
-        // terhapus.
+        // memindahkan baris dokumen itu ke Sampah — pengajuan sumbernya di Data Pengajuan TIDAK
+        // ikut terhapus.
         $pemilik = $this->internal();
         $pengajuanPemilik = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
         $pengajuanPemilik->update(['user_pengusul_id' => $pemilik->id]);
@@ -492,7 +497,7 @@ class DokumenKerjasamaTest extends TestCase
 
         $this->actingAs($pemilik)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
 
-        $this->assertDatabaseMissing('dokumen_kerjasama', ['id' => $dokumen->id]);
+        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
         $this->assertDatabaseHas('pengajuan_v2', ['id' => $pengajuanPemilik->id]);
     }
 
@@ -511,6 +516,118 @@ class DokumenKerjasamaTest extends TestCase
 
         $this->actingAs($penyusup)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")
             ->assertForbidden();
+    }
+
+    // ------------------------------------------------------------------
+    // Sampah (trash): trashed / restore / destroyPermanent
+    // ------------------------------------------------------------------
+
+    public function test_trash_list_hanya_bisa_diakses_admin(): void
+    {
+        $user = $this->internal();
+
+        $this->actingAs($user)->getJson('/api/dokumen-kerjasama/trash/list')
+            ->assertForbidden();
+    }
+
+    public function test_admin_dapat_memulihkan_dokumen_dari_sampah(): void
+    {
+        $admin   = $this->admin();
+        $dokumen = $this->buatDokumen(['nomor_dokumen' => 'RESTORE-001']);
+
+        $this->actingAs($admin)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+        $this->assertNotNull($dokumen->fresh()->dihapus_admin_pada);
+
+        $this->actingAs($admin)->postJson("/api/dokumen-kerjasama/{$dokumen->id}/restore")
+            ->assertOk()->assertJsonPath('success', true);
+
+        $dokumen->refresh();
+        $this->assertNull($dokumen->dihapus_admin_pada);
+        $this->assertNull($dokumen->dihapus_user_pada);
+
+        // Muncul lagi di daftar normal, hilang dari Sampah.
+        $adminIds = collect($this->actingAs($admin)->getJson('/api/dokumen-kerjasama?per_page=100')->json('data.data'))
+            ->pluck('id');
+        $this->assertContains($dokumen->id, $adminIds);
+
+        $trashIds = collect($this->actingAs($admin)->getJson('/api/dokumen-kerjasama/trash/list?per_page=100')->json('data.data'))
+            ->pluck('id');
+        $this->assertNotContains($dokumen->id, $trashIds);
+    }
+
+    public function test_restore_ditolak_kalau_dokumen_tidak_di_sampah(): void
+    {
+        $admin   = $this->admin();
+        $dokumen = $this->buatDokumen(['nomor_dokumen' => 'RESTORE-002']);
+
+        $this->actingAs($admin)->postJson("/api/dokumen-kerjasama/{$dokumen->id}/restore")
+            ->assertStatus(422);
+    }
+
+    public function test_restore_ditolak_bukan_admin(): void
+    {
+        $user    = $this->internal();
+        $dokumen = $this->buatDokumen(['nomor_dokumen' => 'RESTORE-003']);
+
+        $this->actingAs($user)->postJson("/api/dokumen-kerjasama/{$dokumen->id}/restore")
+            ->assertForbidden();
+    }
+
+    public function test_admin_dapat_hapus_permanen_dokumen_yang_sudah_di_sampah(): void
+    {
+        $admin   = $this->admin();
+        $dokumen = $this->buatDokumen(['nomor_dokumen' => 'PERMANEN-001']);
+
+        $this->actingAs($admin)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+
+        $this->actingAs($admin)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}/permanent")
+            ->assertOk()->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('dokumen_kerjasama', ['id' => $dokumen->id]);
+    }
+
+    public function test_hapus_permanen_ditolak_kalau_belum_di_sampah(): void
+    {
+        // Harus lewat Sampah dulu — tidak bisa langsung hapus permanen dari Rekap Data.
+        $admin   = $this->admin();
+        $dokumen = $this->buatDokumen(['nomor_dokumen' => 'PERMANEN-002']);
+
+        $this->actingAs($admin)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}/permanent")
+            ->assertStatus(422);
+
+        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
+    }
+
+    public function test_hapus_permanen_ditolak_bukan_admin(): void
+    {
+        $user    = $this->internal();
+        $dokumen = $this->buatDokumen(['nomor_dokumen' => 'PERMANEN-003']);
+
+        $this->actingAs($user)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}/permanent")
+            ->assertForbidden();
+    }
+
+    public function test_admin_tetap_bisa_unduh_dokumen_yang_ada_di_sampah(): void
+    {
+        // Fitur Sampah tidak ada gunanya kalau adminnya sendiri tidak bisa membuka file
+        // dokumennya buat dipastikan isinya sebelum memulihkan/menghapus permanen — guardVisibility
+        // (yang biasanya menyembunyikan file dokumen yang dihapus_admin_pada) HARUS dilewati
+        // untuk admin.
+        Storage::fake('public');
+        $admin   = $this->admin();
+        $dokumen = $this->buatDokumen(['nomor_dokumen' => 'SAMPAH-FILE-001']);
+
+        $file = UploadedFile::fake()->create('kontrak.pdf', 100, 'application/pdf');
+        $upload = $this->actingAs($admin)->postJson("/api/dokumen-kerjasama/{$dokumen->id}/upload-file", [
+            'file' => $file,
+        ])->assertOk();
+        $fileId = $upload->json('data.id');
+
+        $this->actingAs($admin)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+
+        $this->actingAs($admin)
+            ->get("/api/dokumen-kerjasama/{$dokumen->id}/documents/{$fileId}/download")
+            ->assertOk();
     }
 
     public function test_mitra_stats_menghitung_mitra_unik_bukan_jumlah_dokumen(): void
