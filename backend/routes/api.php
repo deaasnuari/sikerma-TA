@@ -40,6 +40,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
 	Route::apiResource('/pengajuan', PengajuanController::class);
 	Route::patch('/pengajuan/{pengajuan}/tahapan', [PengajuanController::class, 'updateTahapan']);
+	Route::get('/distribusi-kandidat', [PengajuanController::class, 'distribusiKandidat']);
+	Route::post('/distribusi-kandidat/provision', [PengajuanController::class, 'provisionDistribusiUser']);
 	Route::get('/pengajuan-aktivitas', [PengajuanAktivitasController::class, 'index']);
 	Route::post('/pengajuan-aktivitas', [PengajuanAktivitasController::class, 'store']);
 	Route::put('/pengajuan-aktivitas/{pengajuan_aktivitas}', [PengajuanAktivitasController::class, 'update']);

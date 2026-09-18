@@ -122,6 +122,7 @@ export default function InternalDataPengajuanPage() {
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PengajuanItem | null>(null);
   const [infoModalMessage, setInfoModalMessage] = useState<string | null>(null);
+  const [finalGuardItem, setFinalGuardItem] = useState<PengajuanItem | null>(null);
 
   // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) dari Data Master —
   // dipakai untuk mengelompokkan dropdown filter (<optgroup>) dan menggantikan
@@ -252,7 +253,19 @@ export default function InternalDataPengajuanPage() {
 
   const stats = getPengajuanStats(pengajuanData);
 
+  // Sama seperti Data Pengajuan admin: begitu status-nya sudah difinalkan (dipindah ke
+  // Rekap Data oleh backend — lihat PengajuanController::moveApprovedPengajuanToDokumen()),
+  // edit lanjutan diarahkan ke halaman Rekap Data, bukan lewat form ini lagi.
+  function isPengajuanSudahFinal(item: PengajuanItem): boolean {
+    return item.statusPengajuan === 'Disetujui' || item.statusPengajuan === 'Final Approved';
+  }
+
   function openEdit(item: PengajuanItem) {
+    if (isPengajuanSudahFinal(item)) {
+      setFinalGuardItem(item);
+      return;
+    }
+
     setEditForm({
       id: item.id,
       judul: item.judulPengajuan,
@@ -505,7 +518,12 @@ export default function InternalDataPengajuanPage() {
                       <MessageSquareText size={16} />
                       <span>Review</span>
                     </button>
-                    <button type="button" onClick={() => openEdit(item)} className="inline-flex items-center gap-2 text-amber-600 hover:text-amber-700">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(item)}
+                      title={isPengajuanSudahFinal(item) ? 'Sudah difinalkan — edit lewat Rekap Data' : undefined}
+                      className="inline-flex items-center gap-2 text-amber-600 hover:text-amber-700"
+                    >
                       <Pencil size={16} />
                       <span>Edit</span>
                     </button>
@@ -629,6 +647,35 @@ export default function InternalDataPengajuanPage() {
             </div>
             <div className="flex justify-end border-t border-slate-200 px-5 py-4">
               <button type="button" onClick={() => setInfoModalMessage(null)} className="h-9 rounded-lg bg-[#173B82] px-4 text-sm font-semibold text-white hover:bg-[#2A4A8F]">OK</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Final Guard Modal */}
+      {finalGuardItem && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h3 className="text-lg font-bold text-slate-900">Sudah Difinalkan</h3>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-sm text-slate-700">
+                Pengajuan ini sudah difinalkan dan datanya sudah ada di Rekap Data. Untuk mengedit, silakan lakukan lewat halaman Rekap Data.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+              <button type="button" onClick={() => setFinalGuardItem(null)} className="h-9 rounded-lg bg-slate-100 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-200">Batal</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFinalGuardItem(null);
+                  router.push('/internal/rekap_data');
+                }}
+                className="h-9 rounded-lg bg-[#173B82] px-4 text-sm font-semibold text-white hover:bg-[#2A4A8F]"
+              >
+                Buka Rekap Data
+              </button>
             </div>
           </div>
         </div>

@@ -9,14 +9,18 @@ use App\Models\MasterMitra;
 use App\Models\MasterRuangLingkup;
 use App\Models\MasterUnitProdi;
 use App\Models\Pengajuan;
+use App\Models\User;
+use App\Services\CivitasStructureService;
 use App\Services\StructuralAccessService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class PengajuanController extends Controller
 {
@@ -1615,6 +1619,209 @@ class PengajuanController extends Controller
             'success' => true,
             'data' => null,
             'message' => 'Pengajuan deleted successfully',
+        ]);
+    }
+
+    private function ensureDistribusiAccess(Request $request): ?Response
+    {
+        $user = $request->user();
+        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+
+        if (!in_array($normalizedRole, ['admin', 'admin-humas'], true)) {
+            return response([
+                'success' => false,
+                'message' => 'Anda tidak memiliki akses untuk fitur ini.',
+            ], 403);
+        }
+
+        return null;
+    }
+
+    /**
+     * Kandidat "Distribusi (CC)" untuk modal review pengajuan — gabungan Ketua Jurusan/
+     * Ketua Prodi/Kepala Unit yang SUDAH pernah login (ada di tabel users) DENGAN yang
+     * belum pernah login sama sekali tapi datanya sudah ada di Civitas
+     * (NIK_KAJUR/NIK_KPS/NIK_KEPALA_UNIT pada GET /api/sikerma/jurusan,
+     * /api/sikerma/program-studi, & /api/sikerma/unit). Sebelumnya list ini cuma ambil dari
+     * tabel users role=jurusan/prodi — jadi Kajur/Kaprodi/Kepala Unit yang belum pernah
+     * login ke SIKERMA sama sekali tidak bisa dipilih untuk di-CC, walau jabatannya resmi
+     * dan datanya sudah ada di sistem kampus.
+     *
+     * Satu NIK bisa muncul lebih dari sekali kalau orangnya kebetulan merangkap jabatan
+     * (mis. Kajur sekaligus Kepala Unit) — sengaja tidak di-dedup, masing-masing jabatan
+     * tetap kandidat terpisah (lihat juga penanganan key di frontend).
+     *
+     * Kandidat yang belum pernah login dikirim dengan `id: null` — frontend wajib panggil
+     * provisionDistribusiUser() dulu buat dapat id user sebelum bisa disimpan ke
+     * distribusi_user_ids (kolom itu FK ke users.id).
+     */
+    public function distribusiKandidat(Request $request): Response
+    {
+        if ($response = $this->ensureDistribusiAccess($request)) {
+            return $response;
+        }
+
+        $localByNik = User::query()
+            ->whereIn('role', ['jurusan', 'prodi', 'unit'])
+            ->whereNotNull('nik')
+            ->get(['id', 'name', 'nik'])
+            ->keyBy(fn (User $u) => trim((string) $u->nik));
+
+        $civitas = app(CivitasStructureService::class);
+        $candidates = [];
+        $consumedUserIds = [];
+
+        foreach ($civitas->getJurusan() as $row) {
+            $nik = trim((string) ($row['NIK_KAJUR'] ?? ''));
+            $namaCivitas = trim((string) ($row['NAMA_KAJUR'] ?? ''));
+            if ($nik === '' || $namaCivitas === '') {
+                continue;
+            }
+
+            $localUser = $localByNik->get($nik);
+            $candidates[] = [
+                'id' => $localUser?->id,
+                'nama' => $localUser->name ?? $namaCivitas,
+                'nik' => $nik,
+                'jabatan' => 'ketua_jurusan',
+                'unit_nama' => trim((string) ($row['NAMA_JURUSAN'] ?? '')),
+                'sudah_terdaftar' => $localUser !== null,
+            ];
+
+            if ($localUser) {
+                $consumedUserIds[] = $localUser->id;
+            }
+        }
+
+        foreach ($civitas->getProgramStudi() as $row) {
+            $nik = trim((string) ($row['NIK_KPS'] ?? ''));
+            $namaCivitas = trim((string) ($row['NAMA_KPS'] ?? ''));
+            if ($nik === '' || $namaCivitas === '') {
+                continue;
+            }
+
+            $localUser = $localByNik->get($nik);
+            $candidates[] = [
+                'id' => $localUser?->id,
+                'nama' => $localUser->name ?? $namaCivitas,
+                'nik' => $nik,
+                'jabatan' => 'ketua_prodi',
+                'unit_nama' => trim((string) ($row['NAMA_PROGRAM_STUDI'] ?? '')),
+                'sudah_terdaftar' => $localUser !== null,
+            ];
+
+            if ($localUser) {
+                $consumedUserIds[] = $localUser->id;
+            }
+        }
+
+        foreach ($civitas->getUnit() as $row) {
+            $nik = trim((string) ($row['NIK_KEPALA_UNIT'] ?? ''));
+            $namaCivitas = trim((string) ($row['NAMA_KEPALA_UNIT'] ?? ''));
+            if ($nik === '' || $namaCivitas === '') {
+                continue;
+            }
+
+            $localUser = $localByNik->get($nik);
+            $candidates[] = [
+                'id' => $localUser?->id,
+                'nama' => $localUser->name ?? $namaCivitas,
+                'nik' => $nik,
+                'jabatan' => 'kepala_unit',
+                'unit_nama' => trim((string) ($row['NAMA_UNIT'] ?? '')),
+                'sudah_terdaftar' => $localUser !== null,
+            ];
+
+            if ($localUser) {
+                $consumedUserIds[] = $localUser->id;
+            }
+        }
+
+        // Fallback: user role jurusan/prodi/unit yang NIK-nya tidak match Kajur/KPS/Kepala
+        // Unit resmi Civitas (mis. role di-set manual admin lewat Manajemen User, akun
+        // dummy Pokja/UPA tanpa NIK asli, atau API kampus lagi tidak bisa dihubungi) — tetap
+        // disertakan supaya cakupan yang sudah ada sebelumnya tidak hilang gara-gara
+        // perubahan ini.
+        $sisaLocalUsers = User::query()
+            ->whereIn('role', ['jurusan', 'prodi', 'unit'])
+            ->whereNotIn('id', $consumedUserIds ?: [0])
+            ->get(['id', 'name', 'role']);
+
+        foreach ($sisaLocalUsers as $sisa) {
+            $candidates[] = [
+                'id' => $sisa->id,
+                'nama' => $sisa->name,
+                'nik' => null,
+                'jabatan' => match ($sisa->role) {
+                    'jurusan' => 'ketua_jurusan',
+                    'prodi' => 'ketua_prodi',
+                    default => 'kepala_unit',
+                },
+                'unit_nama' => null,
+                'sudah_terdaftar' => true,
+            ];
+        }
+
+        usort($candidates, fn ($a, $b) => strcasecmp((string) $a['nama'], (string) $b['nama']));
+
+        return response([
+            'success' => true,
+            'data' => $candidates,
+            'message' => 'Kandidat distribusi berhasil diambil',
+        ]);
+    }
+
+    /**
+     * Provisioning akun untuk Ketua Jurusan/Ketua Prodi/Kepala Unit yang dipilih dari
+     * distribusiKandidat() tapi belum pernah login (belum ada baris users). Dibuat dengan
+     * NIK yang sama persis dengan data Civitas — begitu orangnya beneran login lewat
+     * "Login dengan Akun Kampus", AuthController::loginLdap() mencocokkan by NIK duluan
+     * (lihat AuthController.php) jadi akan REUSE baris ini, bukan bikin akun dobel.
+     *
+     * Email diisi placeholder unik (bukan email asli — Civitas tidak mengirim email di
+     * endpoint jurusan/program-studi/unit, cuma di login-staff) karena kolom users.email
+     * NOT NULL + unique. Ini aman karena distribusi_user_ids cuma dipakai untuk
+     * visibilitas in-app (lihat PengajuanController::index()/show()), TIDAK pernah dipakai
+     * untuk mengirim email — placeholder ini tidak akan pernah benar-benar dikirimi apa pun.
+     */
+    public function provisionDistribusiUser(Request $request): Response
+    {
+        if ($response = $this->ensureDistribusiAccess($request)) {
+            return $response;
+        }
+
+        $validated = $request->validate([
+            'nik' => ['required', 'string', 'max:50'],
+            'nama' => ['required', 'string', 'max:200'],
+            'jabatan' => ['required', Rule::in(['ketua_jurusan', 'ketua_prodi', 'kepala_unit'])],
+        ]);
+
+        $nik = trim($validated['nik']);
+        $target = User::query()->where('nik', $nik)->first();
+
+        if (!$target) {
+            $role = match ($validated['jabatan']) {
+                'ketua_jurusan' => 'jurusan',
+                'ketua_prodi' => 'prodi',
+                default => 'unit',
+            };
+
+            $target = User::create([
+                'name' => $validated['nama'],
+                'username' => null,
+                'email' => "civitas-{$nik}@no-email.sikerma.local",
+                'nik' => $nik,
+                'role' => $role,
+                'approval_status' => 'active',
+                'auth_provider' => 'ldap',
+                'password' => Hash::make(Str::random(40)),
+            ]);
+        }
+
+        return response([
+            'success' => true,
+            'data' => ['id' => $target->id, 'nama' => $target->name],
+            'message' => 'Kandidat distribusi berhasil disiapkan',
         ]);
     }
 }

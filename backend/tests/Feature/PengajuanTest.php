@@ -909,4 +909,132 @@ class PengajuanTest extends TestCase
         $this->assertEquals('kepala_unit', $access['structural_position']);
         $this->assertEquals($unitResmi->id, $access['unit_id']);
     }
+
+    // ------------------------------------------------------------------
+    // Distribusi (CC) kandidat — Kajur/Kaprodi dari Civitas, termasuk yang
+    // belum pernah login ke SIKERMA (belum ada baris users).
+    // ------------------------------------------------------------------
+
+    public function test_distribusi_kandidat_gabungkan_yang_sudah_login_dan_yang_belum(): void
+    {
+        $admin = $this->admin();
+        $kajurSudahLogin = User::factory()->create(['role' => 'jurusan', 'nik' => '111111', 'name' => 'Kajur Lama']);
+
+        $this->mockCivitasStruktur(
+            jurusan: [[
+                'ID_JURUSAN' => '1', 'NAMA_JURUSAN' => 'Teknik Informatika',
+                'NIK_KAJUR' => '111111', 'NAMA_KAJUR' => 'Kajur Lama',
+            ]],
+            prodi: [[
+                'ID_PROGRAM_STUDI' => '2', 'NAMA_PROGRAM_STUDI' => 'D4 Teknik Informatika',
+                'NIK_KPS' => '222222', 'NAMA_KPS' => 'Kaprodi Baru',
+            ]],
+        );
+
+        $response = $this->actingAs($admin)->getJson('/api/distribusi-kandidat');
+        $response->assertOk();
+
+        $data = collect($response->json('data'));
+        $sudahLogin = $data->firstWhere('nik', '111111');
+        $belumLogin = $data->firstWhere('nik', '222222');
+
+        $this->assertEquals($kajurSudahLogin->id, $sudahLogin['id']);
+        $this->assertTrue($sudahLogin['sudah_terdaftar']);
+
+        $this->assertNull($belumLogin['id']);
+        $this->assertFalse($belumLogin['sudah_terdaftar']);
+        $this->assertEquals('Kaprodi Baru', $belumLogin['nama']);
+    }
+
+    public function test_distribusi_kandidat_ditolak_bukan_admin(): void
+    {
+        $this->mockCivitasStruktur();
+        $this->actingAs($this->internal())->getJson('/api/distribusi-kandidat')->assertStatus(403);
+    }
+
+    public function test_distribusi_kandidat_termasuk_kepala_unit_dari_civitas(): void
+    {
+        $admin = $this->admin();
+
+        $this->mockCivitasStruktur(unit: [[
+            'ID_UNIT' => '18', 'NAMA_UNIT' => 'KELOMPOK KERJA HUMAS DAN KERJASAMA',
+            'NIK_KEPALA_UNIT' => '210084', 'NAMA_KEPALA_UNIT' => 'RIDWAN PURWANTO',
+        ]]);
+
+        $response = $this->actingAs($admin)->getJson('/api/distribusi-kandidat');
+        $response->assertOk();
+
+        $kepalaUnit = collect($response->json('data'))->firstWhere('nik', '210084');
+
+        $this->assertNotNull($kepalaUnit);
+        $this->assertNull($kepalaUnit['id']);
+        $this->assertFalse($kepalaUnit['sudah_terdaftar']);
+        $this->assertEquals('kepala_unit', $kepalaUnit['jabatan']);
+        $this->assertEquals('RIDWAN PURWANTO', $kepalaUnit['nama']);
+    }
+
+    public function test_provision_distribusi_user_kepala_unit_membuat_role_unit(): void
+    {
+        $admin = $this->admin();
+
+        $response = $this->actingAs($admin)->postJson('/api/distribusi-kandidat/provision', [
+            'nik' => '210084',
+            'nama' => 'RIDWAN PURWANTO',
+            'jabatan' => 'kepala_unit',
+        ]);
+
+        $response->assertOk();
+        $this->assertDatabaseHas('users', [
+            'nik' => '210084',
+            'name' => 'RIDWAN PURWANTO',
+            'role' => 'unit',
+        ]);
+    }
+
+    public function test_provision_distribusi_user_membuat_akun_baru(): void
+    {
+        $admin = $this->admin();
+
+        $response = $this->actingAs($admin)->postJson('/api/distribusi-kandidat/provision', [
+            'nik' => '333333',
+            'nama' => 'Kaprodi Ditambahkan',
+            'jabatan' => 'ketua_prodi',
+        ]);
+
+        $response->assertOk();
+        $newId = $response->json('data.id');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $newId,
+            'nik' => '333333',
+            'name' => 'Kaprodi Ditambahkan',
+            'role' => 'prodi',
+            'auth_provider' => 'ldap',
+        ]);
+    }
+
+    public function test_provision_distribusi_user_reuse_akun_yang_sama_by_nik_tidak_dobel(): void
+    {
+        $admin = $this->admin();
+        $existing = User::factory()->create(['nik' => '444444', 'role' => 'internal']);
+
+        $response = $this->actingAs($admin)->postJson('/api/distribusi-kandidat/provision', [
+            'nik' => '444444',
+            'nama' => 'Nama Beda',
+            'jabatan' => 'ketua_jurusan',
+        ]);
+
+        $response->assertOk();
+        $this->assertEquals($existing->id, $response->json('data.id'));
+        $this->assertEquals(1, User::where('nik', '444444')->count());
+    }
+
+    public function test_provision_distribusi_user_ditolak_bukan_admin(): void
+    {
+        $this->actingAs($this->internal())->postJson('/api/distribusi-kandidat/provision', [
+            'nik' => '555555',
+            'nama' => 'Coba Provision',
+            'jabatan' => 'ketua_jurusan',
+        ])->assertStatus(403);
+    }
 }

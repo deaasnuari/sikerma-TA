@@ -1,6 +1,6 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { FileText, Clock, CheckCircle, XCircle, Search, Filter, Plus, Eye, MessageSquare, X, ThumbsUp, ThumbsDown, CalendarDays, ChevronLeft, ChevronRight, Pencil, Trash2, ExternalLink, Paperclip, Download, Upload, Bell, CheckSquare, Square } from 'lucide-react';
 import { addAdminNotification, markNotificationsByHrefPrefixAsRead } from '@/services/adminService';
@@ -51,7 +51,7 @@ import {
   type PengajuanFileAttachment,
 } from '@/services/adminPengajuanService';
 import { updateMasterMitra, upsertMasterMitraByName } from '@/services/masterMitraService';
-import { getAdminUsers, type UserListItem } from '@/services/adminUserService';
+import { getDistribusiKandidat, provisionDistribusiUser, type DistribusiKandidat } from '@/services/distribusiKandidatService';
 
 type EditFormState = {
   id: number;
@@ -239,6 +239,7 @@ async function buildPersistentFileAttachments(files: File[]) {
 
 export default function PengajuanKerjasama() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const isAjukanView  = searchParams.get('view') === 'ajukan';
   const reviewTargetId = searchParams.get('review') ? Number(searchParams.get('review')) : null;
 
@@ -263,7 +264,8 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const [reviewFinalLink, setReviewFinalLink] = useState('');
   const [reviewDistribusiUserIds, setReviewDistribusiUserIds] = useState<number[]>([]);
   const [reviewDistribusiSearch, setReviewDistribusiSearch] = useState('');
-  const [internalUsersList, setInternalUsersList] = useState<UserListItem[]>([]);
+  const [internalUsersList, setInternalUsersList] = useState<DistribusiKandidat[]>([]);
+  const [provisioningNik, setProvisioningNik] = useState<string | null>(null); // key: `${nik}-${jabatan}`
   const [ajukanModalOpen, setAjukanModalOpen] = useState(false);
   const [masterModalOpen, setMasterModalOpen] = useState(false);
   const [negaraModalOpen, setNegaraModalOpen] = useState(false);
@@ -296,6 +298,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const [editingUnitKode, setEditingUnitKode] = useState('');
   const [editingUnitNama, setEditingUnitNama] = useState('');
   const [infoModalMessage, setInfoModalMessage] = useState<string | null>(null);
+  const [finalGuardItem, setFinalGuardItem] = useState<PengajuanItem | null>(null);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
 
   const [editAsal, setEditAsal] = useState<'Jurusan' | 'Unit'>('Jurusan');
@@ -479,13 +482,14 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
     markNotificationsByHrefPrefixAsRead('/admin/data_pengajuan');
   }, []);
 
-  // Daftar user internal untuk pilihan "Distribusi" di modal review.
+  // Kandidat Ketua Jurusan/Ketua Prodi untuk pilihan "Distribusi" di modal review —
+  // termasuk yang belum pernah login ke SIKERMA (lihat getDistribusiKandidat()).
   useEffect(() => {
     let mounted = true;
-    getAdminUsers()
-      .then((users) => {
+    getDistribusiKandidat()
+      .then((kandidat) => {
         if (mounted) {
-          setInternalUsersList(users.filter((u) => u.role === 'Jurusan' || u.role === 'Prodi'));
+          setInternalUsersList(kandidat);
         }
       })
       .catch(() => {
@@ -1135,7 +1139,20 @@ async function saveReview() {
     setReviewDistribusiSearch('');
   }
 
+  // Pengajuan yang sudah difinalkan (statusnya sudah dipindah ke Rekap Data — lihat
+  // PengajuanController::moveApprovedPengajuanToDokumen(), dipicu saat status_pengajuan
+  // jadi 'disetujui' ATAU 'final_approved') seharusnya tidak diedit lagi lewat sini —
+  // dokumen resminya sudah hidup di Rekap Data, jadi edit lanjutan diarahkan ke sana.
+  function isPengajuanSudahFinal(item: PengajuanItem): boolean {
+    return item.statusPengajuan === 'Disetujui' || item.statusPengajuan === 'Final Approved';
+  }
+
   function openEdit(item: PengajuanItem) {
+    if (isPengajuanSudahFinal(item)) {
+      setFinalGuardItem(item);
+      return;
+    }
+
     setEditingItem(item);
   }
 
@@ -2046,6 +2063,7 @@ function addEditJurusanUnitOption() {
                   <button
                     type="button"
                     onClick={() => openEdit(item)}
+                    title={isPengajuanSudahFinal(item) ? 'Sudah difinalkan — edit lewat Rekap Data' : undefined}
                     className="inline-flex items-center gap-1.5 text-[10px] sm:text-[12px] text-amber-700 border border-amber-300 bg-amber-50 rounded-lg px-2.5 sm:px-3 py-1.5 font-medium transition-colors hover:bg-amber-100"
                   >
                     <Pencil size={14} />
@@ -2570,26 +2588,66 @@ function addEditJurusanUnitOption() {
                           {(() => {
                             const results = internalUsersList.filter(
                               (u) =>
-                                !reviewDistribusiUserIds.includes(u.id) &&
+                                (u.id === null || !reviewDistribusiUserIds.includes(u.id)) &&
                                 u.nama.toLowerCase().includes(reviewDistribusiSearch.trim().toLowerCase())
                             );
                             if (results.length === 0) {
                               return <p className="px-3 py-2 text-[11px] text-gray-400">Tidak ada user ditemukan.</p>;
                             }
-                            return results.slice(0, 8).map((u) => (
-                              <button
-                                key={u.id}
-                                type="button"
-                                onClick={() => {
-                                  setReviewDistribusiUserIds((prev) => [...prev, u.id]);
-                                  setReviewDistribusiSearch('');
-                                }}
-                                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[11px] text-gray-700 hover:bg-slate-50"
-                              >
-                                <span className="truncate">{u.nama}</span>
-                                <span className="shrink-0 text-[9.5px] text-gray-400">{u.unitInstansi}</span>
-                              </button>
-                            ));
+                            return results.slice(0, 8).map((u) => {
+                              // Satu NIK bisa muncul 2x kalau orangnya kebetulan Kajur
+                              // SEKALIGUS Kaprodi (dua jabatan struktural berbeda) — jadi
+                              // kuncinya harus nik+jabatan, bukan nik saja, supaya tidak
+                              // duplikat/collision.
+                              const kandidatKey = u.id ?? `${u.nik ?? 'x'}-${u.jabatan}-${u.unitNama ?? ''}`;
+                              const sedangProses = u.nik !== null && provisioningNik === `${u.nik}-${u.jabatan}`;
+
+                              return (
+                                <button
+                                  key={kandidatKey}
+                                  type="button"
+                                  disabled={sedangProses}
+                                  onClick={async () => {
+                                    if (u.id !== null) {
+                                      setReviewDistribusiUserIds((prev) => [...prev, u.id as number]);
+                                      setReviewDistribusiSearch('');
+                                      return;
+                                    }
+
+                                    // Belum pernah login — provision dulu baris user-nya
+                                    // (by NIK) sebelum bisa dipakai sebagai distribusi.
+                                    if (!u.nik) return;
+                                    setProvisioningNik(`${u.nik}-${u.jabatan}`);
+                                    try {
+                                      const provisioned = await provisionDistribusiUser({
+                                        nik: u.nik,
+                                        nama: u.nama,
+                                        jabatan: u.jabatan,
+                                      });
+                                      setInternalUsersList((prev) =>
+                                        prev.map((item) =>
+                                          item.nik === u.nik && item.jabatan === u.jabatan
+                                            ? { ...item, id: provisioned.id, sudahTerdaftar: true }
+                                            : item
+                                        )
+                                      );
+                                      setReviewDistribusiUserIds((prev) => [...prev, provisioned.id]);
+                                      setReviewDistribusiSearch('');
+                                    } catch {
+                                      // Biarkan tetap muncul di hasil pencarian, admin bisa coba lagi.
+                                    } finally {
+                                      setProvisioningNik(null);
+                                    }
+                                  }}
+                                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[11px] text-gray-700 hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                  <span className="truncate">{u.nama}</span>
+                                  <span className="shrink-0 text-[9.5px] text-gray-400">
+                                    {sedangProses ? 'Memproses...' : !u.sudahTerdaftar ? 'Belum login · ' + (u.unitNama ?? '') : u.unitNama}
+                                  </span>
+                                </button>
+                              );
+                            });
                           })()}
                         </div>
                       )}
@@ -3541,6 +3599,40 @@ function addEditJurusanUnitOption() {
                 className="h-9 px-4 rounded-lg bg-[#1E376C] text-white text-[12px] font-semibold hover:bg-[#2A4A8F]"
               >
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {finalGuardItem && (
+        <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-[2px] p-4 flex items-center justify-center">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="px-5 py-4 border-b border-slate-200">
+              <h3 className="text-[15px] font-bold text-slate-900">Sudah Difinalkan</h3>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-[12px] text-slate-700">
+                Pengajuan ini sudah difinalkan dan datanya sudah ada di Rekap Data. Untuk mengedit, silakan lakukan lewat halaman Rekap Data.
+              </p>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setFinalGuardItem(null)}
+                className="h-9 px-4 rounded-lg bg-slate-100 text-slate-700 text-[12px] font-semibold hover:bg-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFinalGuardItem(null);
+                  router.push('/admin/rekap_data');
+                }}
+                className="h-9 px-4 rounded-lg bg-[#1E376C] text-white text-[12px] font-semibold hover:bg-[#2A4A8F]"
+              >
+                Buka Rekap Data
               </button>
             </div>
           </div>

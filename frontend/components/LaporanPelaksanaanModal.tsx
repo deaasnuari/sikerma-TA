@@ -345,26 +345,52 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
       : `<div style="font-size:18px;font-weight:800;color:#1A4EA1;">POLIBATAM</div>`;
 
     const bilingual = (id: string, en: string) => `${escapeHtml(id)}<br/><em>${escapeHtml(en)}</em>`;
-    const multi = (v: string) => escapeHtml(v).replaceAll('\n', '<br/>');
+
+    // Word (lewat filter HTML lama yang dipakai buat buka file .doc ini) TIDAK bisa
+    // diandalkan menghormati word-break/overflow-wrap di CSS untuk teks tanpa spasi
+    // (mis. URL panjang) — jadi titik potongnya disisipkan langsung ke teksnya pakai
+    // zero-width space, bukan cuma lewat CSS.
+    const breakLongTokens = (v: string, chunk = 40) =>
+      v.replace(/\S{41,}/g, (token) => {
+        const parts: string[] = [];
+        for (let i = 0; i < token.length; i += chunk) parts.push(token.slice(i, i + chunk));
+        return parts.join('​');
+      });
+    const multi = (v: string) => breakLongTokens(escapeHtml(v)).replaceAll('\n', '<br/>');
+
+    // Isi kolom sepanjang apapun ditampilkan utuh (tidak dipotong/dipindah) — cukup
+    // dipastikan tetap bisa wrap (lihat breakLongTokens di atas) supaya tabel tidak
+    // melebar di Word, tanpa membatasi panjang teksnya.
+    const cellText = (raw: string, multiline = false): string => {
+      const value = raw ?? '';
+      return multiline ? multi(value) : breakLongTokens(escapeHtml(value));
+    };
 
     const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word'>
 <head><meta charset='utf-8'/><title>Implementation Arrangement</title>
 <style>
-body{font-family:Arial,sans-serif;font-size:12px;padding:24px;}
-table{border-collapse:collapse;width:100%;}
-td{border:1px solid #888;padding:6px;vertical-align:top;}
+/* Ukuran halaman & margin eksplisit untuk Word (konvensi mso @page) — tanpa ini Word
+   tidak punya acuan lebar halaman, jadi tabel dengan width:100% bisa dirender lebih
+   lebar dari area cetak dan "kepotong" di sisi kanan. */
+@page Section1 {size:21cm 29.7cm; margin:2cm 1.8cm 2cm 1.8cm; mso-header-margin:35.4pt; mso-footer-margin:35.4pt; mso-paper-source:0;}
+div.Section1 {page:Section1;}
+body{font-family:Arial,sans-serif;font-size:12px;margin:0;}
+table{border-collapse:collapse;width:100%;table-layout:fixed;}
+td{border:1px solid #888;padding:6px;vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;}
 .title{text-align:center;font-weight:700;font-size:15px;margin:4px 0;}
 .center{text-align:center;}
-.label{width:260px;font-weight:700;}
-.colon{width:16px;text-align:center;}
-.header-table{width:100%;margin-bottom:14px;}
-.header-table td{border:none;padding:0;vertical-align:top;}
+.label{width:32%;font-weight:700;}
+.colon{width:4%;text-align:center;}
+.header-table{width:100%;margin-bottom:14px;table-layout:auto;}
+.header-table td{border:none;padding:0;vertical-align:top;word-break:normal;}
 td.mitra-box{width:64px;height:64px;border:1px dashed #94a3b8;text-align:center;vertical-align:middle;font-size:10px;font-weight:700;color:#475569;background:#fff;}
 .nomor{text-align:center;margin:2px 0;}
 .intro{margin:14px 0;text-align:justify;}
-.sign-table td{text-align:center;vertical-align:top;padding:10px 8px;}
+.sign-table{table-layout:fixed;}
+.sign-table td{text-align:center;vertical-align:top;padding:10px 8px;word-break:normal;}
 </style></head>
 <body>
+<div class='Section1'>
 <table class='header-table'>
   <tr>
     <td>${logoHtml}</td>
@@ -384,18 +410,18 @@ td.mitra-box{width:64px;height:64px;border:1px dashed #94a3b8;text-align:center;
 <p class='intro'>Dokumen ini disusun sebagai bentuk pelaksanaan dan implementasi atas Nota Kesepahaman (MoU) dan/atau Memorandum of Agreement (MOA) yang telah ditandatangani antara Politeknik Negeri Batam dengan ${escapeHtml(mitraKerjasama)}, PARA PIHAK sepakat untuk melaksanakan kerja sama sebagai berikut:</p>
 
 <table>
-  <tr><td class='label'>${bilingual('Judul Kegiatan/Project/Penelitian/Pengabdian', 'Project / Activity Title')}</td><td class='colon'>:</td><td>${escapeHtml(judulKerjasama)}</td></tr>
-  <tr><td class='label'>${bilingual('Dasar Referensi Pelaksanaan (MOU/MOA)', 'Legal Basis of Implementation')}</td><td class='colon'>:</td><td>${escapeHtml(referensiKerjasama)}</td></tr>
-  <tr><td class='label'>Nama Mitra/Partner</td><td class='colon'>:</td><td>${escapeHtml(mitraKerjasama)}</td></tr>
-  <tr><td class='label'>${bilingual('Ruang Lingkup', 'Scope of Activities')}</td><td class='colon'>:</td><td>${multi(kegiatanText)}</td></tr>
-  <tr><td class='label'>${bilingual('Maksud dan Tujuan', 'Purpose and Objective')}</td><td class='colon'>:</td><td>${multi(maksudTujuanText)}</td></tr>
-  <tr><td class='label'>${bilingual('Peran dan Tanggung Jawab Para Pihak', 'Roles and Responsibilities of the Parties')}</td><td class='colon'>:</td><td>${multi(capaianText)}</td></tr>
-  <tr><td class='label'>Output/outcome</td><td class='colon'>:</td><td>${multi(hasilText)}</td></tr>
-  <tr><td class='label'>${bilingual('Timeline/Waktu Pelaksanaan', 'Date and Time of Implementation')}</td><td class='colon'>:</td><td>${multi(timelineText)}</td></tr>
-  <tr><td class='label'>${bilingual('Skema Pembiayaan', 'Financing Scheme')}</td><td class='colon'>:</td><td>${multi(skemaPembiayaanText)}</td></tr>
-  <tr><td class='label'>${bilingual('Jumlah Peserta', 'Number of Participants')}</td><td class='colon'>:</td><td>${escapeHtml(jumlahPeserta)}</td></tr>
-  <tr><td class='label'>${bilingual('Ringkasan/Catatan', 'Meeting Summary and Notes')}</td><td class='colon'>:</td><td>${multi(ringkasanCatatanText)}</td></tr>
-  <tr><td class='label'>${bilingual('Lampiran IA dalam bentuk link', 'Annexes (Accessible via Link)')}</td><td class='colon'>:</td><td>${escapeHtml(tautanDokumentasi)}</td></tr>
+  <tr><td class='label'>${bilingual('Judul Kegiatan/Project/Penelitian/Pengabdian', 'Project / Activity Title')}</td><td class='colon'>:</td><td>${cellText(judulKerjasama)}</td></tr>
+  <tr><td class='label'>${bilingual('Dasar Referensi Pelaksanaan (MOU/MOA)', 'Legal Basis of Implementation')}</td><td class='colon'>:</td><td>${cellText(referensiKerjasama)}</td></tr>
+  <tr><td class='label'>Nama Mitra/Partner</td><td class='colon'>:</td><td>${cellText(mitraKerjasama)}</td></tr>
+  <tr><td class='label'>${bilingual('Ruang Lingkup', 'Scope of Activities')}</td><td class='colon'>:</td><td>${cellText(kegiatanText, true)}</td></tr>
+  <tr><td class='label'>${bilingual('Maksud dan Tujuan', 'Purpose and Objective')}</td><td class='colon'>:</td><td>${cellText(maksudTujuanText, true)}</td></tr>
+  <tr><td class='label'>${bilingual('Peran dan Tanggung Jawab Para Pihak', 'Roles and Responsibilities of the Parties')}</td><td class='colon'>:</td><td>${cellText(capaianText, true)}</td></tr>
+  <tr><td class='label'>Output/outcome</td><td class='colon'>:</td><td>${cellText(hasilText, true)}</td></tr>
+  <tr><td class='label'>${bilingual('Timeline/Waktu Pelaksanaan', 'Date and Time of Implementation')}</td><td class='colon'>:</td><td>${cellText(timelineText, true)}</td></tr>
+  <tr><td class='label'>${bilingual('Skema Pembiayaan', 'Financing Scheme')}</td><td class='colon'>:</td><td>${cellText(skemaPembiayaanText, true)}</td></tr>
+  <tr><td class='label'>${bilingual('Jumlah Peserta', 'Number of Participants')}</td><td class='colon'>:</td><td>${cellText(jumlahPeserta)}</td></tr>
+  <tr><td class='label'>${bilingual('Ringkasan/Catatan', 'Meeting Summary and Notes')}</td><td class='colon'>:</td><td>${cellText(ringkasanCatatanText, true)}</td></tr>
+  <tr><td class='label'>${bilingual('Lampiran IA dalam bentuk link', 'Annexes (Accessible via Link)')}</td><td class='colon'>:</td><td>${cellText(tautanDokumentasi)}</td></tr>
 </table>
 
 <br/>
@@ -421,6 +447,7 @@ td.mitra-box{width:64px;height:64px;border:1px dashed #94a3b8;text-align:center;
     <td>Tanggal :</td>
   </tr>
 </table>
+</div>
 </body></html>`;
 
     const win = window.open('', '_blank');
