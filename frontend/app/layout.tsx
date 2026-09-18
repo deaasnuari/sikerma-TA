@@ -3,6 +3,7 @@ import { Poppins } from 'next/font/google';
 import Script from 'next/script';
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { SWRProvider } from "@/components/SWRProvider";
 
 const poppins = Poppins({
   subsets: ['latin'],
@@ -83,9 +84,11 @@ export default function RootLayout({
         <Script id="strip-fdprocessedid" strategy="beforeInteractive">
           {stripExtensionInjectedAttributes}
         </Script>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <SWRProvider>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </SWRProvider>
       </body>
     </html>
   );

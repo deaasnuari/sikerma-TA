@@ -9,6 +9,18 @@ use Illuminate\Support\Facades\Log;
 //ini adalah service untuk mengatur akses structural user (ketua jurusan, ketua prodi, kepala unit) ke pengajuan_v2 & dokumen_kerjasama.
 class StructuralAccessService
 {
+    /**
+     * Memo per user id untuk request/proses PHP saat ini — dipanggil berulang kali (index()
+     * Pengajuan/DokumenKerjasama/PengajuanAktivitas semuanya lewat sini) padahal hasilnya
+     * sama untuk seluruh durasi satu request. Service ini singleton (lihat
+     * AppServiceProvider), jadi memo ini aman selama tidak lintas request (php-fpm/artisan
+     * serve mem-fresh instance tiap request; TIDAK aman kalau nanti pakai Octane tanpa
+     * di-flush per request).
+     *
+     * @var array<int, array{role: string, structural_position: string, jurusan_id: ?int, program_studi_id: ?int, unit_id: ?int}>
+     */
+    private array $accessMemo = [];
+
     public function __construct(private CivitasStructureService $civitas)
     {
     }
@@ -17,6 +29,18 @@ class StructuralAccessService
      * @return array{role: string, structural_position: string, jurusan_id: ?int, program_studi_id: ?int, unit_id: ?int}
      */
     public function getUserStructuralAccess(User $user): array
+    {
+        if (isset($this->accessMemo[$user->id])) {
+            return $this->accessMemo[$user->id];
+        }
+
+        return $this->accessMemo[$user->id] = $this->resolveUserStructuralAccess($user);
+    }
+
+    /**
+     * @return array{role: string, structural_position: string, jurusan_id: ?int, program_studi_id: ?int, unit_id: ?int}
+     */
+    private function resolveUserStructuralAccess(User $user): array
     {
         $default = [
             'role' => (string) $user->role,

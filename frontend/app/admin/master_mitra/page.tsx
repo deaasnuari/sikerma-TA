@@ -7,11 +7,11 @@ import { getPageNumbers } from '@/lib/pagination';
 import {
   createMasterMitra,
   deleteMasterMitra,
-  getMasterMitra,
   updateMasterMitra,
   type MasterMitra,
 } from '@/services/masterMitraService';
 import { refreshPengajuanDataFromApi, type PengajuanItem } from '@/services/adminPengajuanService';
+import { useMasterMitra } from '@/hooks/useMasterData';
 
 type FormState = {
   kode_mitra: string;
@@ -124,8 +124,7 @@ function getDismissedMitraAlerts(): string[] {
 
 export default function MasterMitraPage() {
   const searchParams = useSearchParams();
-  const [rows, setRows] = useState<MasterMitra[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rows, isLoading: loading, mutate: mutateRows } = useMasterMitra();
   const [search, setSearch] = useState('');
   const [filterKategori, setFilterKategori] = useState('Semua Kategori');
   const [filterTingkat, setFilterTingkat] = useState<(typeof tingkatFilterOptions)[number]>('Semua Tingkat');
@@ -140,35 +139,6 @@ export default function MasterMitraPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [pengajuanItems, setPengajuanItems] = useState<PengajuanItem[]>([]);
   const [dismissedMitraAlerts, setDismissedMitraAlerts] = useState<string[]>([]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const loadRows = async () => {
-      try {
-        setError(null);
-        const data = await getMasterMitra();
-        if (mounted) {
-          setRows(data);
-        }
-      } catch (err) {
-        if (mounted) {
-          setError(err instanceof Error ? err.message : 'Gagal memuat master mitra.');
-          setRows([]);
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadRows();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     setDismissedMitraAlerts(getDismissedMitraAlerts());
@@ -346,13 +316,13 @@ export default function MasterMitraPage() {
         ? await updateMasterMitra(editingRow.id, payload)
         : await createMasterMitra(payload);
 
-      setRows((prev) => {
-        if (editingRow) {
-          return prev.map((item) => (item.id === editingRow.id ? saved : item));
-        }
-
-        return [saved, ...prev];
-      });
+      await mutateRows(
+        (current) =>
+          editingRow
+            ? (current ?? []).map((item) => (item.id === editingRow.id ? saved : item))
+            : [saved, ...(current ?? [])],
+        { revalidate: false },
+      );
 
       closeModal();
     } catch (err) {
@@ -366,7 +336,7 @@ export default function MasterMitraPage() {
     if (!deleteTarget) return;
 
     const target = deleteTarget;
-    setRows((prev) => prev.filter((row) => row.id !== target.id));
+    await mutateRows((current) => (current ?? []).filter((row) => row.id !== target.id), { revalidate: false });
     setDeleteTarget(null);
 
     try {
@@ -375,7 +345,7 @@ export default function MasterMitraPage() {
       // "perlu ditindaklanjuti" walau masih ada pengajuan yang menyebut namanya.
       dismissMitraAlert(target.nama_mitra);
     } catch (err) {
-      setRows((prev) => [...prev, target]);
+      await mutateRows();
       setError(err instanceof Error ? err.message : 'Gagal menghapus master mitra.');
     }
   };

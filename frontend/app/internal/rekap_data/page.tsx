@@ -20,7 +20,7 @@ import {
 import { deleteDokumenKerjasamaById, fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
 import { deletePengajuanItemApi, fetchPengajuanDataFromApi, type PengajuanItem, type PengajuanStatus } from '@/services/adminPengajuanService';
 
-import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
+import { useMasterUnitProdi } from '@/hooks/useMasterData';
 import { exportToExcel } from '@/lib/exportExcel';
 
 type ApprovalStatus = 'Menunggu' | 'Disetujui' | 'Ditolak';
@@ -169,9 +169,21 @@ export default function InternalRekapDataPage() {
   // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) — sama seperti admin/rekap_data
   // — supaya dropdown filter bisa dikelompokkan dan selalu ikut Data Master (bukan daftar
   // hardcode) begitu nama Jurusan/Unit diganti/disinkron ulang.
-  const [masterJurusanNames, setMasterJurusanNames] = useState<string[]>([]);
-  const [masterProdiNames, setMasterProdiNames] = useState<string[]>([]);
-  const [masterUnitNames, setMasterUnitNames] = useState<string[]>([]);
+  const { data: masterJurusanRows } = useMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true });
+  const { data: masterUnitRows } = useMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true });
+  const { data: masterProdiRows } = useMasterUnitProdi({ jenis_node: 'prodi', aktif: true });
+  const masterJurusanNames = useMemo(
+    () => Array.from(new Set(masterJurusanRows.map((item) => item.nama).filter(Boolean))),
+    [masterJurusanRows],
+  );
+  const masterUnitNames = useMemo(
+    () => Array.from(new Set(masterUnitRows.map((item) => item.nama).filter(Boolean))),
+    [masterUnitRows],
+  );
+  const masterProdiNames = useMemo(
+    () => Array.from(new Set(masterProdiRows.map((item) => item.nama).filter(Boolean))),
+    [masterProdiRows],
+  );
 
   const unitGroups = useMemo(() => {
     const docDerived = Array.from(new Set(data.map((item) => item.unit).filter(Boolean)));
@@ -199,34 +211,6 @@ export default function InternalRekapDataPage() {
     }
     return null;
   }, [user]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadMasterJurusans() {
-      try {
-        const [jurusanRows, unitRows, prodiRows] = await Promise.all([
-          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
-          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
-          getMasterUnitProdi({ jenis_node: 'prodi', aktif: true }),
-        ]);
-
-        if (!isMounted) return;
-
-        setMasterJurusanNames(Array.from(new Set(jurusanRows.map((item) => item.nama).filter(Boolean))));
-        setMasterUnitNames(Array.from(new Set(unitRows.map((item) => item.nama).filter(Boolean))));
-        setMasterProdiNames(Array.from(new Set(prodiRows.map((item) => item.nama).filter(Boolean))));
-      } catch {
-        // fallback tetap gunakan opsi lokal dari service.
-      }
-    }
-
-    loadMasterJurusans();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     let mounted = true;

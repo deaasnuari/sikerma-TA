@@ -426,17 +426,33 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pengajuanData]);
 
-// Auto-refresh every 30 seconds to check for new submissions (polling for notifications)
+// Auto-refresh every 30 seconds to check for new submissions (polling for notifications).
+// Di-skip saat tab tidak aktif/di-background — sebelumnya tetap nge-fetch ~500 baris
+// pengajuan (dengan relasi dokumen/mitra ter-eager-load) tiap 30 detik meski tab admin
+// cuma dibiarkan terbuka di background, bikin boros network+CPU tanpa ada yang lihat.
   useEffect(() => {
     void refreshPengajuanData(false);
-    
+
     const POLL_INTERVAL_MS = 30000; // 30 seconds
-    
+
     const intervalId = setInterval(() => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
       void refreshPengajuanData(true); // silent refresh
     }, POLL_INTERVAL_MS);
-    
-    return () => clearInterval(intervalId);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshPengajuanData(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [refreshPengajuanData]);
 
 

@@ -5,6 +5,15 @@ export const revalidate = 0;
 
 const BACKEND_BASE_URL = (process.env.BACKEND_INTERNAL_URL ?? 'http://127.0.0.1:8000').replace(/\/+$/, '');
 
+// Endpoint yang beneran publik di backend (di luar middleware auth:sanctum, lihat
+// backend/routes/api.php) — responsnya sama untuk semua orang, tidak pernah bergantung
+// pada user yang login. Ini yang dihit landing page/dashboard admin berkali-kali
+// (statistik, daftar kerjasama publik, daftar unit/prodi publik, carousel) sehingga aman
+// di-cache sebentar, beda dari endpoint ber-auth yang wajib selalu fresh & scoped per user.
+const PUBLIC_CACHEABLE_PATHS = new Set(['carousel-images', 'dokumen-kerjasama/stats/mitra']);
+const PUBLIC_CACHEABLE_PREFIXES = ['public/'];
+const PUBLIC_CACHE_REVALIDATE_SECONDS = 20;
+
 function buildTargetUrl(pathSegments: string[], request: NextRequest): string {
   const path = pathSegments.join('/');
   const queryString = request.nextUrl.search || '';
@@ -12,11 +21,21 @@ function buildTargetUrl(pathSegments: string[], request: NextRequest): string {
   return `${BACKEND_BASE_URL}/api/${path}${queryString}`;
 }
 
+function isPubliclyCacheable(method: string, path: string): boolean {
+  if (method !== 'GET') {
+    return false;
+  }
+
+  return PUBLIC_CACHEABLE_PATHS.has(path) || PUBLIC_CACHEABLE_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
 async function proxyRequest(request: NextRequest, pathSegments: string[]): Promise<Response> {
+  const path = pathSegments.join('/');
   const targetUrl = buildTargetUrl(pathSegments, request);
   const method = request.method;
   const contentType = request.headers.get('content-type') || '';
   const shouldSendBody = method !== 'GET' && method !== 'HEAD';
+  const cacheable = isPubliclyCacheable(method, path);
 
   const headers = new Headers(request.headers);
   headers.delete('host');
@@ -36,15 +55,27 @@ async function proxyRequest(request: NextRequest, pathSegments: string[]): Promi
       method,
       headers,
       body,
-      cache: 'no-store',
+      ...(cacheable
+        ? { next: { revalidate: PUBLIC_CACHE_REVALIDATE_SECONDS } }
+        : { cache: 'no-store' as const }),
     });
 
     const responseHeaders = new Headers(backendResponse.headers);
     responseHeaders.delete('content-encoding');
     responseHeaders.delete('transfer-encoding');
-    responseHeaders.set('cache-control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    responseHeaders.set('pragma', 'no-cache');
-    responseHeaders.set('expires', '0');
+
+    if (cacheable) {
+      responseHeaders.set(
+        'cache-control',
+        `public, max-age=${PUBLIC_CACHE_REVALIDATE_SECONDS}, stale-while-revalidate=60`,
+      );
+      responseHeaders.delete('pragma');
+      responseHeaders.delete('expires');
+    } else {
+      responseHeaders.set('cache-control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      responseHeaders.set('pragma', 'no-cache');
+      responseHeaders.set('expires', '0');
+    }
 
     return new Response(backendResponse.body, {
       status: backendResponse.status,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle,
@@ -18,7 +18,7 @@ import {
   getMonitoringData,
   getMonitoringStats,
 } from '@/services/adminMonitoringService';
-import { getMasterMitra } from '@/services/masterMitraService';
+import { useMasterMitra } from '@/hooks/useMasterData';
 import {
   refreshPengajuanDataFromApi,
   getPengajuanData,
@@ -170,10 +170,17 @@ export default function PimpinanPage() {
 
   const [kerjasamaAktif, setKerjasamaAktif] = useState(0);
   const [kerjasamaTidakAktif, setKerjasamaTidakAktif] = useState(0);
-  const [dalamNegeri, setDalamNegeri] = useState(0);
-  const [luarNegeri, setLuarNegeri] = useState(0);
-  const [totalMitra, setTotalMitra] = useState(0);
-  const [mitraAktif, setMitraAktif] = useState(0);
+  const { data: mitraRows } = useMasterMitra();
+  const { dalamNegeri, luarNegeri, totalMitra, mitraAktif } = useMemo(() => {
+    const domestic = mitraRows.filter((m) => (m.negara || '').toLowerCase().trim() === 'indonesia').length;
+    const foreign = Math.max(mitraRows.length - domestic, 0);
+    return {
+      dalamNegeri: domestic,
+      luarNegeri: foreign,
+      totalMitra: mitraRows.length,
+      mitraAktif: mitraRows.filter((m) => m.aktif).length,
+    };
+  }, [mitraRows]);
 
   const [pendingApprovals, setPendingApprovals] = useState<PengajuanItem[]>([]);
   const [akanBerakhirCount, setAkanBerakhirCount] = useState(0);
@@ -240,29 +247,6 @@ export default function PimpinanPage() {
       mounted = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Fetch mitra data → dalam/luar negeri counts
-  useEffect(() => {
-    let mounted = true;
-
-    getMasterMitra()
-      .then((items) => {
-        if (!mounted) return;
-        const domestic = items.filter(
-          (m) => (m.negara || '').toLowerCase().trim() === 'indonesia'
-        ).length;
-        const foreign = Math.max(items.length - domestic, 0);
-        setDalamNegeri(domestic);
-        setLuarNegeri(foreign);
-        setTotalMitra(items.length);
-        setMitraAktif(items.filter((m) => m.aktif).length);
-      })
-      .catch(() => {});
-
-    return () => {
-      mounted = false;
-    };
   }, []);
 
   // Fetch pengajuan data → pending approvals + kerjasama baru

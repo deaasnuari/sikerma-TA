@@ -5,10 +5,10 @@ import { ChevronDown, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import {
   createMasterRuangLingkup,
   deleteMasterRuangLingkup,
-  getMasterRuangLingkup,
   updateMasterRuangLingkup,
   type MasterRuangLingkup,
 } from '@/services/masterRuangLingkupService';
+import { useMasterRuangLingkup } from '@/hooks/useMasterData';
 
 type FormState = {
   nama_ruang_lingkup: string;
@@ -32,8 +32,7 @@ const campusRuangLingkupReferences = [
 ];
 
 export default function MasterRuangLingkupPage() {
-  const [rows, setRows] = useState<MasterRuangLingkup[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rows, isLoading: loading, mutate: mutateRows } = useMasterRuangLingkup();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [showModal, setShowModal] = useState(false);
@@ -46,35 +45,6 @@ export default function MasterRuangLingkupPage() {
     const existingNames = new Set(rows.map((item) => item.nama_ruang_lingkup.trim().toLowerCase()));
     return campusRuangLingkupReferences.filter((name) => !existingNames.has(name.toLowerCase()));
   }, [rows]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const loadRows = async () => {
-      try {
-        setError(null);
-        const data = await getMasterRuangLingkup();
-        if (mounted) {
-          setRows(data);
-        }
-      } catch (err) {
-        if (mounted) {
-          setError(err instanceof Error ? err.message : 'Gagal memuat master ruang lingkup.');
-          setRows([]);
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadRows();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   const openCreate = () => {
     setEditingRow(null);
@@ -123,13 +93,13 @@ export default function MasterRuangLingkupPage() {
         ? await updateMasterRuangLingkup(editingRow.id, payload)
         : await createMasterRuangLingkup(payload);
 
-      setRows((prev) => {
-        if (editingRow) {
-          return prev.map((item) => (item.id === editingRow.id ? saved : item));
-        }
-
-        return [saved, ...prev];
-      });
+      await mutateRows(
+        (current) =>
+          editingRow
+            ? (current ?? []).map((item) => (item.id === editingRow.id ? saved : item))
+            : [saved, ...(current ?? [])],
+        { revalidate: false },
+      );
 
       closeModal();
     } catch (err) {
@@ -148,7 +118,7 @@ export default function MasterRuangLingkupPage() {
       setSubmitting(true);
       setError(null);
       await deleteMasterRuangLingkup(item.id);
-      setRows((prev) => prev.filter((row) => row.id !== item.id));
+      await mutateRows((current) => (current ?? []).filter((row) => row.id !== item.id), { revalidate: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal menghapus master ruang lingkup.');
     } finally {

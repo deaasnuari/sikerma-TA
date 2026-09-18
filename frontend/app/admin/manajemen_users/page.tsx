@@ -28,7 +28,7 @@ import {
   updateAdminUser,
   updateAdminUserStatus,
 } from '@/services/adminUserService';
-import { getUnits, type MasterUnitProdi } from '@/services/masterUnitProdiService';
+import { useMasterUnitProdi } from '@/hooks/useMasterData';
 
 interface UserItem {
   id: number;
@@ -122,7 +122,7 @@ export default function ManajemenUserPage() {
   const [deleteError, setDeleteError] = useState('');
   const [isFallback, setIsFallback] = useState(false);
   const [isReloading, setIsReloading] = useState(false);
-  const [unitOptions, setUnitOptions] = useState<MasterUnitProdi[]>([]);
+  const { data: unitOptions } = useMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true });
 
   // Form state shared by add & edit
   const emptyForm = { nama: '', email: '', role: '' as string, unitInstansi: '', unitProdiId: null as number | null, status: 'Aktif' as string, phone: '', username: '', password: '' };
@@ -166,23 +166,6 @@ export default function ManajemenUserPage() {
     };
 
     loadUsers();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    getUnits()
-      .then((units) => {
-        if (mounted) setUnitOptions(units);
-      })
-      .catch(() => {
-        // Dropdown Unit cukup kosong kalau gagal dimuat — tidak menghalangi
-        // pengelolaan user role lain.
-      });
 
     return () => {
       mounted = false;

@@ -13,8 +13,14 @@ class CivitasStructureService
     private string $apiKey;
     private string $secret;
 
-    /** Cache singkat — struktur jarang berubah, tapi jangan sampai basi kalau ada pergantian jabatan. */
-    private const CACHE_TTL_SECONDS = 300;
+    /**
+     * Struktur jarang berubah — tapi jangan sampai basi kalau ada pergantian jabatan.
+     * Sempat 300s; dinaikkan ke 30 menit karena tiap cache miss memicu hit ke Civitas API
+     * (timeout 15s) untuk SETIAP request list Pengajuan/Dokumen/Aktivitas dari user
+     * internal/unit/jurusan/prodi — 300s bikin ini kejadian berkali-kali per jam di traffic
+     * ramai dan terasa lag begitu API kampusnya lambat.
+     */
+    private const CACHE_TTL_SECONDS = 1800;
 
     public function __construct()
     {

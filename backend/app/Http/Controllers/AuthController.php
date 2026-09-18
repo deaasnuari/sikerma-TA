@@ -303,6 +303,7 @@ class AuthController extends Controller
     public function users(): JsonResponse
     {
         $users = User::query()
+            ->select(['id', 'name', 'username', 'email', 'phone', 'position', 'institution_name', 'account_type', 'approval_status', 'role'])
             ->latest('id')
             ->get()
             ->map(fn (User $user) => [

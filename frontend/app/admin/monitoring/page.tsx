@@ -42,7 +42,7 @@ import { getPengajuanData } from '@/services/adminPengajuanService';
 import { addAdminNotification } from '@/services/adminService';
 import { addRenewalRequest } from '@/services/adminRenewalRequestService';
 import { logPerpanjanganDiajukan, logNotifikasiDikirim } from '@/services/kerjasamaEventLogService';
-import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
+import { useMasterUnitProdi } from '@/hooks/useMasterData';
 import { updateDokumenKerjasamaById, uploadDokumenFile } from '@/services/dokumenKerjasamaApiService';
 import { getPageNumbers } from '@/lib/pagination';
 
@@ -71,9 +71,21 @@ export default function MonitoringdanstatusPage() {
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
   // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) supaya dropdown filter bisa
   // dikelompokkan pakai <optgroup>, sama seperti dropdown "Semua Unit" di landing page.
-  const [masterJurusanOptions, setMasterJurusanOptions] = useState<string[]>([]);
-  const [masterProdiOptions, setMasterProdiOptions] = useState<string[]>([]);
-  const [masterUnitKerjaOptions, setMasterUnitKerjaOptions] = useState<string[]>([]);
+  const { data: masterJurusanRows } = useMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true });
+  const { data: masterUnitKerjaRows } = useMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true });
+  const { data: masterProdiRows } = useMasterUnitProdi({ jenis_node: 'prodi', aktif: true });
+  const masterJurusanOptions = useMemo(
+    () => Array.from(new Set(masterJurusanRows.map((item) => item.nama).filter(Boolean))),
+    [masterJurusanRows],
+  );
+  const masterUnitKerjaOptions = useMemo(
+    () => Array.from(new Set(masterUnitKerjaRows.map((item) => item.nama).filter(Boolean))),
+    [masterUnitKerjaRows],
+  );
+  const masterProdiOptions = useMemo(
+    () => Array.from(new Set(masterProdiRows.map((item) => item.nama).filter(Boolean))),
+    [masterProdiRows],
+  );
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -175,37 +187,6 @@ export default function MonitoringdanstatusPage() {
       void muatRiwayatNotifikasi(notificationModal.kerjasamaId);
     }
   }, [notificationModal.open, notificationModal.kerjasamaId, muatRiwayatNotifikasi]);
-
-  // Opsi Jurusan/Unit/Prodi untuk dropdown filter, sama seperti di halaman Rekap Data.
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadMasterUnitOptions() {
-      try {
-        const [jurusanRows, unitRows, prodiRows] = await Promise.all([
-          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
-          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
-          getMasterUnitProdi({ jenis_node: 'prodi', aktif: true }),
-        ]);
-
-        if (!isMounted) {
-          return;
-        }
-
-        setMasterJurusanOptions(Array.from(new Set(jurusanRows.map((item) => item.nama).filter(Boolean))));
-        setMasterUnitKerjaOptions(Array.from(new Set(unitRows.map((item) => item.nama).filter(Boolean))));
-        setMasterProdiOptions(Array.from(new Set(prodiRows.map((item) => item.nama).filter(Boolean))));
-      } catch {
-        // fallback tetap dari data rekap lokal bila API belum siap.
-      }
-    }
-
-    loadMasterUnitOptions();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   const { totalAktif, totalAkanBerakhir, totalKadaluarsa } = getMonitoringStats(monitoringData);
   const filteredByTab = getFilteredMonitoringData(monitoringData, activeTab);

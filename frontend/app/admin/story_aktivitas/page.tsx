@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
@@ -18,7 +18,7 @@ import { getHiddenStoryIds, refreshAktivitasDataFromApi } from '@/services/admin
 import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
 import type { RekapDokumen } from '@/services/adminRekapDataService';
 import { groupStoryAktivitasFromRekap, type StoryAktivitasGroup } from '@/services/storyAktivitasGrouping';
-import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
+import { useMasterUnitProdi } from '@/hooks/useMasterData';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 
 interface Kerjasama {
@@ -81,37 +81,21 @@ export default function StoryAktivitasPage() {
 
   // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) supaya dropdown filter
   // Jurusan/Prodi/Unit bisa dikelompokkan pakai <optgroup>, sama seperti di Rekap Data.
-  const [masterJurusanOptions, setMasterJurusanOptions] = useState<string[]>([]);
-  const [masterProdiOptions, setMasterProdiOptions] = useState<string[]>([]);
-  const [masterUnitKerjaOptions, setMasterUnitKerjaOptions] = useState<string[]>([]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadMasterUnitOptions() {
-      try {
-        const [jurusanRows, unitRows, prodiRows] = await Promise.all([
-          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true }),
-          getMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true }),
-          getMasterUnitProdi({ jenis_node: 'prodi', aktif: true }),
-        ]);
-
-        if (!isMounted) return;
-
-        setMasterJurusanOptions(Array.from(new Set(jurusanRows.map((item) => item.nama).filter(Boolean))));
-        setMasterUnitKerjaOptions(Array.from(new Set(unitRows.map((item) => item.nama).filter(Boolean))));
-        setMasterProdiOptions(Array.from(new Set(prodiRows.map((item) => item.nama).filter(Boolean))));
-      } catch {
-        // fallback tetap ke daftar hasil derive dari data story kalau API belum siap.
-      }
-    }
-
-    void loadMasterUnitOptions();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const { data: masterJurusanRows } = useMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true });
+  const { data: masterUnitKerjaRows } = useMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true });
+  const { data: masterProdiRows } = useMasterUnitProdi({ jenis_node: 'prodi', aktif: true });
+  const masterJurusanOptions = useMemo(
+    () => Array.from(new Set(masterJurusanRows.map((item) => item.nama).filter(Boolean))),
+    [masterJurusanRows],
+  );
+  const masterUnitKerjaOptions = useMemo(
+    () => Array.from(new Set(masterUnitKerjaRows.map((item) => item.nama).filter(Boolean))),
+    [masterUnitKerjaRows],
+  );
+  const masterProdiOptions = useMemo(
+    () => Array.from(new Set(masterProdiRows.map((item) => item.nama).filter(Boolean))),
+    [masterProdiRows],
+  );
 
   useEffect(() => {
     let isMounted = true;
