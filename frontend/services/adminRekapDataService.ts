@@ -31,6 +31,9 @@ export interface RekapDokumen {
   // Kapan dokumen kerja sama ini dibuat di sistem (bukan tanggal_mulai kontraktualnya) —
   // dipakai untuk mengurutkan Story & Aktivitas dari yang PALING BARU DIAJUKAN.
   dibuatPada?: string;
+  // Kapan pengajuan sumber dokumen ini di-ACC final (null untuk dokumen manual tanpa pengajuan) —
+  // dipakai untuk mengurutkan Rekap Data dari yang paling baru/lama disetujui.
+  disetujuPada?: string;
   tahun: string;
   status: RekapStatus;
   whatsappNumber?: string;
@@ -127,11 +130,29 @@ export interface DokumenData {
   keterangan?: string;
 }
 
+export const semuaBulanLabel = 'Semua Bulan';
+export const tanpaBulanLabel = 'Tanpa Bulan (-)';
+export const bulanOptions = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+];
+
+// Cocokkan bulan dari tanggal mentah (YYYY-MM-DD / ISO) dengan nama bulan yang dipilih di filter.
+// Sama seperti `tahun`, yang dipakai adalah bulan TANGGAL MULAI kerja sama.
+// Dokumen tanpa tanggal mulai (tampil "-") hanya muncul lewat opsi `tanpaBulanLabel`.
+export function matchesBulan(rawDate: string | undefined | null, filterBulan: string): boolean {
+  if (filterBulan === semuaBulanLabel) return true;
+  if (filterBulan === tanpaBulanLabel) return !rawDate;
+  const monthIndex = Number((rawDate || '').slice(5, 7)) - 1;
+  return bulanOptions[monthIndex] === filterBulan;
+}
+
 export interface RekapFilterOptions {
   filterJenis: string;
   filterUnit: string;
   filterStatus: string;
   filterTahun: string | null;
+  filterBulan: string;
   filterJenisMitra: string;
   filterTingkatPerusahaan: string;
   filterRuangLingkup: string;
@@ -523,6 +544,7 @@ export function filterRekapData(items: RekapDokumen[], filters: RekapFilterOptio
     const matchesUnit = filters.filterUnit === 'Semua Jurusan/unit' || item.unit === filters.filterUnit;
     const matchesStatus = filters.filterStatus === 'Semua Status' || item.status === filters.filterStatus;
     const matchesTahun = filters.filterTahun === null || item.tahun === filters.filterTahun;
+    const matchesBulanMulai = matchesBulan(item.tanggalMulaiRaw, filters.filterBulan);
     const matchesJenisMitra = filters.filterJenisMitra === 'Semua Jenis Mitra' || item.jenisMitra === filters.filterJenisMitra;
     const matchesTingkatPerusahaan =
       filters.filterTingkatPerusahaan === 'Semua Tingkat Perusahaan' || item.tingkatPerusahaan === filters.filterTingkatPerusahaan;
@@ -565,6 +587,7 @@ export function filterRekapData(items: RekapDokumen[], filters: RekapFilterOptio
       matchesUnit &&
       matchesStatus &&
       matchesTahun &&
+      matchesBulanMulai &&
       matchesJenisMitra &&
       matchesTingkatPerusahaan &&
       matchesRuangLingkup &&

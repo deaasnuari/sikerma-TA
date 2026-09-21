@@ -82,7 +82,7 @@ export function generateNoDokumen({
 import { apiRequest } from '@/lib/api';
 import { buildLegacyFileUrl } from '@/services/dokumenKerjasamaApiService';
 import { getCachedMasterRuangLingkup, getMasterRuangLingkup } from '@/services/masterRuangLingkupService';
-import { rekapJenisMitraOptions, rekapTingkatPerusahaanOptions } from '@/services/adminRekapDataService';
+import { matchesBulan, rekapJenisMitraOptions, rekapTingkatPerusahaanOptions } from '@/services/adminRekapDataService';
 
 const MONITORING_CACHE_TTL_MS = 60 * 1000;
 let monitoringCache: { data: Kerjasama[]; expiresAt: number } | null = null;
@@ -124,6 +124,8 @@ export interface Kerjasama {
   status: StatusKerjasama;
   tanggalMulai: string;
   tanggalBerakhir: string;
+  // Tanggal mulai mentah dari API (YYYY-MM-DD) — dipakai filter bulan.
+  tanggalMulaiRaw?: string;
   tahun?: string;
   unit?: string;
   jenisMitra?: string;
@@ -525,6 +527,7 @@ export async function fetchMonitoringDataFromApi(options?: { forceRefresh?: bool
         status: status,
         tanggalMulai: formatDisplayDate(row.tanggal_mulai),
         tanggalBerakhir: formatDisplayDate(row.tanggal_berakhir),
+        tanggalMulaiRaw: row.tanggal_mulai || undefined,
         tahun: (row.tanggal_mulai || '').slice(0, 4) || undefined,
         unit: row.unit_prodi?.nama || undefined,
         jenisMitra: row.mitra?.kategori_mitra || undefined,
@@ -586,6 +589,7 @@ export interface MonitoringFilterOptions {
   filterJenisMitra: string;
   filterTingkatPerusahaan: string;
   filterTahun: string | null;
+  filterBulan: string;
 }
 
 // Ambil daftar jenis dokumen unik untuk dropdown filter (sama pola dengan Rekap Data).
@@ -631,8 +635,9 @@ export function filterMonitoringData(items: Kerjasama[], filters: MonitoringFilt
     const matchesTingkat =
       filters.filterTingkatPerusahaan === 'Semua Tingkat Perusahaan' || item.tingkatPerusahaan === filters.filterTingkatPerusahaan;
     const matchesTahun = filters.filterTahun === null || item.tahun === filters.filterTahun;
+    const matchesBulanMulai = matchesBulan(item.tanggalMulaiRaw, filters.filterBulan);
 
-    return matchesJenis && matchesUnit && matchesJenisMitra && matchesTingkat && matchesTahun;
+    return matchesJenis && matchesUnit && matchesJenisMitra && matchesTingkat && matchesTahun && matchesBulanMulai;
   });
 }
 

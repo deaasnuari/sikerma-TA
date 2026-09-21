@@ -14,6 +14,8 @@ import RenewalForm from './RenewalForm';
 // import RenewalForm from './RenewalForm';
 import NotificationHistoryModal from './NotificationHistoryModal';
 import NonactiveConfirmationModal from './NonactiveConfirmationModal';
+import MonthPicker from '@/components/MonthPicker';
+import { semuaBulanLabel } from '@/services/adminRekapDataService';
 import {
   createRenewalRecord,
   createWhatsAppLink,
@@ -68,6 +70,7 @@ export default function MonitoringdanstatusPage() {
   const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
   const [filterTingkatPerusahaan, setFilterTingkatPerusahaan] = useState('Semua Tingkat Perusahaan');
   const [filterTahun, setFilterTahun] = useState<string | null>(null);
+  const [filterBulan, setFilterBulan] = useState(semuaBulanLabel);
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
   // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) supaya dropdown filter bisa
   // dikelompokkan pakai <optgroup>, sama seperti dropdown "Semua Unit" di landing page.
@@ -222,6 +225,7 @@ export default function MonitoringdanstatusPage() {
     filterJenisMitra,
     filterTingkatPerusahaan,
     filterTahun,
+    filterBulan,
   });
 
   const normalizedKeyword = searchKeyword.trim().toLowerCase();
@@ -251,7 +255,7 @@ export default function MonitoringdanstatusPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchKeyword, filterJenis, filterUnit, filterJenisMitra, filterTingkatPerusahaan, filterTahun]);
+  }, [activeTab, searchKeyword, filterJenis, filterUnit, filterJenisMitra, filterTingkatPerusahaan, filterTahun, filterBulan]);
 
   const tabs = getMonitoringTabs(monitoringData);
   const selectedRenewalItem = findKerjasamaById(monitoringData, renewalChoiceModal.open ? renewalChoiceModal.kerjasamaId : renewalModal.kerjasamaId);
@@ -529,6 +533,12 @@ export default function MonitoringdanstatusPage() {
               </div>
             )}
           </div>
+
+          <MonthPicker
+            value={filterBulan}
+            onChange={setFilterBulan}
+            buttonClassName="rounded-lg border border-gray-300 bg-white px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C] inline-flex min-w-[150px] items-center justify-between gap-2"
+          />
         </div>
       </div>
 

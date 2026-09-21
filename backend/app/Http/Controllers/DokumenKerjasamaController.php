@@ -173,7 +173,7 @@ class DokumenKerjasamaController extends Controller
     public function index(Request $request): Response
     {
         $query = DokumenKerjasama::query()->with([
-            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul,user_pengusul_id',
+            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul,user_pengusul_id,final_approved_at',
             'pengajuan.userPengusul:id,role',
             // parent dimuat supaya Jurusan bisa diturunkan saat unitProdi-nya berupa Prodi (anak dari Jurusan).
             'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
@@ -1371,7 +1371,7 @@ class DokumenKerjasamaController extends Controller
      * penyimpanan di disk) — dipakai admin untuk memeriksa dokumen sebelum menyetujui/menolak
      * permintaan perpanjangan di halaman Status dan Progres Kerja Sama.
      */
-    public function downloadRenewalDocument(Request $request, DokumenLog $dokumen_log): Response|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function downloadRenewalDocument(Request $request, DokumenLog $dokumen_log): Response|\Illuminate\Http\RedirectResponse|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         if ($response = $this->ensureAdmin($request)) {
             return $response;

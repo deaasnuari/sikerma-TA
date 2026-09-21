@@ -114,6 +114,7 @@ type ApiDokumenRow = {
     nama_mitra?: string | null;
     user_pengusul_id?: number | null;
     user_pengusul?: { id: number; role: string } | null;
+    final_approved_at?: string | null;
   } | null;
   dokumen_files?: Array<{
     id: number;
@@ -344,6 +345,7 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       tanggalMulaiRaw: tanggalMulaiRaw || undefined,
       berlakuHinggaRaw: row.tanggal_berakhir || undefined,
       dibuatPada: row.created_at || undefined,
+      disetujuPada: row.pengajuan?.final_approved_at || undefined,
       tahun: (tanggalMulaiRaw || new Date().toISOString()).slice(0, 4),
       status: mapStatus(row),
       whatsappNumber: row.mitra?.whatsapp_mitra || row.pengajuan?.whatsapp_pengusul || row.snap_whatsapp_pengusul || undefined,

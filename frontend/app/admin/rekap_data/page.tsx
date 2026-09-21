@@ -7,6 +7,7 @@ import TambahDokumenModal from './TambahDokumenModal';
 import MonevTriwulanSection from './MonevTriwulanSection';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import FileDownloadLink from '@/components/FileDownloadLink';
+import MonthPicker from '@/components/MonthPicker';
 import { downloadFileWithAuth } from '@/lib/api';
 import {
   createDokumenFormData,
@@ -22,6 +23,7 @@ import {
   rekapJenisBadgeMap,
   rekapStatusBadgeMap,
   rekapStatusOptions,
+  semuaBulanLabel,
   type DokumenData,
   type RekapDokumen,
 } from '@/services/adminRekapDataService';
@@ -107,6 +109,7 @@ export default function RekapDataPage() {
   const [filterUnit, setFilterUnit] = useState('Semua Jurusan/unit');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterTahun, setFilterTahun] = useState<string | null>(null);
+  const [filterBulan, setFilterBulan] = useState(semuaBulanLabel);
   const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
   const [filterTingkatPerusahaan, setFilterTingkatPerusahaan] = useState('Semua Tingkat Perusahaan');
   const [filterRuangLingkup, setFilterRuangLingkup] = useState('Semua Ruang Lingkup');
@@ -275,12 +278,22 @@ export default function RekapDataPage() {
     filterUnit,
     filterStatus,
     filterTahun,
+    filterBulan,
     filterJenisMitra,
     filterTingkatPerusahaan,
     filterRuangLingkup,
     search,
   });
-  const filteredRows = sortOrder === 'oldest' ? [...filteredBase].reverse() : filteredBase;
+  // Urut berdasarkan waktu pengajuan di-ACC final. Dokumen manual (tanpa pengajuan) memakai
+  // waktu dibuat di sistem; kalau keduanya kosong, jatuh ke ID.
+  const approvalTime = (row: RekapDokumen) => {
+    const value = Date.parse(row.disetujuPada || row.dibuatPada || '');
+    return Number.isNaN(value) ? 0 : value;
+  };
+  const filteredRows = [...filteredBase].sort((a, b) => {
+    const diff = approvalTime(b) - approvalTime(a) || (b.id ?? 0) - (a.id ?? 0);
+    return sortOrder === 'oldest' ? -diff : diff;
+  });
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / itemsPerPage));
   const safePage = Math.min(currentPage, totalPages);
@@ -290,7 +303,7 @@ export default function RekapDataPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, filterJenis, filterUnit, filterStatus, filterTahun, filterJenisMitra, filterTingkatPerusahaan, filterRuangLingkup, sortOrder]);
+  }, [search, filterJenis, filterUnit, filterStatus, filterTahun, filterBulan, filterJenisMitra, filterTingkatPerusahaan, filterRuangLingkup, sortOrder]);
 
   const { totalKerjasama, totalAktif, totalAkanBerakhir, totalKadaluarsa } = getRekapStats(rekapData);
 
@@ -695,6 +708,8 @@ export default function RekapDataPage() {
                 </div>
               )}
             </div>
+
+            <MonthPicker value={filterBulan} onChange={setFilterBulan} />
 
             <select
               value={sortOrder}
