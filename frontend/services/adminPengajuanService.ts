@@ -1,6 +1,6 @@
 import { addAdminNotification, getUnreadNotificationCount } from '@/services/adminService';
 import { removeMonitoringByPengajuanId, upsertMonitoringFromPengajuan } from '@/services/adminMonitoringService';
-import { removeRekapByPengajuanId, upsertRekapFromPengajuan } from '@/services/adminRekapDataService';
+import { bulanOptions, removeRekapByPengajuanId, semuaBulanLabel, upsertRekapFromPengajuan } from '@/services/adminRekapDataService';
 import { hideStoryByPengajuanId, initAktivitasOnApproval } from '@/services/adminStoryAktivitasService';
 import { apiRequest } from '@/lib/api';
 
@@ -1053,6 +1053,43 @@ export function getPengajuanYearOptions(items: PengajuanItem[]): string[] {
   return Array.from(new Set(items.map((item) => item.diajukanPada.slice(0, 4))))
     .filter(Boolean)
     .sort((a, b) => Number(b) - Number(a));
+}
+
+const APPROVED_STATUSES_FOR_BARU = new Set<PengajuanStatus>([
+  'Disetujui',
+  'Final Approved',
+  'Disetujui Internal',
+  'Disetujui Mitra',
+]);
+
+// tanggalMulai datang dalam format 'DD/MM/YYYY' (lihat mapRowToItem di atas), BUKAN ISO — kalau
+// langsung di-`new Date()` akan salah dibaca sebagai MM/DD/YYYY. diajukanPada dipakai sebagai
+// fallback dan sudah dalam format ISO 'YYYY-MM-DD'.
+function parseTanggalUntukBaru(tanggal?: string): { year: number; month: number } | null {
+  if (!tanggal) return null;
+
+  if (tanggal.includes('/')) {
+    const [, mm, yyyy] = tanggal.split('/');
+    const year = parseInt(yyyy, 10);
+    const month = parseInt(mm, 10);
+    return year && month ? { year, month } : null;
+  }
+
+  const year = parseInt(tanggal.slice(0, 4), 10);
+  const month = parseInt(tanggal.slice(5, 7), 10);
+  return year && month ? { year, month } : null;
+}
+
+/** Jumlah kerjasama baru (pengajuan yang sudah disetujui) pada tahun tertentu, opsional
+ *  difilter per bulan (label dari bulanOptions, atau semuaBulanLabel untuk semua bulan).
+ *  Dipakai di dashboard Admin & Pimpinan supaya angkanya konsisten. */
+export function countKerjasamaBaru(items: PengajuanItem[], tahun: number, bulan: string = semuaBulanLabel): number {
+  return items.filter((item) => {
+    if (!APPROVED_STATUSES_FOR_BARU.has(item.statusPengajuan)) return false;
+    const parsed = parseTanggalUntukBaru(item.tanggalMulai) ?? parseTanggalUntukBaru(item.diajukanPada);
+    if (!parsed || parsed.year !== tahun) return false;
+    return bulan === semuaBulanLabel || bulanOptions[parsed.month - 1] === bulan;
+  }).length;
 }
 
 // Shortcut untuk proses review dari halaman admin.

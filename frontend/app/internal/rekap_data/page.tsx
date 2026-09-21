@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Eye, FileText, Search, Trash2 } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Download, Eye, FileText, Search, Trash2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 import DetailKerjasamaModal from './DetailKerjasamaModal';
@@ -9,11 +9,14 @@ import EditDokumenModal from './EditDokumenModal';
 import LaporanPelaksanaanModal, { type LaporanPelaksanaanData } from '@/components/LaporanPelaksanaanModal';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import MonthPicker from '@/components/MonthPicker';
 
 import {
   getRekapStats,
+  matchesBulan,
   rekapJenisMitraOptions,
   rekapTingkatPerusahaanOptions,
+  semuaBulanLabel,
   type DokumenTerkait,
   type RekapDokumen,
 } from '@/services/adminRekapDataService';
@@ -34,6 +37,8 @@ interface KerjasamaItem {
   jenis: Jenis;
   unit: string;
   tanggalMulai: string;
+  tanggalMulaiRaw?: string;
+  tahun?: string;
   berlakuHingga: string;
   status: ApprovalStatus;
   ruangLingkup: string[];
@@ -71,6 +76,8 @@ function mapRekapToItem(d: RekapDokumen): KerjasamaItem {
     jenis: d.jenis as Jenis,
     unit: d.unit,
     tanggalMulai: d.tanggalMulai,
+    tanggalMulaiRaw: d.tanggalMulaiRaw,
+    tahun: d.tahun,
     berlakuHingga: d.berlakuHingga,
     status: statusMap[d.status] ?? 'Menunggu',
     ruangLingkup: d.ruangLingkup ?? [],
@@ -107,6 +114,8 @@ function mapApprovedPengajuanToItem(p: PengajuanItem): KerjasamaItem {
     jenis: (p.jenisDokumen || 'MoU') as Jenis,
     unit: p.namaUnitProdi || '-',
     tanggalMulai: p.tanggalMulai || '-',
+    tanggalMulaiRaw: p.tanggalMulai || undefined,
+    tahun: p.tanggalMulai ? p.tanggalMulai.slice(0, 4) : undefined,
     berlakuHingga: p.tanggalBerakhir || '-',
     status: 'Disetujui',
     ruangLingkup: p.ruangLingkup ?? [],
@@ -152,6 +161,9 @@ export default function InternalRekapDataPage() {
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
   const [filterTingkatPerusahaan, setFilterTingkatPerusahaan] = useState('Semua Tingkat Perusahaan');
+  const [filterTahun, setFilterTahun] = useState<string | null>(null);
+  const [filterBulan, setFilterBulan] = useState(semuaBulanLabel);
+  const [yearPickerOpen, setYearPickerOpen] = useState(false);
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -288,6 +300,16 @@ export default function InternalRekapDataPage() {
     }
   }
 
+  const availableYears = useMemo(
+    () => Array.from(new Set(data.map((item) => Number(item.tahun)).filter((year) => !Number.isNaN(year)))).sort((a, b) => a - b),
+    [data],
+  );
+  const currentYear = new Date().getFullYear();
+  const defaultYearRangeStart = Math.min(currentYear - 4, availableYears[0] ?? currentYear);
+  const [yearRangeStart, setYearRangeStart] = useState(defaultYearRangeStart);
+  const YEAR_PICKER_SIZE = 24;
+  const yearGrid = Array.from({ length: YEAR_PICKER_SIZE }, (_, index) => yearRangeStart + index);
+
   const filteredData = useMemo(() => {
     const filtered = data.filter((item) => {
       const keyword = search.toLowerCase().trim();
@@ -303,15 +325,18 @@ export default function InternalRekapDataPage() {
       const matchesJenisMitra = filterJenisMitra === 'Semua Jenis Mitra' || item.jenisMitra === filterJenisMitra;
       const matchesTingkatPerusahaan =
         filterTingkatPerusahaan === 'Semua Tingkat Perusahaan' || item.tingkatPerusahaan === filterTingkatPerusahaan;
+      const matchesTahun = !filterTahun || item.tahun === filterTahun;
+      const matchesBulanMulai = matchesBulan(item.tanggalMulaiRaw, filterBulan);
       const matchesScopedUnit = !scopedUnit || item.unit.trim().toLowerCase() === scopedUnit.toLowerCase();
       return (
         matchesSearch && matchesJurusan && matchesJenis && matchesStatus &&
         matchesJenisMitra && matchesTingkatPerusahaan &&
+        matchesTahun && matchesBulanMulai &&
         matchesScopedUnit
       );
     });
     return sortOrder === 'oldest' ? [...filtered].reverse() : filtered;
-  }, [data, search, filterJurusan, filterJenis, filterStatus, filterJenisMitra, filterTingkatPerusahaan, sortOrder, scopedUnit]);
+  }, [data, search, filterJurusan, filterJenis, filterStatus, filterJenisMitra, filterTingkatPerusahaan, filterTahun, filterBulan, sortOrder, scopedUnit]);
 
   const totalPages = Math.max(1, Math.ceil(filteredData.length / ITEMS_PER_PAGE));
   const paginatedData = filteredData.slice(
@@ -397,7 +422,7 @@ export default function InternalRekapDataPage() {
 
       {/* Filters */}
       <section className="toolbar-shell p-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="flex flex-col gap-3">
           <label className="relative w-full md:max-w-md">
             <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -412,9 +437,9 @@ export default function InternalRekapDataPage() {
             />
           </label>
 
-          <div className="flex flex-wrap items-center gap-2 md:ml-auto">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
             {scopedUnit ? (
-              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] font-medium text-slate-600">
+              <span className="flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] font-medium text-slate-600">
                 Unit: {scopedUnit}
               </span>
             ) : (
@@ -431,6 +456,8 @@ export default function InternalRekapDataPage() {
                   { label: 'Unit Kerja', options: unitGroups.unit },
                   { label: 'Lainnya', options: unitGroups.lainnya },
                 ]}
+                className="w-full"
+                buttonClassName="input-field flex w-full items-center justify-between gap-2 px-3 py-2 text-[12px] text-gray-700 cursor-pointer"
               />
             )}
 
@@ -442,6 +469,8 @@ export default function InternalRekapDataPage() {
               }}
               allLabel={jenisOptions[0]}
               groups={[{ label: '', options: jenisOptions.slice(1) }]}
+              className="w-full"
+              buttonClassName="input-field flex w-full items-center justify-between gap-2 px-3 py-2 text-[12px] text-gray-700 cursor-pointer"
             />
 
             <GroupedFilterSelect
@@ -452,6 +481,8 @@ export default function InternalRekapDataPage() {
               }}
               allLabel={statusOptions[0]}
               groups={[{ label: '', options: statusOptions.slice(1) }]}
+              className="w-full"
+              buttonClassName="input-field flex w-full items-center justify-between gap-2 px-3 py-2 text-[12px] text-gray-700 cursor-pointer"
             />
 
             <GroupedFilterSelect
@@ -462,6 +493,8 @@ export default function InternalRekapDataPage() {
               }}
               allLabel={jenisMitraOptions[0]}
               groups={[{ label: '', options: jenisMitraOptions.slice(1) }]}
+              className="w-full"
+              buttonClassName="input-field flex w-full items-center justify-between gap-2 px-3 py-2 text-[12px] text-gray-700 cursor-pointer"
             />
 
             <GroupedFilterSelect
@@ -472,6 +505,95 @@ export default function InternalRekapDataPage() {
               }}
               allLabel={tingkatPerusahaanOptions[0]}
               groups={[{ label: '', options: tingkatPerusahaanOptions.slice(1) }]}
+              className="w-full"
+              buttonClassName="input-field flex w-full items-center justify-between gap-2 px-3 py-2 text-[12px] text-gray-700 cursor-pointer"
+            />
+
+            <div className="relative w-full">
+              <button
+                type="button"
+                onClick={() => setYearPickerOpen((prev) => !prev)}
+                className="input-field flex w-full items-center justify-between gap-2 px-3 py-2 text-[12px] text-gray-700 transition-colors"
+              >
+                <span>{filterTahun ?? 'Pilih Tahun'}</span>
+                <CalendarDays size={16} className="text-gray-500" />
+              </button>
+
+              {yearPickerOpen && (
+                <div className="absolute right-0 top-[calc(100%+8px)] z-20 w-[320px] rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                  <div className="mb-3 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setYearRangeStart((prev) => prev - YEAR_PICKER_SIZE)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <p className="text-[12px] font-semibold text-gray-800">
+                      {yearRangeStart} - {yearRangeStart + YEAR_PICKER_SIZE - 1}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setYearRangeStart((prev) => prev + YEAR_PICKER_SIZE)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    {yearGrid.map((year) => {
+                      const isSelected = String(year) === filterTahun;
+                      const hasData = availableYears.includes(year);
+
+                      return (
+                        <button
+                          key={year}
+                          type="button"
+                          onClick={() => {
+                            setFilterTahun(String(year));
+                            setYearPickerOpen(false);
+                            setCurrentPage(1);
+                          }}
+                          className={`rounded-lg border px-2 py-2 text-[11.5px] font-medium transition-colors ${
+                            isSelected
+                              ? 'border-[#1E376C] bg-[#1E376C] text-white'
+                              : hasData
+                                ? 'border-gray-200 bg-white text-gray-800 hover:border-[#1E376C] hover:text-[#1E376C]'
+                                : 'border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-200'
+                          }`}
+                        >
+                          {year}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+                    <p className="text-[10px] text-gray-500">Pilih tahun untuk menampilkan data tahunan</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterTahun(null);
+                        setYearPickerOpen(false);
+                        setCurrentPage(1);
+                      }}
+                      className="text-[10px] font-semibold text-[#1E376C] transition-colors hover:text-[#2B4A93]"
+                    >
+                      Semua Tahun
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <MonthPicker
+              value={filterBulan}
+              onChange={(next) => {
+                setFilterBulan(next);
+                setCurrentPage(1);
+              }}
+              buttonClassName="input-field flex w-full items-center justify-between gap-2 px-3 py-2 text-[12px] text-gray-700 transition-colors"
             />
 
             <select
@@ -480,7 +602,7 @@ export default function InternalRekapDataPage() {
                 setSortOrder(e.target.value as 'newest' | 'oldest');
                 setCurrentPage(1);
               }}
-              className="input-field px-3 py-2 text-[12px] text-gray-700"
+              className="input-field w-full px-3 py-2 text-[12px] text-gray-700"
             >
               <option value="newest">Terbaru ke Terlama</option>
               <option value="oldest">Terlama ke Terbaru</option>

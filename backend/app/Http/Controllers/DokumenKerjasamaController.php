@@ -195,7 +195,10 @@ class DokumenKerjasamaController extends Controller
         // TIDAK ikut pengecualian ini (kalau tidak, dokumen buatan admin sendiri yang dihapus admin
         // akan tetap nampak balik ke admin yang sama).
         if (Schema::hasColumn('dokumen_kerjasama', 'dihapus_admin_pada')) {
-            $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
+            // Pimpinan ikut diperlakukan seperti admin di sini — dashboard Pimpinan harus
+            // menampilkan data yang sama persis dengan Admin (lihat show()/PengajuanController
+            // yang sudah lebih dulu memberi pimpinan akses penuh sepanjang controller ini).
+            $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas', 'pimpinan'], true);
             $query->where(function ($builder) use ($user, $isAdmin) {
                 $builder->whereNull('dihapus_admin_pada');
                 if ($user && !$isAdmin) {

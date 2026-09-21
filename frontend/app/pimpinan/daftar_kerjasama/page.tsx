@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Download, Eye, Filter, Search } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Download, Eye, Search } from 'lucide-react';
 import { exportToExcel } from '@/lib/exportExcel';
 import {
   fetchMonitoringDataFromApi,
@@ -9,12 +9,17 @@ import {
   type Kerjasama,
   type StatusKerjasama,
 } from '@/services/adminMonitoringService';
+import { rekapJenisMitraOptions } from '@/services/adminRekapDataService';
+import { useMasterUnitProdi } from '@/hooks/useMasterData';
+import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 
 const statusStyle: Record<StatusKerjasama, string> = {
   'Aktif': 'bg-emerald-100 text-emerald-700',
   'Akan Berakhir': 'bg-amber-100 text-amber-700',
   'Kadaluarsa': 'bg-rose-100 text-rose-700',
 };
+
+const ITEMS_PER_PAGE = 10;
 
 function getTahun(item: Kerjasama): string {
   const d = item.tanggalMulai;
@@ -29,13 +34,54 @@ export default function PimpinanDaftarKerjasamaPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
+  const [filterUnit, setFilterUnit] = useState('Semua Jurusan/unit');
+  const [filterKategori, setFilterKategori] = useState('Semua Kategori');
   const [filterTahun, setFilterTahun] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<Kerjasama | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const currentYear = new Date().getFullYear();
   const [yearRangeStart, setYearRangeStart] = useState(currentYear - 4);
   const yearGrid = Array.from({ length: 12 }, (_, index) => yearRangeStart + index);
+
+  const kategoriOptions = useMemo(
+    () => [
+      'Semua Kategori',
+      ...Array.from(new Set([...rekapJenisMitraOptions, ...kerjasamaList.map((item) => item.jenisMitra).filter((v): v is string => Boolean(v))])),
+    ],
+    [kerjasamaList],
+  );
+
+  // Dipisah per kategori (Jurusan / Program Studi / Unit Kerja) supaya dropdown filter
+  // Jurusan/Prodi/Unit bisa dikelompokkan pakai <optgroup>, sama seperti di Rekap Data admin/internal.
+  const { data: masterJurusanRows } = useMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'jurusan', aktif: true });
+  const { data: masterUnitKerjaRows } = useMasterUnitProdi({ jenis_node: 'unit', kategori_unit: 'unit_kerja', aktif: true });
+  const { data: masterProdiRows } = useMasterUnitProdi({ jenis_node: 'prodi', aktif: true });
+  const masterJurusanOptions = useMemo(
+    () => Array.from(new Set(masterJurusanRows.map((item) => item.nama).filter(Boolean))),
+    [masterJurusanRows],
+  );
+  const masterUnitKerjaOptions = useMemo(
+    () => Array.from(new Set(masterUnitKerjaRows.map((item) => item.nama).filter(Boolean))),
+    [masterUnitKerjaRows],
+  );
+  const masterProdiOptions = useMemo(
+    () => Array.from(new Set(masterProdiRows.map((item) => item.nama).filter(Boolean))),
+    [masterProdiRows],
+  );
+
+  const unitGroups = useMemo(() => {
+    const unitTerlibatSemua = Array.from(new Set(kerjasamaList.map((item) => item.unit).filter((v): v is string => Boolean(v))));
+    const known = new Set([...masterJurusanOptions, ...masterProdiOptions, ...masterUnitKerjaOptions]);
+    const lainnya = unitTerlibatSemua.filter((nama) => !known.has(nama));
+    return {
+      jurusan: masterJurusanOptions.filter((nama) => unitTerlibatSemua.includes(nama)),
+      prodi: masterProdiOptions.filter((nama) => unitTerlibatSemua.includes(nama)),
+      unit: masterUnitKerjaOptions.filter((nama) => unitTerlibatSemua.includes(nama)),
+      lainnya,
+    };
+  }, [kerjasamaList, masterJurusanOptions, masterProdiOptions, masterUnitKerjaOptions]);
 
   useEffect(() => {
     let mounted = true;
@@ -65,18 +111,32 @@ export default function PimpinanDaftarKerjasamaPage() {
         item.ruangLingkup.some((r) => r.toLowerCase().includes(keyword));
 
       const matchesStatus = filterStatus === 'Semua Status' || item.status === filterStatus;
+      const matchesUnit = filterUnit === 'Semua Jurusan/unit' || item.unit === filterUnit;
+      const matchesKategori = filterKategori === 'Semua Kategori' || item.jenisMitra === filterKategori;
       const matchesTahun = filterTahun === null || getTahun(item) === filterTahun;
 
-      return matchesSearch && matchesStatus && matchesTahun;
+      return matchesSearch && matchesStatus && matchesUnit && matchesKategori && matchesTahun;
     });
     return sortOrder === 'oldest' ? [...filtered].reverse() : filtered;
-  }, [kerjasamaList, search, filterStatus, filterTahun, sortOrder]);
+  }, [kerjasamaList, search, filterStatus, filterUnit, filterKategori, filterTahun, sortOrder]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterStatus, filterUnit, filterKategori, filterTahun, sortOrder]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
+  const paginatedItems = filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  useEffect(() => {
+    setCurrentPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
 
   const handleExport = () => {
-    const headers = ['No. Dokumen', 'Nama Mitra', 'Jenis', 'Ruang Lingkup', 'Tanggal Mulai', 'Berlaku Hingga', 'Tahun', 'Status'];
+    const headers = ['No. Dokumen', 'Nama Mitra', 'Kategori', 'Jenis', 'Ruang Lingkup', 'Tanggal Mulai', 'Berlaku Hingga', 'Tahun', 'Status'];
     const rows = filteredItems.map((item) => [
       item.noDokumen,
       item.namaMitra,
+      item.jenisMitra || '-',
       item.jenis,
       item.ruangLingkup.join(', '),
       item.tanggalMulai,
@@ -92,7 +152,7 @@ export default function PimpinanDaftarKerjasamaPage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Daftar Kerjasama</h1>
+          <h1 className="text-xl font-bold text-slate-900">Rekap Data Kerjasama</h1>
           <p className="text-sm text-slate-500">Kelola dan monitor semua kerjasama</p>
         </div>
 
@@ -107,7 +167,7 @@ export default function PimpinanDaftarKerjasamaPage() {
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mb-4 space-y-3">
           <div className="relative w-full lg:max-w-sm">
             <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -119,16 +179,11 @@ export default function PimpinanDaftarKerjasamaPage() {
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1 text-sm font-medium text-slate-600">
-              <Filter size={14} />
-              Filter
-            </span>
-
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             <select
               value={filterStatus}
               onChange={(event) => setFilterStatus(event.target.value)}
-              className="input-field h-10 px-3 text-sm text-slate-700"
+              className="input-field h-10 w-full px-3 text-sm text-slate-700"
             >
               <option>Semua Status</option>
               <option>Aktif</option>
@@ -136,11 +191,35 @@ export default function PimpinanDaftarKerjasamaPage() {
               <option>Kadaluarsa</option>
             </select>
 
-            <div className="relative">
+            <select
+              value={filterKategori}
+              onChange={(event) => setFilterKategori(event.target.value)}
+              className="input-field h-10 w-full px-3 text-sm text-slate-700"
+            >
+              {kategoriOptions.map((option) => (
+                <option key={option}>{option}</option>
+              ))}
+            </select>
+
+            <GroupedFilterSelect
+              value={filterUnit}
+              onChange={setFilterUnit}
+              allLabel="Semua Jurusan/unit"
+              groups={[
+                { label: 'Jurusan', options: unitGroups.jurusan },
+                { label: 'Program Studi', options: unitGroups.prodi },
+                { label: 'Unit Kerja', options: unitGroups.unit },
+                { label: 'Lainnya', options: unitGroups.lainnya },
+              ]}
+              className="w-full"
+              buttonClassName="input-field flex h-10 w-full items-center justify-between gap-2 px-3 text-sm text-slate-700 cursor-pointer"
+            />
+
+            <div className="relative w-full">
               <button
                 type="button"
                 onClick={() => setYearPickerOpen((prev) => !prev)}
-                className="input-field inline-flex h-10 min-w-[150px] items-center justify-between gap-2 px-3 text-sm text-slate-700"
+                className="input-field flex h-10 w-full items-center justify-between gap-2 px-3 text-sm text-slate-700"
               >
                 <span>{filterTahun ?? 'Pilih Tahun'}</span>
                 <CalendarDays size={15} className="text-slate-500" />
@@ -212,7 +291,7 @@ export default function PimpinanDaftarKerjasamaPage() {
             <select
               value={sortOrder}
               onChange={(event) => setSortOrder(event.target.value as 'newest' | 'oldest')}
-              className="input-field h-10 px-3 text-sm text-slate-700"
+              className="input-field h-10 w-full px-3 text-sm text-slate-700"
             >
               <option value="newest">Terbaru ke Terlama</option>
               <option value="oldest">Terlama ke Terbaru</option>
@@ -226,6 +305,7 @@ export default function PimpinanDaftarKerjasamaPage() {
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
                 <th className="px-4 py-3">No. Dokumen</th>
                 <th className="px-4 py-3">Nama Mitra</th>
+                <th className="px-4 py-3">Kategori</th>
                 <th className="px-4 py-3">Jenis</th>
                 <th className="px-4 py-3">Ruang Lingkup</th>
                 <th className="px-4 py-3">Tanggal Mulai</th>
@@ -237,21 +317,22 @@ export default function PimpinanDaftarKerjasamaPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
                     Memuat data...
                   </td>
                 </tr>
               ) : filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
                     Tidak ada data kerjasama.
                   </td>
                 </tr>
               ) : (
-                filteredItems.map((item) => (
+                paginatedItems.map((item) => (
                   <tr key={item.id} className="border-b border-slate-100 text-slate-700 hover:bg-slate-50/70">
                     <td className="px-4 py-3 font-medium text-slate-800">{item.noDokumen}</td>
                     <td className="px-4 py-3">{item.namaMitra}</td>
+                    <td className="px-4 py-3">{item.jenisMitra || '-'}</td>
                     <td className="px-4 py-3">
                       <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">
                         {item.jenis}
@@ -297,13 +378,26 @@ export default function PimpinanDaftarKerjasamaPage() {
 
         <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <p>
-            Menampilkan {filteredItems.length} dari {kerjasamaList.length} data
+            Menampilkan {paginatedItems.length} dari {filteredItems.length} data
           </p>
           <div className="flex items-center gap-2">
-            <button type="button" className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
               Sebelumnya
             </button>
-            <button type="button" className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50">
+            <span className="inline-flex h-8 min-w-[2rem] items-center justify-center rounded-lg bg-[#102A43] px-2 text-[12px] font-semibold text-white">
+              {currentPage}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
               Selanjutnya
             </button>
           </div>
@@ -331,6 +425,7 @@ export default function PimpinanDaftarKerjasamaPage() {
               <div className="grid grid-cols-1 gap-3 px-6 py-5 text-sm sm:grid-cols-2">
                 <DetailItem label="No. Dokumen" value={detailItem.noDokumen} />
                 <DetailItem label="Nama Mitra" value={detailItem.namaMitra} />
+                <DetailItem label="Kategori" value={detailItem.jenisMitra || '-'} />
                 <DetailItem label="Jenis Dokumen" value={detailItem.jenis} />
                 <DetailItem label="Status" value={detailItem.status} />
                 <DetailItem label="Tanggal Mulai" value={detailItem.tanggalMulai} />

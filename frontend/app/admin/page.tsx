@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -27,8 +27,8 @@ import {
   markNotificationAsRead,
 } from '@/services/adminService';
 import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
-import { getRekapStats } from '@/services/adminRekapDataService';
-import { refreshPengajuanDataFromApi } from '@/services/adminPengajuanService';
+import { bulanOptions, getRekapStats, semuaBulanLabel } from '@/services/adminRekapDataService';
+import { countKerjasamaBaru, refreshPengajuanDataFromApi, type PengajuanItem } from '@/services/adminPengajuanService';
 import { apiRequest } from '@/lib/api';
 import type { AdminNotification } from '@/types/admin';
 import {
@@ -110,6 +110,14 @@ export default function AdminDashboard() {
   });
   const [jenisDistribution, setJenisDistribution] = useState({ MoU: 0, MoA: 0, IA: 0 });
   const [topRuangLingkup, setTopRuangLingkup] = useState<[string, number][]>([]);
+  // "Kerjasama Baru" — supaya admin juga bisa lihat jumlah kerjasama baru per bulan,
+  // sama seperti KPI "Kerjasama Baru" di dashboard Pimpinan, tapi dengan filter bulan.
+  const [pengajuanItems, setPengajuanItems] = useState<PengajuanItem[]>([]);
+  const [filterBulanBaru, setFilterBulanBaru] = useState(semuaBulanLabel);
+  const currentYear = new Date().getFullYear();
+  const kerjasamaBaruCount = useMemo(() => {
+    return countKerjasamaBaru(pengajuanItems, currentYear, filterBulanBaru);
+  }, [pengajuanItems, filterBulanBaru, currentYear]);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CarouselImageItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -143,12 +151,14 @@ export default function AdminDashboard() {
         // di Rekap Data. forceRefresh: true supaya tidak kena cache 60 detik
         // milik fetchRekapDokumenFromApi — kalau baru saja ada dokumen dihapus
         // di Rekap Data, dashboard harus langsung baca angka terbaru juga.
-        const [, rekapItems] = await Promise.all([
+        const [pengajuanData, rekapItems] = await Promise.all([
           refreshPengajuanDataFromApi(),
           fetchRekapDokumenFromApi({ forceRefresh: true }),
         ]);
 
         if (!mounted) return;
+
+        setPengajuanItems(pengajuanData);
 
         const rekapStats = getRekapStats(rekapItems);
         setDashboardStats((prev) =>
@@ -445,6 +455,26 @@ export default function AdminDashboard() {
             </button>
           );
         })}
+      </div>
+
+      <div className="card flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between md:p-4">
+        <div>
+          <h2 className="text-[9px] md:text-xs font-bold text-gray-900">Kerjasama Baru {currentYear}</h2>
+          <p className="text-[9px] text-gray-500 mt-0.5">Jumlah kerjasama baru yang disetujui, bisa difilter per bulan.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <select
+            value={filterBulanBaru}
+            onChange={(e) => setFilterBulanBaru(e.target.value)}
+            className="input-field px-3 py-2 text-[11px] text-gray-700"
+          >
+            <option>{semuaBulanLabel}</option>
+            {bulanOptions.map((bulan) => (
+              <option key={bulan}>{bulan}</option>
+            ))}
+          </select>
+          <span className="text-lg md:text-2xl font-bold text-[#173B82]">{kerjasamaBaruCount}</span>
+        </div>
       </div>
 
       <div className="card p-3 md:p-4">

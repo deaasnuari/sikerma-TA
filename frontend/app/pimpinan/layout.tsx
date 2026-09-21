@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, LayoutDashboard, LogOut } from 'lucide-react';
+import { BookOpen, FileText, LayoutDashboard, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import AdminNavbar from '@/components/admin/AdminNavbar';
 import AdminFooter from '@/components/admin/AdminFooter';
@@ -48,9 +48,14 @@ export default function PimpinanLayout({ children }: { children: React.ReactNode
       icon: LayoutDashboard,
     },
     {
-      label: 'Daftar Kerjasama',
+      label: 'Rekap Data Kerjasama',
       href: '/pimpinan/daftar_kerjasama',
       icon: FileText,
+    },
+    {
+      label: 'Story & Aktivitas',
+      href: '/pimpinan/story_aktivitas',
+      icon: BookOpen,
     },
   ];
 

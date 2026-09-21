@@ -1010,7 +1010,10 @@ class PengajuanController extends Controller
         // dan admin sendiri TIDAK termasuk pengecualian ini (kalau tidak, pengajuan yang dibuat
         // oleh admin sendiri lalu dihapus admin akan tetap nampak balik ke admin yang sama).
         if ($this->hasPengajuanColumn('dihapus_admin_pada')) {
-            $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas'], true);
+            // Pimpinan ikut diperlakukan seperti admin di sini — dashboard Pimpinan harus
+            // menampilkan data yang sama persis dengan Admin (lihat show(), yang sudah lebih
+            // dulu memberi pimpinan akses penuh untuk otorisasi kepemilikan).
+            $isAdmin = in_array($normalizedRole, ['admin', 'admin-humas', 'pimpinan'], true);
             $query->where(function ($builder) use ($user, $isAdmin) {
                 $builder->whereNull('dihapus_admin_pada');
                 if ($user && !$isAdmin) {
