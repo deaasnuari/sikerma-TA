@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\DokumenKerjasama;
+use App\Models\KontakMitra;
 use App\Models\MasterMitra;
 use App\Models\MasterUnitProdi;
 use App\Models\Pengajuan;
@@ -142,5 +143,28 @@ class GabungMitraGandaTest extends TestCase
             ->expectsOutputToContain('Tidak ada mitra ganda')
             ->assertSuccessful();
         $this->assertSame(1, MasterMitra::count());
+    }
+
+    public function test_kontak_dari_duplikat_dipindah_ke_induk_sebagai_kontak_tambahan(): void
+    {
+        $induk = $this->mitra(['kode_mitra' => 'M-1', 'nama_kontak_utama' => 'Sari', 'email_kontak_utama' => 'sari@x.id']);
+        $dup = $this->mitra([
+            'nama_mitra' => 'PT. Contoh', 'nama_kontak_utama' => 'Budi', 'jabatan_kontak_utama' => 'HRD',
+            'email_kontak_utama' => 'budi@x.id', 'telepon_kontak_utama' => '0811',
+        ]);
+        $dup->kontak()->create(['nama' => 'Citra', 'email' => 'citra@x.id']);
+        // Email sama dengan kontak utama induk: tidak dicatat dobel.
+        $dup->kontak()->create(['nama' => 'Sari Lagi', 'email' => 'SARI@x.id']);
+
+        $this->artisan('sikerma:gabung-mitra-ganda --apply')->assertSuccessful();
+
+        $this->assertSame(1, MasterMitra::count());
+        $this->assertSame('Sari', $induk->fresh()->nama_kontak_utama);
+        $this->assertEqualsCanonicalizing(
+            ['budi@x.id', 'citra@x.id'],
+            KontakMitra::where('mitra_id', $induk->id)->pluck('email')->all(),
+        );
+        $this->assertDatabaseHas('kontak_mitra', ['mitra_id' => $induk->id, 'nama' => 'Budi', 'jabatan' => 'HRD', 'telepon' => '0811']);
+        $this->assertSame(2, KontakMitra::count());
     }
 }

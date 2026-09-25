@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\SendOtpMail;
 use App\Models\MasterMitra;
+use App\Services\MasterMitraResolver;
 use App\Models\OtpCode;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -32,6 +33,7 @@ class OtpController extends Controller
             'position'              => ['required', 'string', 'max:100'],
             'account_type'          => ['required', 'string', 'max:150'],
             'tingkat_perusahaan'    => ['nullable', 'string', 'in:Lokal,Nasional,Internasional,Multinasional'],
+            'mitra_id'              => ['nullable', 'integer', 'exists:master_mitra,id'],
             'password'              => ['required', 'string', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()->symbols()],
             'password_confirmation' => ['required', 'string'],
         ]);
@@ -58,7 +60,12 @@ class OtpController extends Controller
         OtpCode::create([
             'email'      => Str::lower($validated['email']),
             'otp'        => $otp,
-            'form_data'  => $validated,
+            // Password disimpan sebagai hash, bukan teks asli (tabel ini menyimpan isi form
+            // sampai OTP diverifikasi).
+            'form_data'  => array_merge(
+                collect($validated)->except(['password', 'password_confirmation'])->all(),
+                ['password_hash' => Hash::make($validated['password'])]
+            ),
             'expires_at' => now()->addMinutes(5),
             'is_used'    => false,
         ]);
@@ -117,28 +124,31 @@ class OtpController extends Controller
                 'role'             => 'external',
                 'account_type'     => $formData['account_type'],
                 'approval_status'  => 'active',
-                'password'         => Hash::make($formData['password']),
+                // password_hash = format baru; 'password' = OTP lama yang dikirim sebelum perubahan ini.
+                'password'         => $formData['password_hash'] ?? Hash::make($formData['password']),
             ]);
 
-            MasterMitra::updateOrCreate(
-                ['nama_mitra' => $formData['institution_name']],
+            // Satu instansi = satu baris Data Kemitraan: pakai mitra yang dipilih di form
+            // (autocomplete) atau yang namanya cocok; data yang sudah ada tidak ditimpa.
+            app(MasterMitraResolver::class)->resolveForRegistration(
+                isset($formData['mitra_id']) ? (int) $formData['mitra_id'] : null,
+                $formData['institution_name'],
                 [
                     'kategori_mitra' => $formData['account_type'],
                     'tingkat_perusahaan' => $formData['tingkat_perusahaan'] ?? null,
                     'negara' => $formData['negara'],
-                    'website' => null,
-                    'alamat' => null,
                     'email_mitra' => $emailLower,
                     'whatsapp_mitra' => $formData['phone'],
                     'nama_kontak_utama' => $formData['name'],
                     'jabatan_kontak_utama' => $formData['position'],
                     'email_kontak_utama' => $emailLower,
                     'telepon_kontak_utama' => $formData['phone'],
-                    'aktif' => true,
-                ]
+                ],
+                $user->id
             );
 
-            $otpRecord->update(['is_used' => true]);
+            // Isi form (termasuk hash password) tidak disimpan lagi setelah akun dibuat.
+            $otpRecord->update(['is_used' => true, 'form_data' => []]);
 
             return $user;
         });

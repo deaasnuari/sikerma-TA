@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
@@ -83,10 +83,43 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [step, setStep] = useState<1 | 2>(1);
+  // Autocomplete nama instansi dari Data Kemitraan — kalau instansi sudah terdaftar,
+  // pendaftar memilihnya supaya tidak terbuat baris mitra ganda.
+  const [mitraSuggestions, setMitraSuggestions] = useState<{ id: number; nama_mitra: string }[]>([]);
+  const [selectedMitraId, setSelectedMitraId] = useState<number | null>(null);
+  const [showMitraSuggestions, setShowMitraSuggestions] = useState(false);
+
+  useEffect(() => {
+    const keyword = form.institution_name.trim();
+    if (selectedMitraId !== null || keyword.length < 2) {
+      setMitraSuggestions([]);
+      return;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(() => {
+      apiRequest<{ data: { id: number; nama_mitra: string }[] }>(`/public/mitra?q=${encodeURIComponent(keyword)}`)
+        .then((res) => {
+          if (active) setMitraSuggestions(res.data || []);
+        })
+        .catch(() => {
+          if (active) setMitraSuggestions([]);
+        });
+    }, 300);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [form.institution_name, selectedMitraId]);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = event.target;
-    if (name === 'negara') {
+    if (name === 'institution_name') {
+      setSelectedMitraId(null);
+      setShowMitraSuggestions(true);
+      setForm((prev) => ({ ...prev, institution_name: value }));
+    } else if (name === 'negara') {
       setPhoneCode(countryPhoneCodeMap[value] ?? '');
       setForm((prev) => ({ ...prev, negara: value, phone: '' }));
     } else {
@@ -116,7 +149,7 @@ export default function RegisterPage() {
         : form.phone;
       await apiRequest('/otp/send', {
         method: 'POST',
-        body: JSON.stringify({ ...form, phone: fullPhone, role: 'external' }),
+        body: JSON.stringify({ ...form, phone: fullPhone, role: 'external', mitra_id: selectedMitraId ?? undefined }),
       });
       setStep(2);
     } catch (err: unknown) {
@@ -244,11 +277,39 @@ export default function RegisterPage() {
                         name="institution_name"
                         value={form.institution_name}
                         onChange={handleChange}
+                        onFocus={() => setShowMitraSuggestions(true)}
+                        onBlur={() => window.setTimeout(() => setShowMitraSuggestions(false), 150)}
                         placeholder="Masukkan nama mitra"
+                        autoComplete="off"
                         required
                         className="input-field h-9 w-full rounded-xl pl-10 pr-4 text-sm"
                       />
+                      {showMitraSuggestions && mitraSuggestions.length > 0 && (
+                        <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-auto rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-lg">
+                          {mitraSuggestions.map((mitra) => (
+                            <li key={mitra.id}>
+                              <button
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setForm((prev) => ({ ...prev, institution_name: mitra.nama_mitra }));
+                                  setSelectedMitraId(mitra.id);
+                                  setShowMitraSuggestions(false);
+                                }}
+                                className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-[#EEF2FF]"
+                              >
+                                {mitra.nama_mitra}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
+                    {selectedMitraId !== null ? (
+                      <p className="mt-1 text-[11px] text-emerald-700">Instansi sudah terdaftar di Data Kemitraan Polibatam.</p>
+                    ) : mitraSuggestions.length > 0 ? (
+                      <p className="mt-1 text-[11px] text-slate-500">Jika instansi Anda ada di daftar, pilih dari daftar tersebut.</p>
+                    ) : null}
                   </div>
 
                   <div>

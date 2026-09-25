@@ -20,6 +20,16 @@ export interface MasterMitra {
   aktif: boolean;
   created_at: string;
   updated_at: string;
+  // Kontak tambahan: akun lain yang mendaftar atas nama instansi yang sama.
+  kontak?: KontakMitra[];
+}
+
+export interface KontakMitra {
+  id: number;
+  nama: string;
+  jabatan: string | null;
+  email: string | null;
+  telepon: string | null;
 }
 
 export interface MasterMitraPayload {
@@ -39,6 +49,8 @@ export interface MasterMitraPayload {
   email_kontak_utama?: string | null;
   telepon_kontak_utama?: string | null;
   aktif?: boolean;
+  // Dikirim = daftar lengkap kontak tambahan (yang tidak ada di daftar dihapus).
+  kontak?: Array<{ id?: number; nama: string; jabatan: string | null; email: string | null; telepon: string | null }>;
 }
 
 interface ApiResponse<T> {
@@ -106,27 +118,23 @@ export async function upsertMasterMitraByName(
   namaMitra: string,
   fields: { kategoriMitra?: string | null; bidangUsaha?: string | null; tingkatPerusahaan?: string | null; extra?: Partial<MasterMitraPayload> }
 ): Promise<MasterMitra> {
-  const trimmed = namaMitra.trim();
-  const list = await getMasterMitra({ search: trimmed });
-  const exact = list.find((m) => m.nama_mitra.trim().toLowerCase() === trimmed.toLowerCase());
+  // Pencocokan nama dilakukan di backend (MasterMitraResolver) dengan aturan yang sama
+  // seperti registrasi & pengajuan: abaikan huruf besar/kecil, spasi, dan tanda baca.
+  // Field yang undefined tidak dikirim, jadi nilai lama di Data Kemitraan dipertahankan.
+  const payload: Record<string, unknown> = { nama_mitra: namaMitra.trim(), ...fields.extra };
+  if (fields.kategoriMitra !== undefined) payload.kategori_mitra = fields.kategoriMitra;
+  if (fields.bidangUsaha !== undefined) payload.bidang_usaha = fields.bidangUsaha;
+  if (fields.tingkatPerusahaan !== undefined) payload.tingkat_perusahaan = fields.tingkatPerusahaan;
 
-  if (exact) {
-    return updateMasterMitra(exact.id, {
-      kategori_mitra: fields.kategoriMitra !== undefined ? fields.kategoriMitra : exact.kategori_mitra,
-      bidang_usaha: fields.bidangUsaha !== undefined ? fields.bidangUsaha : exact.bidang_usaha,
-      tingkat_perusahaan: fields.tingkatPerusahaan !== undefined ? fields.tingkatPerusahaan : exact.tingkat_perusahaan,
-      ...fields.extra,
-    });
-  }
-
-  return createMasterMitra({
-    nama_mitra: trimmed,
-    kategori_mitra: fields.kategoriMitra || null,
-    bidang_usaha: fields.bidangUsaha || null,
-    tingkat_perusahaan: fields.tingkatPerusahaan || null,
-    aktif: true,
-    ...fields.extra,
+  const response = await apiRequest<ApiResponse<MasterMitra>>('/master/mitra/upsert-by-name', {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
+
+  if (!response.data) {
+    throw new Error('Gagal menyimpan master mitra');
+  }
+  return response.data;
 }
 
 export async function deleteMasterMitra(id: number): Promise<boolean> {

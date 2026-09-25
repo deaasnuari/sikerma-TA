@@ -8,6 +8,7 @@ import { getMasterMitra, type MasterMitra } from '@/services/masterMitraService'
 import { getMasterRuangLingkup, type MasterRuangLingkup } from '@/services/masterRuangLingkupService';
 import { getMasterNegara } from '@/services/masterNegaraService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
+import { downloadTemplate, templateFilesByJenis } from '@/lib/templateDokumen';
 
 interface TambahDokumenModalProps {
   isOpen: boolean;
@@ -49,8 +50,6 @@ type TemplateDokumenConfig = {
   subtitle: string;
   struktur: string[];
   note: string;
-  fileName: string;
-  downloadUrl: string;
 };
 
 const defaultTemplateDokumenMap: Record<TemplateKey, TemplateDokumenConfig> = {
@@ -59,24 +58,18 @@ const defaultTemplateDokumenMap: Record<TemplateKey, TemplateDokumenConfig> = {
     subtitle: 'Template untuk kesepahaman awal kerjasama',
     struktur: ['Pembukaan', 'Para Pihak', 'Latar Belakang', 'Tujuan Kerjasama', 'Ruang Lingkup', 'Jangka Waktu', 'Penutup'],
     note: 'Template bersifat opsional. Kamu bisa langsung upload dokumen PDF tanpa download template.',
-    fileName: 'Draft MOU Industri.docx',
-    downloadUrl: '/templates/Draft%20MOU%20Industri.docx',
   },
   MoA: {
     title: 'Memorandum of Agreement (MoA)',
     subtitle: 'Template untuk perjanjian teknis pelaksanaan kerjasama',
     struktur: ['Pembukaan', 'Dasar Pelaksanaan', 'Hak dan Kewajiban', 'Program Magang', 'Pendanaan', 'Monitoring dan Evaluasi', 'Penutup'],
     note: 'Template bersifat opsional. Kamu bisa langsung upload dokumen PDF tanpa download template.',
-    fileName: 'Draft MOA Magang.docx',
-    downloadUrl: '/templates/Draft%20MOA%20Magang.docx',
   },
   IA: {
     title: 'Implementation Arrangement (IA)',
     subtitle: 'Template untuk rincian implementasi program/kegiatan',
     struktur: ['Informasi Program', 'Target dan Indikator', 'Peran Tim Pelaksana', 'Timeline', 'Output', 'Pelaporan', 'Penutup'],
     note: 'Template bersifat opsional. Kamu bisa langsung upload dokumen PDF tanpa download template.',
-    fileName: 'DRAFT IA POLIBATAM.docx',
-    downloadUrl: '/templates/DRAFT%20IA%20POLIBATAM.docx',
   },
 };
 
@@ -418,19 +411,6 @@ export default function TambahDokumenModal({
     });
   };
 
-  const handleDownloadTemplate = () => {
-    if (!selectedTemplate) {
-      return;
-    }
-
-    const link = document.createElement('a');
-    link.href = selectedTemplate.downloadUrl;
-    link.download = selectedTemplate.fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   const handleFileChange = (file: File | null) => {
     if (!file) {
       setSelectedFile(null);
@@ -559,19 +539,20 @@ export default function TambahDokumenModal({
                     <div>
                       <p className="text-base font-bold text-[#173B82] sm:text-xl">{selectedTemplate.title}</p>
                       <p className="text-xs text-gray-600 sm:text-sm">{selectedTemplate.subtitle}</p>
-                      <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-[#C9D8F5] bg-[#EEF4FF] px-3 py-1.5">
-                        <FileText size={14} className="text-[#173B82]" />
-                        <span className="text-xs font-bold text-[#0F2F6B]">{selectedTemplate.fileName}</span>
-                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleDownloadTemplate}
-                      className="btn-primary inline-flex h-10 w-full items-center justify-center gap-2 px-4 text-sm font-semibold shadow-sm sm:h-11 sm:w-auto"
-                    >
-                      <Download size={16} />
-                      Download Template
-                    </button>
+                    <div className="flex w-full flex-col gap-2 sm:w-auto">
+                      {(templateFilesByJenis[formData.jenisDokumen] || []).map((file) => (
+                        <button
+                          key={file.fileName}
+                          type="button"
+                          onClick={() => downloadTemplate(file.fileName)}
+                          className="btn-primary inline-flex h-10 w-full items-center justify-center gap-2 px-4 text-sm font-semibold shadow-sm sm:h-11 sm:w-auto"
+                        >
+                          <Download size={16} />
+                          Download {file.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">

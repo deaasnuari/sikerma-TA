@@ -6,6 +6,7 @@ use App\Models\DokumenFile;
 use App\Models\DokumenLog;
 use App\Models\DokumenKerjasama;
 use App\Models\MasterMitra;
+use App\Services\MasterMitraResolver;
 use App\Models\MasterRuangLingkup;
 use App\Models\MasterUnitProdi;
 use App\Models\Pengajuan;
@@ -72,11 +73,9 @@ class PengajuanController extends Controller
             return $mitraId;
         }
 
-        // Nama mitra diketik manual — cari yang namanya persis sama (case-insensitive),
-        // kalau ada pakai itu, kalau tidak buat baru. Sama seperti perilaku upsert lama.
-        $mitra = MasterMitra::query()
-            ->whereRaw('LOWER(TRIM(nama_mitra)) = ?', [strtolower($namaMitra)])
-            ->first();
+        // Nama mitra diketik manual — cari yang namanya sama (aturan MasterMitraResolver:
+        // abaikan huruf besar/kecil, spasi & tanda baca), kalau ada pakai itu, kalau tidak buat baru.
+        $mitra = app(MasterMitraResolver::class)->findByName($namaMitra);
 
         if ($mitra) {
             if (!empty($payload)) {

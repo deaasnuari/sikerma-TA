@@ -32,6 +32,7 @@ Route::middleware('auth:sanctum')->group(function () {
 	// Master Unit/Prodi routes
 	Route::get('/master/unit-prodi/tree', [MasterUnitProdiController::class, 'tree']);
 	Route::apiResource('/master/unit-prodi', MasterUnitProdiController::class);
+	Route::post('/master/mitra/upsert-by-name', [MasterMitraController::class, 'upsertByName']);
 	Route::apiResource('/master/mitra', MasterMitraController::class);
 	Route::apiResource('/master/negara', MasterNegaraController::class)
 		->parameters(['negara' => 'negara']);
@@ -89,6 +90,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
 Route::get('/carousel-images', [CarouselImageController::class, 'index']);
 Route::get('/public/unit-prodi', [MasterUnitProdiController::class, 'publicUnits']);
+// Autocomplete nama instansi di form registrasi eksternal.
+Route::get('/public/mitra', [MasterMitraController::class, 'publicSearch'])->middleware('throttle:60,1');
 Route::get('/public/kerjasama', [DokumenKerjasamaController::class, 'publicIndex']);
 Route::get('/public/stats', [DokumenKerjasamaController::class, 'publicStats']);
 // Publik juga (dipakai landing page & dashboard admin) — datanya sudah sama kelasnya

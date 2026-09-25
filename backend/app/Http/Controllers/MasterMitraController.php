@@ -3,50 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\MasterMitra;
+use App\Services\MasterMitraResolver;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class MasterMitraController extends Controller
 {
-    //menautkan pengajuan/dokumen yang sudah ada di database tapi belum punya mitra_id (karena sebelumnya mitra belum ada di master_mitra) ke master_mitra yang baru dibuat
-    private function linkOrphanedRecordsToMitra(MasterMitra $mitra): void
-    {
-        $namaNormalized = strtolower(trim((string) $mitra->nama_mitra));
-        if ($namaNormalized === '') {
-            return;
-        }
-
-        $hasPengajuanMitraId = Schema::hasTable('pengajuan_v2') && Schema::hasColumn('pengajuan_v2', 'mitra_id');
-        $hasDokumenMitraId = Schema::hasTable('dokumen_kerjasama') && Schema::hasColumn('dokumen_kerjasama', 'mitra_id');
-
-        if ($hasPengajuanMitraId) {
-            DB::table('pengajuan_v2')
-                ->whereNull('mitra_id')
-                ->whereRaw('LOWER(TRIM(nama_mitra)) = ?', [$namaNormalized])
-                ->update(['mitra_id' => $mitra->id]);
-        }
-
-        if ($hasDokumenMitraId) {
-            // Dokumen yang namanya diketik manual langsung (bukan hasil approve pengajuan).
-            DB::table('dokumen_kerjasama')
-                ->whereNull('mitra_id')
-                ->whereRaw('LOWER(TRIM(snap_nama_mitra)) = ?', [$namaNormalized])
-                ->update(['mitra_id' => $mitra->id]);
-
-           // Dokumen yang berasal dari pengajuan, tapi pengajuan-nya belum punya mitra_id (karena sebelumnya mitra belum ada di master_mitra).
-            if ($hasPengajuanMitraId && Schema::hasColumn('dokumen_kerjasama', 'sumber_pengajuan_id')) {
-                DB::table('dokumen_kerjasama as d')
-                    ->join('pengajuan_v2 as p', 'p.id', '=', 'd.sumber_pengajuan_id')
-                    ->whereNull('d.mitra_id')
-                    ->where('p.mitra_id', $mitra->id)
-                    ->update(['d.mitra_id' => $mitra->id]);
-            }
-        }
-    }
-
     private function ensureAdmin(Request $request): ?Response
     {
         $user = $request->user();
@@ -61,6 +25,102 @@ class MasterMitraController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Saran nama instansi untuk form registrasi eksternal (autocomplete), supaya
+     * pendaftar bisa memilih mitra yang sudah ada alih-alih mengetik nama baru.
+     * Hanya id & nama yang dikembalikan — nama mitra memang sudah publik
+     * (lihat /public/kerjasama).
+     *
+     * Pencocokan per kata & abaikan tanda baca: "sum", "pt sumi", "sumitomo indo"
+     * semuanya ketemu "PT. Sumitomo Electric Indonesia". Urutan: nama yang diawali
+     * ketikan dulu, lalu yang salah satu katanya diawali ketikan, baru sisanya.
+     */
+    public function publicSearch(Request $request): Response
+    {
+        $keyword = mb_strtolower(trim((string) $request->query('q', '')));
+        $tokens = array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', $keyword) ?: []));
+        if (mb_strlen(implode('', $tokens)) < 2) {
+            return response(['success' => true, 'data' => []]);
+        }
+
+        $query = MasterMitra::query();
+        foreach ($tokens as $token) {
+            $query->whereRaw('LOWER(nama_mitra) LIKE ?', ['%' . $token . '%']);
+        }
+        $candidates = $query->orderBy('nama_mitra')->limit(50)->get(['id', 'nama_mitra']);
+
+        $normalizedKeyword = MasterMitraResolver::normalize($keyword);
+        $rank = function (MasterMitra $mitra) use ($normalizedKeyword, $tokens): int {
+            $normalized = MasterMitraResolver::normalize($mitra->nama_mitra);
+            if ($normalized === $normalizedKeyword) {
+                return 0;
+            }
+            if (str_starts_with($normalized, $normalizedKeyword)) {
+                return 1;
+            }
+            $words = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($mitra->nama_mitra)) ?: [];
+            foreach ($words as $word) {
+                if ($word !== '' && str_starts_with($word, $tokens[0])) {
+                    return 2;
+                }
+            }
+
+            return 3;
+        };
+
+        $rows = $candidates
+            ->sortBy(fn (MasterMitra $mitra) => [$rank($mitra), mb_strtolower($mitra->nama_mitra)])
+            ->take(8)
+            ->values();
+
+        return response(['success' => true, 'data' => $rows]);
+    }
+
+    /**
+     * Cari mitra dengan aturan nama yang sama seperti registrasi/pengajuan
+     * (MasterMitraResolver); kalau ada, update field yang dikirim, kalau belum ada,
+     * buat baru. Dipakai edit pengajuan & Tambah Dokumen di Rekap Data.
+     */
+    public function upsertByName(Request $request): Response
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        $validated = $request->validate([
+            'nama_mitra' => 'required|string|max:255',
+            'kategori_mitra' => ['nullable', 'string', 'max:150'],
+            'bidang_usaha' => ['nullable', 'string', 'max:150'],
+            'tingkat_perusahaan' => ['nullable', 'string', 'in:Lokal,Nasional,Internasional,Multinasional'],
+            'negara' => 'nullable|string|max:100',
+            'website' => 'nullable|url|max:255',
+            'alamat' => 'nullable|string',
+            'email_mitra' => 'nullable|email|max:255',
+            'whatsapp_mitra' => 'nullable|string|max:50',
+            'no_telepon_mitra' => 'nullable|string|max:50',
+            'nama_kontak_utama' => 'nullable|string|max:200',
+            'jabatan_kontak_utama' => 'nullable|string|max:120',
+            'email_kontak_utama' => 'nullable|email|max:255',
+            'telepon_kontak_utama' => 'nullable|string|max:50',
+            'aktif' => 'boolean',
+        ]);
+
+        $resolver = app(MasterMitraResolver::class);
+        $mitra = $resolver->findByName($validated['nama_mitra']);
+
+        if ($mitra) {
+            // Nama tetap memakai penulisan yang sudah ada di Data Kemitraan.
+            $mitra->update(collect($validated)->except('nama_mitra')->all());
+
+            return response(['success' => true, 'data' => $mitra->fresh(), 'message' => 'Master mitra updated successfully']);
+        }
+
+        $mitra = MasterMitra::create(array_merge(['aktif' => true], $validated, ['nama_mitra' => trim($validated['nama_mitra'])]));
+        $resolver->linkOrphanedRecords($mitra);
+
+        return response(['success' => true, 'data' => $mitra, 'message' => 'Master mitra created successfully'], 201);
     }
 
     public function index(Request $request): Response
@@ -93,7 +153,7 @@ class MasterMitraController extends Controller
 
         return response([
             'success' => true,
-            'data' => $query->orderBy('nama_mitra')->get(),
+            'data' => $query->with('kontak:id,mitra_id,nama,jabatan,email,telepon')->orderBy('nama_mitra')->get(),
             'message' => 'Master mitra retrieved successfully',
         ]);
     }
@@ -123,8 +183,15 @@ class MasterMitraController extends Controller
             'aktif' => 'boolean',
         ]);
 
+        $kontak = $this->validateKontak($request);
+
         try {
-            $mitra = MasterMitra::create($validated);
+            $mitra = DB::transaction(function () use ($validated, $kontak) {
+                $mitra = MasterMitra::create($validated);
+                $this->syncKontak($mitra, $kontak);
+
+                return $mitra;
+            });
         } catch (QueryException $exception) {
             return response([
                 'success' => false,
@@ -133,11 +200,11 @@ class MasterMitraController extends Controller
             ], 422);
         }
 
-        $this->linkOrphanedRecordsToMitra($mitra);
+        app(MasterMitraResolver::class)->linkOrphanedRecords($mitra);
 
         return response([
             'success' => true,
-            'data' => $mitra,
+            'data' => $mitra->load('kontak'),
             'message' => 'Master mitra created successfully',
         ], 201);
     }
@@ -146,7 +213,7 @@ class MasterMitraController extends Controller
     {
         return response([
             'success' => true,
-            'data' => $mitra,
+            'data' => $mitra->load('kontak'),
             'message' => 'Master mitra retrieved successfully',
         ]);
     }
@@ -176,8 +243,13 @@ class MasterMitraController extends Controller
             'aktif' => 'boolean',
         ]);
 
+        $kontak = $this->validateKontak($request);
+
         try {
-            $mitra->update($validated);
+            DB::transaction(function () use ($mitra, $validated, $kontak) {
+                $mitra->update($validated);
+                $this->syncKontak($mitra, $kontak);
+            });
         } catch (QueryException $exception) {
             return response([
                 'success' => false,
@@ -186,13 +258,71 @@ class MasterMitraController extends Controller
             ], 422);
         }
 
-        $this->linkOrphanedRecordsToMitra($mitra);
+        app(MasterMitraResolver::class)->linkOrphanedRecords($mitra);
 
         return response([
             'success' => true,
-            'data' => $mitra,
+            'data' => $mitra->load('kontak'),
             'message' => 'Master mitra updated successfully',
         ]);
+    }
+
+    /**
+     * Kontak tambahan dari form Data Kemitraan. null = field `kontak` tidak dikirim,
+     * jadi kontak yang ada tidak diubah (mis. update dari halaman lain).
+     */
+    private function validateKontak(Request $request): ?array
+    {
+        if (! $request->has('kontak')) {
+            return null;
+        }
+
+        return $request->validate([
+            'kontak' => 'present|array|max:50',
+            'kontak.*.id' => 'nullable|integer',
+            'kontak.*.nama' => 'required|string|max:200',
+            'kontak.*.jabatan' => 'nullable|string|max:120',
+            'kontak.*.email' => 'nullable|email|max:255',
+            'kontak.*.telepon' => 'nullable|string|max:50',
+        ], [
+            'kontak.*.nama.required' => 'Nama kontak tambahan wajib diisi.',
+            'kontak.*.email.email' => 'Email kontak tambahan tidak valid.',
+        ])['kontak'];
+    }
+
+    /**
+     * Samakan kontak_mitra dengan daftar dari form: yang punya id diubah, yang
+     * tanpa id ditambah, yang tidak ada lagi di daftar dihapus. id milik mitra
+     * lain diabaikan (diperlakukan sebagai kontak baru).
+     */
+    private function syncKontak(MasterMitra $mitra, ?array $kontak): void
+    {
+        if ($kontak === null) {
+            return;
+        }
+
+        $existing = $mitra->kontak()->get()->keyBy('id');
+        $keptIds = [];
+
+        foreach ($kontak as $item) {
+            $data = [
+                'nama' => trim($item['nama']),
+                'jabatan' => filled($item['jabatan'] ?? null) ? trim($item['jabatan']) : null,
+                'email' => filled($item['email'] ?? null) ? strtolower(trim($item['email'])) : null,
+                'telepon' => filled($item['telepon'] ?? null) ? trim($item['telepon']) : null,
+            ];
+
+            $row = isset($item['id']) ? $existing->get((int) $item['id']) : null;
+            if ($row) {
+                $row->update($data);
+                $keptIds[] = $row->id;
+            } else {
+                $keptIds[] = $mitra->kontak()->create($data)->id;
+            }
+        }
+
+        $mitra->kontak()->whereNotIn('id', $keptIds)->delete();
+        $mitra->unsetRelation('kontak');
     }
 
     public function destroy(Request $request, MasterMitra $mitra): Response

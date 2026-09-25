@@ -92,15 +92,17 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
       ? aktivitasList
       : aktivitasList.filter((a) => a.status === filterAktivitasStatus);
 
+  // Key string (bukan array) supaya effect tidak jalan ulang hanya karena referensi array berubah.
+  const laporanDokumenIdsKey = story.dokumenKerjasamaIds.join(',');
   useEffect(() => {
-    if (story.dokumenKerjasamaIds.length === 0) {
+    if (!laporanDokumenIdsKey) {
       setLaporanTerkirim([]);
       return;
     }
 
     let isMounted = true;
     setLaporanLoading(true);
-    getLaporanPelaksanaanByDokumenKerjasamaIds(story.dokumenKerjasamaIds)
+    getLaporanPelaksanaanByDokumenKerjasamaIds(laporanDokumenIdsKey.split(',').map(Number))
       .then((rows) => {
         if (isMounted) setLaporanTerkirim(rows);
       })
@@ -114,7 +116,7 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
     return () => {
       isMounted = false;
     };
-  }, [story.dokumenKerjasamaIds]);
+  }, [laporanDokumenIdsKey]);
 
   return (
     <div className="space-y-5">
@@ -375,7 +377,7 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
           </span>
         </div>
 
-        {laporanLoading ? (
+        {laporanLoading && laporanTerkirim.length === 0 ? (
           <p className="text-[12px] text-gray-500">Memuat laporan...</p>
         ) : laporanTerkirim.length === 0 ? (
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-10 text-center text-[12px] text-gray-500">

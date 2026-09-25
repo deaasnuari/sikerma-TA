@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\SendResetPasswordMail;
 use App\Models\MasterMitra;
+use App\Services\MasterMitraResolver;
 use App\Models\OtpCode;
 use App\Models\User;
 use App\Services\CivitasAuthService;
@@ -53,6 +54,7 @@ class AuthController extends Controller
             'position' => ['required', 'string', 'max:100'],
             'account_type' => ['required', 'string', 'max:150'],
             'tingkat_perusahaan' => ['nullable', 'string', 'in:Lokal,Nasional,Internasional,Multinasional'],
+            'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
             'role' => ['nullable', 'string', Rule::in(['external'])],
             'password' => ['required', 'string', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()->symbols()],
         ]);
@@ -82,22 +84,23 @@ class AuthController extends Controller
                 'password' => Hash::make($validated['password']),
             ]);
 
-            MasterMitra::updateOrCreate(
-                ['nama_mitra' => $validated['institution_name']],
+            // Satu instansi = satu baris Data Kemitraan: pakai mitra yang dipilih di form
+            // (autocomplete) atau yang namanya cocok; data yang sudah ada tidak ditimpa.
+            app(MasterMitraResolver::class)->resolveForRegistration(
+                isset($validated['mitra_id']) ? (int) $validated['mitra_id'] : null,
+                $validated['institution_name'],
                 [
                     'kategori_mitra' => $validated['account_type'],
                     'tingkat_perusahaan' => $validated['tingkat_perusahaan'] ?? null,
                     'negara' => $validated['negara'],
-                    'website' => null,
-                    'alamat' => null,
                     'email_mitra' => Str::lower($validated['email']),
                     'whatsapp_mitra' => $validated['phone'],
                     'nama_kontak_utama' => $validated['name'],
                     'jabatan_kontak_utama' => $validated['position'],
                     'email_kontak_utama' => Str::lower($validated['email']),
                     'telepon_kontak_utama' => $validated['phone'],
-                    'aktif' => true,
-                ]
+                ],
+                $user->id
             );
 
             return $user;

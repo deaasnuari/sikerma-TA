@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MasterMitra extends Model
 {
@@ -32,4 +33,10 @@ class MasterMitra extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    /** Kontak tambahan (akun lain dari instansi yang sama), selain kontak utama. */
+    public function kontak(): HasMany
+    {
+        return $this->hasMany(KontakMitra::class, 'mitra_id')->orderBy('id');
+    }
 }

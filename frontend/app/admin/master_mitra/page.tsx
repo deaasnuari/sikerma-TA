@@ -48,6 +48,25 @@ type GroupedMitraRow = {
   }>;
 };
 
+type KontakRow = {
+  key: string;
+  id?: number;
+  nama: string;
+  jabatan: string;
+  email: string;
+  telepon: string;
+};
+
+let kontakRowSeq = 0;
+const newKontakRow = (data: Partial<Omit<KontakRow, 'key'>> = {}): KontakRow => ({
+  key: `kontak-${++kontakRowSeq}`,
+  nama: '',
+  jabatan: '',
+  email: '',
+  telepon: '',
+  ...data,
+});
+
 const emptyForm: FormState = {
   kode_mitra: '',
   nama_mitra: '',
@@ -137,6 +156,7 @@ export default function MasterMitraPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [kontakRows, setKontakRows] = useState<KontakRow[]>([]);
   const [pengajuanItems, setPengajuanItems] = useState<PengajuanItem[]>([]);
   const [dismissedMitraAlerts, setDismissedMitraAlerts] = useState<string[]>([]);
 
@@ -242,12 +262,14 @@ export default function MasterMitraPage() {
   const openCreate = () => {
     setEditingRow(null);
     setForm(emptyForm);
+    setKontakRows([]);
     setShowModal(true);
   };
 
   const openCreateWithName = (nama: string) => {
     setEditingRow(null);
     setForm({ ...emptyForm, nama_mitra: nama });
+    setKontakRows([]);
     setShowModal(true);
   };
 
@@ -271,6 +293,17 @@ export default function MasterMitraPage() {
       telepon_kontak_utama: item.telepon_kontak_utama || '',
       aktif: item.aktif,
     });
+    setKontakRows(
+      (item.kontak || []).map((kontak) =>
+        newKontakRow({
+          id: kontak.id,
+          nama: kontak.nama || '',
+          jabatan: kontak.jabatan || '',
+          email: kontak.email || '',
+          telepon: kontak.telepon || '',
+        }),
+      ),
+    );
     setShowModal(true);
   };
 
@@ -282,11 +315,49 @@ export default function MasterMitraPage() {
     setShowModal(false);
     setEditingRow(null);
     setForm(emptyForm);
+    setKontakRows([]);
+  };
+
+  const updateKontakRow = (key: string, field: 'nama' | 'jabatan' | 'email' | 'telepon', value: string) => {
+    setKontakRows((prev) => prev.map((row) => (row.key === key ? { ...row, [field]: value } : row)));
+  };
+
+  // Tukar: kontak tambahan ini jadi Kontak Utama, Kontak Utama lama pindah ke daftar kontak tambahan.
+  const jadikanKontakUtama = (key: string) => {
+    const target = kontakRows.find((row) => row.key === key);
+    if (!target) return;
+
+    const utamaLama = newKontakRow({
+      nama: form.nama_kontak_utama,
+      jabatan: form.jabatan_kontak_utama,
+      email: form.email_kontak_utama,
+      telepon: form.telepon_kontak_utama,
+    });
+    const adaUtamaLama = [utamaLama.nama, utamaLama.jabatan, utamaLama.email, utamaLama.telepon].some((v) => v.trim());
+
+    setForm((prev) => ({
+      ...prev,
+      nama_kontak_utama: target.nama,
+      jabatan_kontak_utama: target.jabatan,
+      email_kontak_utama: target.email,
+      telepon_kontak_utama: target.telepon,
+    }));
+    setKontakRows((prev) => {
+      const sisa = prev.filter((row) => row.key !== key);
+      return adaUtamaLama ? [...sisa, utamaLama] : sisa;
+    });
   };
 
   const handleSave = async () => {
     if (!form.nama_mitra.trim()) {
       setError('Nama mitra wajib diisi.');
+      return;
+    }
+
+    // Baris kontak yang dibiarkan kosong sama sekali diabaikan.
+    const kontakTerisi = kontakRows.filter((row) => [row.nama, row.jabatan, row.email, row.telepon].some((v) => v.trim()));
+    if (kontakTerisi.some((row) => !row.nama.trim())) {
+      setError('Nama kontak tambahan wajib diisi.');
       return;
     }
 
@@ -310,6 +381,13 @@ export default function MasterMitraPage() {
         jabatan_kontak_utama: form.jabatan_kontak_utama.trim() || null,
         email_kontak_utama: form.email_kontak_utama.trim() || null,
         telepon_kontak_utama: form.telepon_kontak_utama.trim() || null,
+        kontak: kontakTerisi.map((row) => ({
+          ...(row.id ? { id: row.id } : {}),
+          nama: row.nama.trim(),
+          jabatan: row.jabatan.trim() || null,
+          email: row.email.trim() || null,
+          telepon: row.telepon.trim() || null,
+        })),
       };
 
       const saved = editingRow
@@ -382,6 +460,19 @@ export default function MasterMitraPage() {
         const key = `${kontak.nama}|${kontak.jabatan}|${kontak.email}|${kontak.telepon}`;
         if (!kontakMap.has(key)) {
           kontakMap.set(key, kontak);
+        }
+
+        for (const tambahan of item.kontak || []) {
+          const extra = {
+            nama: (tambahan.nama || '-').trim() || '-',
+            jabatan: (tambahan.jabatan || '-').trim() || '-',
+            email: (tambahan.email || '-').trim() || '-',
+            telepon: (tambahan.telepon || '-').trim() || '-',
+          };
+          const extraKey = `${extra.nama}|${extra.jabatan}|${extra.email}|${extra.telepon}`;
+          if (!kontakMap.has(extraKey)) {
+            kontakMap.set(extraKey, extra);
+          }
         }
       }
 
@@ -626,8 +717,16 @@ export default function MasterMitraPage() {
                     <div className="space-y-2">
                       {item.kontakList.map((kontak, index) => (
                         <div key={`${item.primary.id}-kontak-${index}`}>
-                          <p className="font-medium text-gray-800">{kontak.nama}</p>
+                          <p className="font-medium text-gray-800">
+                            {kontak.nama}
+                            {index === 0 && item.kontakList.length > 1 && (
+                              <span className="ml-1 text-[9.5px] font-semibold text-[#173B82]">(Utama)</span>
+                            )}
+                          </p>
                           <p className="text-[10px] text-gray-500">{kontak.telepon}</p>
+                          {item.kontakList.length > 1 && kontak.email !== '-' && (
+                            <p className="text-[10px] text-gray-500">{kontak.email}</p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -831,6 +930,60 @@ export default function MasterMitraPage() {
               <Field label="Telepon Kontak Utama">
                 <input value={form.telepon_kontak_utama} onChange={(event) => setForm((prev) => ({ ...prev, telepon_kontak_utama: event.target.value }))} className="input-field w-full px-4 py-2.5 text-[12px]" />
               </Field>
+
+              <div className="md:col-span-2 border-t border-gray-100 pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-[12px] font-semibold text-gray-700">Kontak Tambahan</p>
+                    <p className="text-[10px] text-gray-500">Akun lain dari instansi yang sama otomatis masuk ke sini saat registrasi.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setKontakRows((prev) => [...prev, newKontakRow()])}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-medium text-[#173B82] transition hover:bg-[#EEF2FF]"
+                  >
+                    <Plus size={13} /> Tambah Kontak
+                  </button>
+                </div>
+
+                {kontakRows.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-gray-200 px-4 py-3 text-center text-[11px] text-gray-400">Belum ada kontak tambahan.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {kontakRows.map((row, index) => (
+                      <div key={row.key} className="rounded-xl border border-gray-200 p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-[11px] font-semibold text-gray-600">Kontak {index + 1}</p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => jadikanKontakUtama(row.key)}
+                              disabled={!row.nama.trim()}
+                              className="rounded-lg border border-gray-200 px-2.5 py-1 text-[10.5px] font-medium text-[#173B82] transition hover:bg-[#EEF2FF] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Jadikan Utama
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setKontakRows((prev) => prev.filter((item) => item.key !== row.key))}
+                              className="rounded-lg border border-red-200 p-1.5 text-red-500 transition hover:bg-red-50"
+                              aria-label="Hapus kontak"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <input value={row.nama} onChange={(event) => updateKontakRow(row.key, 'nama', event.target.value)} placeholder="Nama" className="input-field w-full px-4 py-2 text-[12px]" />
+                          <input value={row.jabatan} onChange={(event) => updateKontakRow(row.key, 'jabatan', event.target.value)} placeholder="Jabatan" className="input-field w-full px-4 py-2 text-[12px]" />
+                          <input type="email" value={row.email} onChange={(event) => updateKontakRow(row.key, 'email', event.target.value)} placeholder="Email" className="input-field w-full px-4 py-2 text-[12px]" />
+                          <input value={row.telepon} onChange={(event) => updateKontakRow(row.key, 'telepon', event.target.value)} placeholder="Telepon" className="input-field w-full px-4 py-2 text-[12px]" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="md:col-span-2 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                 <div>

@@ -9,6 +9,7 @@ import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import InternalAjukanKerjasamaForm from '@/app/internal/data_pengajuan/AjukanKerjasamaForm';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
+import { downloadTemplate, templateFilesByJenis } from '@/lib/templateDokumen';
 import {
   createMasterUnitProdi,
   deleteMasterUnitProdi,
@@ -114,7 +115,7 @@ const statusConfig: Record<PengajuanStatus, { label: string; className: string; 
 
 const templatePreviewUrlByJenis: Record<string, string> = {
   MoU: '/templates/Draft%20MOU%20Industri.docx',
-  MoA: '/templates/Draft%20MOA%20Magang.docx',
+  MoA: '/templates/Draft%20MOA%20Magang%20Industri.docx',
   IA: '/templates/DRAFT%20IA%20POLIBATAM.docx',
 };
 
@@ -123,8 +124,6 @@ type TemplateDokumenConfig = {
   subtitle: string;
   struktur: string[];
   note: string;
-  fileName: string;
-  downloadUrl: string;
 };
 
 function normalizeWhatsAppNumber(value?: string | null): string {
@@ -147,31 +146,19 @@ const editTemplateDokumenMap: Record<string, TemplateDokumenConfig> = {
     subtitle: 'Template untuk kesepahaman awal kerja sama',
     struktur: ['Pembukaan', 'Para Pihak', 'Tujuan Kerja Sama', 'Ruang Lingkup', 'Jangka Waktu', 'Penutup'],
     note: 'Template bisa diunduh sebagai acuan. Anda tetap bisa langsung mengunggah dokumen sendiri.',
-    fileName: 'Draft MOU Industri.docx',
-    downloadUrl: '/templates/Draft%20MOU%20Industri.docx',
   },
   MoA: {
     title: 'Memorandum of Agreement (MoA)',
     subtitle: 'Template untuk perjanjian teknis pelaksanaan',
     struktur: ['Dasar Kerja Sama', 'Hak dan Kewajiban', 'Program Pelaksanaan', 'Pendanaan', 'Monitoring', 'Penutup'],
     note: 'Gunakan format MoA resmi agar isi dokumen sesuai standar admin.',
-    fileName: 'Draft MOA Magang.docx',
-    downloadUrl: '/templates/Draft%20MOA%20Magang.docx',
   },
   IA: {
     title: 'Implementation Arrangement (IA)',
     subtitle: 'Template rincian implementasi program',
     struktur: ['Informasi Program', 'Target Kegiatan', 'Peran Tim', 'Timeline', 'Output', 'Pelaporan'],
     note: 'Template IA dipakai untuk detail implementasi kerja sama yang sudah disepakati.',
-    fileName: 'DRAFT IA POLIBATAM.docx',
-    downloadUrl: '/templates/DRAFT%20IA%20POLIBATAM.docx',
   },
-};
-
-const templateFileNameByJenis: Record<string, string> = {
-  MoU: 'Draft MOU Industri.docx',
-  MoA: 'Draft MOA Magang.docx',
-  IA: 'DRAFT IA POLIBATAM.docx',
 };
 
 const MAX_EDIT_FILE_SIZE = 10 * 1024 * 1024;
@@ -921,8 +908,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const editAllUnitOptions = [...masterUnitRows.map((row) => row.nama), ...editCustomUnitOpts];
   const editAsalOptions = editAsal === 'Jurusan' ? editAllJurusanOptions : editAllUnitOptions;
   const editAllRlOptions = Array.from(new Set([...ruangLingkupRows.map((item) => item.nama_ruang_lingkup), ...editCustomRlOpts]));
-  const editTemplateUrl = editForm ? (templatePreviewUrlByJenis[editForm.jenisDokumen] || '') : '';
-  const editTemplateFileName = editForm ? (templateFileNameByJenis[editForm.jenisDokumen] || '') : '';
+  const editTemplateFiles = editForm ? (templateFilesByJenis[editForm.jenisDokumen] || []) : [];
   const editSelectedTemplate = editForm ? (editTemplateDokumenMap[editForm.jenisDokumen] || null) : null;
 
 
@@ -1181,19 +1167,6 @@ async function saveReview() {
     setEditOriginalJenisDokumen(item.jenisDokumen);
     setEditUploadedFiles([]);
     setEditFileError(null);
-  }
-
-  function handleEditDownloadTemplate() {
-    if (!editForm || !editTemplateUrl || !editTemplateFileName) {
-      return;
-    }
-
-    const link = document.createElement('a');
-    link.href = editTemplateUrl;
-    link.download = editTemplateFileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   }
 
   function handleEditFileUpload(files: FileList | null) {
@@ -3427,22 +3400,26 @@ function addEditJurusanUnitOption() {
 
                 <p className="mb-3 text-[10px] text-slate-600">Format: PDF, Word (.doc/.docx), maksimal 10MB per file.</p>
 
-                {editSelectedTemplate && editTemplateUrl && (
+                {editSelectedTemplate && editTemplateFiles.length > 0 && (
                   <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <p className="text-[15px] font-bold text-[#173B82]">{editSelectedTemplate.title}</p>
                         <p className="text-[12px] text-slate-600">{editSelectedTemplate.subtitle}</p>
-                        <p className="mt-2 text-[10px] text-slate-500">File template: {editTemplateFileName}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleEditDownloadTemplate}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#173B82] px-4 text-[10px] font-semibold text-white hover:bg-[#0f2c61]"
-                    >
-                      <Download size={14} />
-                      Download Template
-                    </button>
+                    <div className="flex flex-col gap-2">
+                      {editTemplateFiles.map((file) => (
+                        <button
+                          key={file.fileName}
+                          type="button"
+                          onClick={() => downloadTemplate(file.fileName)}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#173B82] px-4 text-[10px] font-semibold text-white hover:bg-[#0f2c61]"
+                        >
+                          <Download size={14} />
+                          Download {file.label}
+                        </button>
+                      ))}
+                    </div>
                     </div>
 
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">

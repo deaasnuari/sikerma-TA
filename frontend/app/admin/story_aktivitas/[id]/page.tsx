@@ -291,6 +291,9 @@ export default function DetailStoryAktivitasPage() {
   // Ambil laporan pelaksanaan yang dikirim internal/eksternal/admin untuk dokumen kerja sama di story ini.
   const storyPengajuanIds = storyGroup?.pengajuan.map((p) => p.id).join(',') ?? '';
   useEffect(() => {
+    // Ambil ulang hanya saat modal laporan tertutup (termasuk setelah ditutup, supaya
+    // laporan yang baru dikirim langsung tampil) — bukan saat modal dibuka.
+    if (showLaporanModal) return;
     if (!storyPengajuanIds) {
       setLaporanDiterima([]);
       return;
@@ -727,7 +730,7 @@ export default function DetailStoryAktivitasPage() {
           </span>
         </div>
 
-        {laporanLoading ? (
+        {laporanLoading && laporanDiterima.length === 0 ? (
           <p className="text-[12px] text-slate-500">Memuat laporan...</p>
         ) : laporanDiterima.length === 0 ? (
           <p className="text-[12px] text-slate-500">Belum ada laporan pelaksanaan yang diterima untuk kerja sama ini.</p>

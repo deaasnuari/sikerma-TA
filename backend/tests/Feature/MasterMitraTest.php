@@ -250,4 +250,47 @@ class MasterMitraTest extends TestCase
         $this->actingAs($user)->deleteJson("/api/master/mitra/{$mitra->id}")
             ->assertForbidden();
     }
+
+    public function test_admin_dapat_ubah_tambah_dan_hapus_kontak_tambahan(): void
+    {
+        $mitra = $this->buatMitra();
+        $diubah = $mitra->kontak()->create(['nama' => 'Budi', 'email' => 'budi@x.id']);
+        $dihapus = $mitra->kontak()->create(['nama' => 'Citra', 'email' => 'citra@x.id']);
+        $mitraLain = $this->buatMitra(['nama_mitra' => 'CV Lain']);
+        $milikLain = $mitraLain->kontak()->create(['nama' => 'Dodi']);
+
+        $this->actingAs($this->admin())->putJson("/api/master/mitra/{$mitra->id}", [
+            'kontak' => [
+                ['id' => $diubah->id, 'nama' => 'Budi Santoso', 'jabatan' => 'HRD', 'email' => 'BUDI@x.id', 'telepon' => '0811'],
+                ['nama' => 'Eka', 'email' => 'eka@x.id'],
+                // id milik mitra lain tidak boleh ikut terubah; diperlakukan sebagai kontak baru.
+                ['id' => $milikLain->id, 'nama' => 'Fani'],
+            ],
+        ])->assertOk()->assertJsonCount(3, 'data.kontak');
+
+        $this->assertDatabaseHas('kontak_mitra', ['id' => $diubah->id, 'nama' => 'Budi Santoso', 'jabatan' => 'HRD', 'email' => 'budi@x.id']);
+        $this->assertDatabaseMissing('kontak_mitra', ['id' => $dihapus->id]);
+        $this->assertDatabaseHas('kontak_mitra', ['mitra_id' => $mitra->id, 'nama' => 'Eka']);
+        $this->assertDatabaseHas('kontak_mitra', ['id' => $milikLain->id, 'mitra_id' => $mitraLain->id, 'nama' => 'Dodi']);
+        $this->assertDatabaseHas('kontak_mitra', ['mitra_id' => $mitra->id, 'nama' => 'Fani']);
+    }
+
+    public function test_update_tanpa_field_kontak_tidak_mengubah_kontak_tambahan(): void
+    {
+        $mitra = $this->buatMitra();
+        $mitra->kontak()->create(['nama' => 'Budi']);
+
+        $this->actingAs($this->admin())->putJson("/api/master/mitra/{$mitra->id}", ['negara' => 'Jepang'])->assertOk();
+
+        $this->assertSame(1, $mitra->kontak()->count());
+    }
+
+    public function test_kontak_tambahan_wajib_punya_nama(): void
+    {
+        $mitra = $this->buatMitra();
+
+        $this->actingAs($this->admin())->putJson("/api/master/mitra/{$mitra->id}", [
+            'kontak' => [['nama' => '', 'email' => 'x@x.id']],
+        ])->assertUnprocessable()->assertJsonValidationErrors('kontak.0.nama');
+    }
 }

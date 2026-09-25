@@ -19,14 +19,14 @@ import {
 import { getMasterNegara } from '@/services/masterNegaraService';
 import { submitInternalPengajuan } from '@/services/internalPengajuanService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
+import { downloadTemplate, templateFilesByJenis, type TemplateFile } from '@/lib/templateDokumen';
 
 type TemplateDokumenConfig = {
   title: string;
   subtitle: string;
   struktur: string[];
   note: string;
-  fileName: string;
-  downloadUrl: string;
+  files: TemplateFile[];
 };
 
 const defaultTemplateDokumenMap: Record<string, TemplateDokumenConfig> = {
@@ -35,24 +35,21 @@ const defaultTemplateDokumenMap: Record<string, TemplateDokumenConfig> = {
     subtitle: 'Template untuk kesepahaman awal kerja sama',
     struktur: ['Pembukaan', 'Para Pihak', 'Tujuan Kerja Sama', 'Ruang Lingkup', 'Jangka Waktu', 'Penutup'],
     note: 'Template bisa diunduh sebagai acuan. Anda tetap bisa langsung mengunggah dokumen sendiri.',
-    fileName: 'Draft MOU Industri.docx',
-    downloadUrl: '/templates/Draft%20MOU%20Industri.docx',
+    files: templateFilesByJenis.MoU,
   },
   MoA: {
     title: 'Memorandum of Agreement (MoA)',
     subtitle: 'Template untuk perjanjian teknis pelaksanaan',
     struktur: ['Dasar Kerja Sama', 'Hak dan Kewajiban', 'Program Pelaksanaan', 'Pendanaan', 'Monitoring', 'Penutup'],
     note: 'Gunakan format MoA resmi agar isi dokumen sesuai standar admin.',
-    fileName: 'Draft MOA Magang.docx',
-    downloadUrl: '/templates/Draft%20MOA%20Magang.docx',
+    files: templateFilesByJenis.MoA,
   },
   IA: {
     title: 'Implementation Arrangement (IA)',
     subtitle: 'Template rincian implementasi program',
     struktur: ['Informasi Program', 'Target Kegiatan', 'Peran Tim', 'Timeline', 'Output', 'Pelaporan'],
     note: 'Template IA dipakai untuk detail implementasi kerja sama yang sudah disepakati.',
-    fileName: 'DRAFT IA POLIBATAM.docx',
-    downloadUrl: '/templates/DRAFT%20IA%20POLIBATAM.docx',
+    files: templateFilesByJenis.IA,
   },
 };
 
@@ -675,17 +672,7 @@ export default function InternalAjukanKerjasamaForm({
     });
   };
 
-  const handleDownloadTemplate = (jenisKerjasama: string) => {
-    if (!jenisKerjasama || !defaultTemplateDokumenMap[jenisKerjasama]) return;
-
-    const doc = defaultTemplateDokumenMap[jenisKerjasama];
-    const link = document.createElement('a');
-    link.href = doc.downloadUrl;
-    link.download = doc.fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  const handleDownloadTemplate = downloadTemplate;
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -1632,17 +1619,21 @@ export default function InternalAjukanKerjasamaForm({
                         <div className="mb-2 inline-flex rounded-full bg-[#173B82] px-2.5 py-1 text-[10px] font-bold text-white">{jenisKerjasama}</div>
                         <p className="text-[15px] font-bold text-[#173B82]">{template.title}</p>
                         <p className="text-[12px] text-slate-600">{template.subtitle}</p>
-                        <p className="mt-2 text-[10px] text-slate-500">File template: {template.fileName}</p>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDownloadTemplate(jenisKerjasama)}
-                        className="inline-flex items-center gap-2 rounded-lg bg-[#173B82] px-4 py-2 text-[12px] font-semibold text-white transition hover:bg-[#0f2c61]"
-                      >
-                        <Download size={16} />
-                        Download Template {jenisKerjasama}
-                      </button>
+                      <div className="flex flex-col gap-2">
+                        {template.files.map((file) => (
+                          <button
+                            key={file.fileName}
+                            type="button"
+                            onClick={() => handleDownloadTemplate(file.fileName)}
+                            className="inline-flex items-center gap-2 rounded-lg bg-[#173B82] px-4 py-2 text-[12px] font-semibold text-white transition hover:bg-[#0f2c61]"
+                          >
+                            <Download size={16} />
+                            Download {file.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

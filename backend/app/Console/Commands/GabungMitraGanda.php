@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\KontakMitra;
 use App\Models\MasterMitra;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -98,7 +99,7 @@ class GabungMitraGanda extends Command
                 $backfill ? implode(',', array_keys($backfill)) : '-',
             ];
 
-            $rencana[] = compact('induk', 'dupIds', 'backfill');
+            $rencana[] = compact('induk', 'duplikat', 'dupIds', 'backfill');
         }
 
         $this->table(
@@ -128,6 +129,9 @@ class GabungMitraGanda extends Command
                     MasterMitra::whereKey($r['induk']->id)->update($r['backfill']);
                 }
 
+                // Sebelum dihapus (kontak_mitra ikut terhapus via cascade), pindahkan kontaknya ke INDUK.
+                $this->pindahkanKontak($r['induk'], $r['duplikat'], $r['backfill']);
+
                 MasterMitra::whereIn('id', $r['dupIds'])->delete();
             }
         });
@@ -138,6 +142,57 @@ class GabungMitraGanda extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Kontak dari baris duplikat — kontak utamanya dan kontak_mitra-nya — dipindah
+     * ke INDUK sebagai kontak tambahan, kecuali emailnya sudah jadi kontak utama
+     * INDUK (setelah backfill) atau sudah ada di kontak INDUK.
+     *
+     * @param  \Illuminate\Support\Collection<int, MasterMitra>  $duplikat
+     */
+    private function pindahkanKontak(MasterMitra $induk, $duplikat, array $backfill): void
+    {
+        $emailUtama = strtolower(trim((string) ($backfill['email_kontak_utama'] ?? $induk->email_kontak_utama)));
+        $namaUtama = mb_strtolower(trim((string) ($backfill['nama_kontak_utama'] ?? $induk->nama_kontak_utama)));
+        $sudahAda = KontakMitra::where('mitra_id', $induk->id)->pluck('email')
+            ->map(fn ($e) => strtolower(trim((string) $e)))->filter()->flip()->all();
+
+        $dupIds = $duplikat->pluck('id')->all();
+        foreach (KontakMitra::whereIn('mitra_id', $dupIds)->orderBy('id')->get() as $kontak) {
+            $email = strtolower(trim((string) $kontak->email));
+            if ($email !== '' && ($email === $emailUtama || isset($sudahAda[$email]))) {
+                $kontak->delete();
+                continue;
+            }
+            $kontak->update(['mitra_id' => $induk->id]);
+            if ($email !== '') {
+                $sudahAda[$email] = true;
+            }
+        }
+
+        foreach ($duplikat as $d) {
+            $nama = trim((string) $d->nama_kontak_utama);
+            $email = strtolower(trim((string) $d->email_kontak_utama));
+            if ($this->kosong($nama)) {
+                continue;
+            }
+            $samaDenganUtama = $email !== '' ? $email === $emailUtama : mb_strtolower($nama) === $namaUtama;
+            if ($samaDenganUtama || ($email !== '' && isset($sudahAda[$email]))) {
+                continue;
+            }
+
+            KontakMitra::create([
+                'mitra_id' => $induk->id,
+                'nama' => $nama,
+                'jabatan' => $this->kosong($d->jabatan_kontak_utama) ? null : trim((string) $d->jabatan_kontak_utama),
+                'email' => $email !== '' ? $email : null,
+                'telepon' => $this->kosong($d->telepon_kontak_utama) ? null : trim((string) $d->telepon_kontak_utama),
+            ]);
+            if ($email !== '') {
+                $sudahAda[$email] = true;
+            }
+        }
     }
 
     private function normalkan(?string $nama): string

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Plus, Upload, X, AlertCircle, Download } from 'lucide-react';
 import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploadUtils';
+import { templateFilesByJenis, templateUrl } from '@/lib/templateDokumen';
 
 interface RenewalUploadFormProps {
   onSubmit: (data: { tanggalMulaiBaru: string; tanggalBerakhirBaru: string; catatan: string; dokumen: File[] }) => void;
@@ -74,30 +75,17 @@ export default function RenewalUploadForm({ onSubmit }: RenewalUploadFormProps) 
       <div className="mb-3">
         <span className="block text-xs font-semibold text-blue-700 mb-1">Template Dokumen</span>
         <div className="flex flex-wrap gap-2">
-          <a
-            href="/templates/Draft MOU Industri.docx"
-            download
-            className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100"
-          >
-            <Download size={12} />
-            Template MoU
-          </a>
-          <a
-            href="/templates/DRAFT IA POLIBATAM.docx"
-            download
-            className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100"
-          >
-            <Download size={12} />
-            Template IA
-          </a>
-          <a
-            href="/templates/Draft MOA Industri.docx"
-            download
-            className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100"
-          >
-            <Download size={12} />
-            Template MoA
-          </a>
+          {Object.values(templateFilesByJenis).flat().map((file) => (
+            <a
+              key={file.fileName}
+              href={templateUrl(file.fileName)}
+              download={file.fileName}
+              className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100"
+            >
+              <Download size={12} />
+              Template {file.label}
+            </a>
+          ))}
         </div>
         <span className="block text-[11px] text-blue-600 mt-1">Template bersifat opsional, kamu bisa langsung upload dokumen tanpa download template.</span>
       </div>

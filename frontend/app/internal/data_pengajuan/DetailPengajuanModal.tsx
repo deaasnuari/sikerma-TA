@@ -36,12 +36,6 @@ const reviewCopy: Record<PengajuanStatus, string> = {
   Ditolak: 'Pengajuan belum disetujui admin. Silakan cek catatan review.',
 };
 
-const templatePreviewUrlByJenis: Record<string, string> = {
-  MoU: '/templates/Draft%20MOU%20Industri.docx',
-  MoA: '/templates/Draft%20MOA%20Magang.docx',
-  IA: '/templates/DRAFT%20IA%20POLIBATAM.docx',
-};
-
 function normalizeWhatsAppNumber(value?: string | null): string {
   return (value || '').replace(/[^\d]/g, '');
 }

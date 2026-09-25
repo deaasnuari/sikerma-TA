@@ -976,38 +976,31 @@ export default function Home() {
               <div className="mt-2 mb-6 h-1 w-16 rounded-full bg-[#FBBF24]" />
 
               <div className="space-y-5 text-[12.5px]">
-                <div>
-                  <h3 className="mb-2 text-[13px] font-bold text-white">Message Us</h3>
-                  <ul className="space-y-1.5">
-                    <li>
-                      <a href="mailto:info@polibatam.ac.id" className="text-cyan-200 underline-offset-2 hover:underline">
-                        info@polibatam.ac.id
-                      </a>
-                    </li>
-                    <li>
-                      <a href="mailto:kerjasama@polibatam.ac.id" className="text-cyan-200 underline-offset-2 hover:underline">
-                        kerjasama@polibatam.ac.id
-                      </a>
-                    </li>
-                    <li>
-                      <a href="mailto:oia@polibatam.ac.id" className="text-cyan-200 underline-offset-2 hover:underline">
-                        oia@polibatam.ac.id
-                      </a>
-                    </li>
-                  </ul>
-                </div>
-
-                <div>
-                  <h3 className="mb-2 text-[13px] font-bold text-white">Telephone</h3>
-                  <ul className="space-y-1 text-slate-100">
-                    <li>
-                      <a href="tel:+62778469858" className="hover:text-white">(0778) 469 858</a>
-                    </li>
-                    <li>Ridwan P. (+62 852-6468-6864)</li>
-                    <li>Irkram (+62 813-6387-6244)</li>
-                    <li>Dessy (+62 858-3554-1983)</li>
-                  </ul>
-                </div>
+                {[
+                  { title: 'Kapokja Humas dan Kerjasama', nama: 'Ridwan P.', telp: '+62 852-6468-6864', email: null },
+                  { title: 'Kerjasama Luar Negeri / OIA', nama: 'Irkham', telp: '+62 813-6387-6244', email: 'oia@polibatam.ac.id' },
+                  { title: 'Kerjasama Dalam Negeri', nama: 'Dessy', telp: '+62 858-3554-1983', email: 'kerjasama@polibatam.ac.id' },
+                ].map((kontak) => (
+                  <div key={kontak.title}>
+                    <h3 className="mb-2 text-[13px] font-bold text-white">{kontak.title}</h3>
+                    <ul className="space-y-1 text-slate-100">
+                      <li>
+                        {kontak.nama} (
+                        <a href={`tel:${kontak.telp.replace(/[^+\d]/g, '')}`} className="hover:text-white">
+                          {kontak.telp}
+                        </a>
+                        )
+                      </li>
+                      {kontak.email && (
+                        <li>
+                          <a href={`mailto:${kontak.email}`} className="text-cyan-200 underline-offset-2 hover:underline">
+                            {kontak.email}
+                          </a>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                ))}
 
                 <div>
                   <h3 className="mb-2 text-[13px] font-bold text-white">Mailing Address</h3>
