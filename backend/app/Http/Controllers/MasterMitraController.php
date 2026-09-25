@@ -49,7 +49,9 @@ class MasterMitraController extends Controller
         foreach ($tokens as $token) {
             $query->whereRaw('LOWER(nama_mitra) LIKE ?', ['%' . $token . '%']);
         }
-        $candidates = $query->orderBy('nama_mitra')->limit(50)->get(['id', 'nama_mitra']);
+        // Semua yang cocok diambil dulu baru diurutkan — kalau dipotong sebelum
+        // diurutkan, nama yang paling pas bisa hilang dari daftar.
+        $candidates = $query->orderBy('nama_mitra')->get(['id', 'nama_mitra']);
 
         $normalizedKeyword = MasterMitraResolver::normalize($keyword);
         $rank = function (MasterMitra $mitra) use ($normalizedKeyword, $tokens): int {
@@ -72,10 +74,10 @@ class MasterMitraController extends Controller
 
         $rows = $candidates
             ->sortBy(fn (MasterMitra $mitra) => [$rank($mitra), mb_strtolower($mitra->nama_mitra)])
-            ->take(8)
+            ->take(50)
             ->values();
 
-        return response(['success' => true, 'data' => $rows]);
+        return response(['success' => true, 'data' => $rows, 'total' => $candidates->count()]);
     }
 
     /**

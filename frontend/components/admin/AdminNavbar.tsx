@@ -68,6 +68,11 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
       ? `${userRoleLabel} — ${unitKerjaLabel}`
       : userRoleLabel;
 
+  // Akun mitra eksternal cukup menampilkan nama instansinya, bukan perannya.
+  const instansiLabel = user?.role === 'external' ? user.institution_name?.trim() || null : null;
+  const menuInfoTitle = instansiLabel ? 'Instansi' : 'Peran';
+  const menuInfoValue = instansiLabel ?? userSubLabel;
+
   const refreshNotifications = () => {
     const allNotifications = getAdminNotifications();
     // Filter notifikasi berdasarkan role user
@@ -367,7 +372,7 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
               >
                 <div className="text-right hidden sm:block">
                   <p className="text-[13px] font-medium leading-tight text-gray-900">{userDisplayName}</p>
-                  <p className="text-[11px] leading-tight text-gray-600">{userSubLabel}</p>
+                  <p className="max-w-62.5 truncate text-[11px] leading-tight text-gray-600">{menuInfoValue}</p>
                 </div>
                 <div className="w-9 h-9 flex-shrink-0 bg-[#091222] border border-slate-700 rounded-full flex items-center justify-center text-white hover:bg-[#173B82] transition-all">
                   <User size={17} />
@@ -387,8 +392,8 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
                   </div>
 
                   <div className="px-4 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Peran</p>
-                    <p className="mt-0.5 text-[12px] font-medium leading-snug text-slate-700">{userSubLabel}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{menuInfoTitle}</p>
+                    <p className="mt-0.5 text-[12px] font-medium leading-snug text-slate-700">{menuInfoValue}</p>
                   </div>
 
                   <div className="border-t border-slate-100 p-2">

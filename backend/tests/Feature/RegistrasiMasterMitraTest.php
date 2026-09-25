@@ -167,7 +167,7 @@ class RegistrasiMasterMitraTest extends TestCase
 
         $this->getJson('/api/public/mitra?q=berkah')
             ->assertOk()
-            ->assertExactJson(['success' => true, 'data' => [['id' => MasterMitra::where('nama_mitra', 'PT Berkah Jaya')->value('id'), 'nama_mitra' => 'PT Berkah Jaya']]]);
+            ->assertExactJson(['success' => true, 'data' => [['id' => MasterMitra::where('nama_mitra', 'PT Berkah Jaya')->value('id'), 'nama_mitra' => 'PT Berkah Jaya']], 'total' => 1]);
 
         $this->getJson('/api/public/mitra?q=b')->assertOk()->assertJsonPath('data', []);
     }

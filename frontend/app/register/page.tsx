@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Globe,
+  Loader2,
   Lock,
   Mail,
   MessageCircle,
@@ -88,22 +89,33 @@ export default function RegisterPage() {
   const [mitraSuggestions, setMitraSuggestions] = useState<{ id: number; nama_mitra: string }[]>([]);
   const [selectedMitraId, setSelectedMitraId] = useState<number | null>(null);
   const [showMitraSuggestions, setShowMitraSuggestions] = useState(false);
+  const [isCheckingMitra, setIsCheckingMitra] = useState(false);
+  const [mitraTotal, setMitraTotal] = useState(0);
 
   useEffect(() => {
     const keyword = form.institution_name.trim();
     if (selectedMitraId !== null || keyword.length < 2) {
       setMitraSuggestions([]);
+      setIsCheckingMitra(false);
       return;
     }
 
     let active = true;
+    setIsCheckingMitra(true);
     const timer = window.setTimeout(() => {
-      apiRequest<{ data: { id: number; nama_mitra: string }[] }>(`/public/mitra?q=${encodeURIComponent(keyword)}`)
+      apiRequest<{ data: { id: number; nama_mitra: string }[]; total?: number }>(`/public/mitra?q=${encodeURIComponent(keyword)}`)
         .then((res) => {
-          if (active) setMitraSuggestions(res.data || []);
+          if (!active) return;
+          setMitraSuggestions(res.data || []);
+          setMitraTotal(res.total ?? res.data?.length ?? 0);
         })
         .catch(() => {
-          if (active) setMitraSuggestions([]);
+          if (!active) return;
+          setMitraSuggestions([]);
+          setMitraTotal(0);
+        })
+        .finally(() => {
+          if (active) setIsCheckingMitra(false);
         });
     }, 300);
 
@@ -112,6 +124,22 @@ export default function RegisterPage() {
       window.clearTimeout(timer);
     };
   }, [form.institution_name, selectedMitraId]);
+
+  // Sama dengan MasterMitraResolver::normalize di backend: "PT. Berkah Jaya" == "pt berkah jaya".
+  const normalizeNamaMitra = (nama: string) => nama.trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  const exactMitraMatch = mitraSuggestions.find(
+    (mitra) => normalizeNamaMitra(mitra.nama_mitra) === normalizeNamaMitra(form.institution_name),
+  );
+  const mitraStatus: 'idle' | 'checking' | 'exists' | 'similar' | 'new' =
+    selectedMitraId !== null || exactMitraMatch
+      ? 'exists'
+      : form.institution_name.trim().length < 2
+        ? 'idle'
+        : isCheckingMitra
+          ? 'checking'
+          : mitraSuggestions.length > 0
+            ? 'similar'
+            : 'new';
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = event.target;
@@ -282,10 +310,27 @@ export default function RegisterPage() {
                         placeholder="Masukkan nama mitra"
                         autoComplete="off"
                         required
-                        className="input-field h-9 w-full rounded-xl pl-10 pr-4 text-sm"
+                        className={`input-field h-9 w-full rounded-xl pl-10 pr-10 text-sm ${
+                          mitraStatus === 'exists'
+                            ? '!border-emerald-400'
+                            : mitraStatus === 'new'
+                              ? '!border-blue-300'
+                              : ''
+                        }`}
                       />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                        {mitraStatus === 'checking' && <Loader2 size={16} className="animate-spin text-slate-400" />}
+                        {mitraStatus === 'exists' && <CheckCircle2 size={16} className="text-emerald-600" />}
+                        {mitraStatus === 'similar' && <AlertCircle size={16} className="text-amber-500" />}
+                        {mitraStatus === 'new' && <Building2 size={16} className="text-blue-500" />}
+                      </span>
                       {showMitraSuggestions && mitraSuggestions.length > 0 && (
-                        <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-auto rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-lg">
+                        <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-lg">
+                          <li className="sticky top-0 border-b border-slate-100 bg-white px-3 py-1 text-[11px] text-slate-500">
+                            {mitraTotal > mitraSuggestions.length
+                              ? `Ditampilkan ${mitraSuggestions.length} dari ${mitraTotal} instansi. Silakan ketik nama instansi secara lebih lengkap untuk mempersempit hasil pencarian.`
+                              : `${mitraTotal} instansi ditemukan`}
+                          </li>
                           {mitraSuggestions.map((mitra) => (
                             <li key={mitra.id}>
                               <button
@@ -305,11 +350,44 @@ export default function RegisterPage() {
                         </ul>
                       )}
                     </div>
-                    {selectedMitraId !== null ? (
-                      <p className="mt-1 text-[11px] text-emerald-700">Instansi sudah terdaftar di Data Kemitraan Polibatam.</p>
-                    ) : mitraSuggestions.length > 0 ? (
-                      <p className="mt-1 text-[11px] text-slate-500">Jika instansi Anda ada di daftar, pilih dari daftar tersebut.</p>
-                    ) : null}
+                    {mitraStatus === 'idle' && (
+                      <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                        <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                        <span>
+                          <span className="font-bold">Cek dulu apakah instansi Anda sudah terdaftar.</span> Ketik nama instansi untuk mengecek.
+                        </span>
+                      </div>
+                    )}
+                    {mitraStatus === 'checking' && (
+                      <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
+                        <Loader2 size={14} className="shrink-0 animate-spin" />
+                        Mengecek nama instansi...
+                      </div>
+                    )}
+                    {mitraStatus === 'exists' && (
+                      <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-800">
+                        <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+                        <span>
+                          <span className="font-bold">Sudah terdaftar.</span> Akun Anda akan ditautkan ke instansi ini.
+                        </span>
+                      </div>
+                    )}
+                    {mitraStatus === 'similar' && (
+                      <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                        <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                        <span>
+                          <span className="font-bold">Ada nama yang mirip.</span> Jika instansi Anda ada di daftar, pilih dari daftar tersebut.
+                        </span>
+                      </div>
+                    )}
+                    {mitraStatus === 'new' && (
+                      <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
+                        <Building2 size={14} className="mt-0.5 shrink-0" />
+                        <span>
+                          <span className="font-bold">Belum terdaftar.</span> Instansi akan didaftarkan sebagai mitra baru.
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div>
