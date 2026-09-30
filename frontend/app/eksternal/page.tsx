@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Clock3,
   FileBadge2,
-  FolderOpen,
   Plus,
   UserRound,
 } from 'lucide-react';
@@ -261,15 +260,6 @@ export default function EksternalPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-[#F8FBFF] p-4 shadow-sm">
-        <div className="flex items-center gap-2 text-[#0A2A66]">
-          <FolderOpen size={18} />
-          <p className="font-bold">Ringkasan Akses Mitra</p>
-        </div>
-        <p className="mt-2 text-[12px] text-slate-600">
-          Area eksternal memakai navbar dan footer yang sama seperti admin, dengan sidebar khusus mitra eksternal dan warna portal yang berbeda.
-        </p>
-      </div>
     </div>
   );
 }

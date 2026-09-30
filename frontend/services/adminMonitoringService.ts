@@ -83,6 +83,7 @@ import { apiRequest } from '@/lib/api';
 import { buildLegacyFileUrl } from '@/services/dokumenKerjasamaApiService';
 import { getCachedMasterRuangLingkup, getMasterRuangLingkup } from '@/services/masterRuangLingkupService';
 import { matchesBulan, rekapJenisMitraOptions, rekapTingkatPerusahaanOptions } from '@/services/adminRekapDataService';
+import { formatSisaMasaBerlaku } from '@/lib/sisaMasaBerlaku';
 
 const MONITORING_CACHE_TTL_MS = 60 * 1000;
 let monitoringCache: { data: Kerjasama[]; expiresAt: number } | null = null;
@@ -387,12 +388,7 @@ function resolveStatusAndSisa(
     return { status, sisaMasaBerlaku: null };
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diffDays = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  const diffMonths = Math.max(1, Math.ceil(diffDays / 30));
-
-  return { status, sisaMasaBerlaku: `${diffMonths} Bulan` };
+  return { status, sisaMasaBerlaku: formatSisaMasaBerlaku(endDate) };
 }
 
 // Dipakai HANYA oleh dua fungsi cache optimis di bawah (upsertMonitoringFromPengajuan,
@@ -419,8 +415,7 @@ function estimateStatusAndSisaFromTanggal(tanggalBerakhir?: string): { status: S
     return { status: 'Kadaluarsa', sisaMasaBerlaku: null };
   }
 
-  const diffMonths = Math.max(1, Math.ceil(diffDays / 30));
-  const sisaMasaBerlaku = `${diffMonths} Bulan`;
+  const sisaMasaBerlaku = formatSisaMasaBerlaku(endDate);
 
   return { status: diffDays <= 90 ? 'Akan Berakhir' : 'Aktif', sisaMasaBerlaku };
 }
@@ -534,8 +529,19 @@ export async function fetchMonitoringDataFromApi(options?: { forceRefresh?: bool
         tingkatPerusahaan: row.mitra?.tingkat_perusahaan || undefined,
         sisaMasaBerlaku: sisaMasaBerlaku,
         ruangLingkup,
-        whatsappNumber: row.pengajuan?.whatsapp_pengusul || '-',
-        emailMitra: row.mitra?.email_mitra || row.mitra?.email_kontak_utama || row.pengajuan?.email_pengusul || '-',
+        whatsappNumber:
+          row.pengajuan?.whatsapp_pengusul ||
+          row.snap_whatsapp_pengusul ||
+          row.mitra?.whatsapp_mitra ||
+          row.mitra?.telepon_kontak_utama ||
+          row.mitra?.no_telepon_mitra ||
+          '-',
+        emailMitra:
+          row.mitra?.email_mitra ||
+          row.mitra?.email_kontak_utama ||
+          row.pengajuan?.email_pengusul ||
+          row.snap_email_pengusul ||
+          '-',
         alasanArsip: row.alasan_arsip || null,
         buktiTidakDiperpanjang: (() => {
           const file = (row.dokumen_files || []).find((f: any) => f.peran_berkas === 'bukti_tidak_diperpanjang');
@@ -660,6 +666,28 @@ export function findKerjasamaById(items: Kerjasama[], id: number | null): Kerjas
   }
 
   return items.find((item) => item.id === id) || null;
+}
+
+export function hasWhatsAppNumber(item: Kerjasama): boolean {
+  return String(item.whatsappNumber || '').replace(/[^0-9]/g, '').length >= 8;
+}
+
+export function hasEmailMitra(item: Kerjasama): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(item.emailMitra || '').trim());
+}
+
+// Buka halaman tulis email Gmail di tab baru (mailto: tidak jalan kalau PC tidak punya
+// aplikasi email default).
+export function createEmailLink(item: Kerjasama): string {
+  const judul = item.judul || item.noDokumen || '';
+  const params = new URLSearchParams({
+    view: 'cm',
+    fs: '1',
+    to: String(item.emailMitra).trim(),
+    su: `Kerja Sama ${judul}`.trim(),
+    body: `Halo ${item.namaMitra},\n\nsaya ingin membahas tentang kerjasama ${judul}.\n`,
+  });
+  return `https://mail.google.com/mail/?${params.toString()}`;
 }
 
 // Buat tautan WhatsApp otomatis untuk menghubungi mitra.

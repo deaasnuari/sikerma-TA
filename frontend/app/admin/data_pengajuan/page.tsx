@@ -1980,10 +1980,21 @@ function addEditJurusanUnitOption() {
                     </p>
                   </div>
                 </div>
-                <span className={`flex items-center gap-1.5 flex-shrink-0 ${sc.className}`}>
-                  {sc.iconEl}
-                  {sc.label}
-                </span>
+                <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                  <span className={`flex items-center gap-1.5 ${sc.className}`}>
+                    {sc.iconEl}
+                    {sc.label}
+                  </span>
+                  {/* Pengusul sudah mengirim ulang setelah diminta Revisi — perlu dicek ulang admin. */}
+                  {item.direvisiPengusulPada && (item.statusPengajuan === 'Menunggu Review' || item.statusPengajuan === 'Menunggu') && (
+                    <span
+                      className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700"
+                      title={`Dikirim ulang pengusul pada ${new Date(item.direvisiPengusulPada).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`}
+                    >
+                      Sudah Direvisi
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Info row + Action buttons */}
@@ -3504,7 +3515,7 @@ function addEditJurusanUnitOption() {
             </div>
             <div className="px-5 py-4">
               <p className="text-[12px] text-slate-700">
-                Apakah Anda yakin ingin menghapus data pengajuan <span className="font-semibold">{deleteTarget.judulPengajuan}</span>? Tindakan ini tidak bisa dibatalkan.
+                Apakah Anda yakin ingin menghapus data pengajuan <span className="font-semibold">{deleteTarget.judulPengajuan}</span>? Pengajuan hanya hilang dari Data Pengajuan admin — pengusul (internal/eksternal) tetap bisa melihatnya.
               </p>
             </div>
             <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
@@ -3535,7 +3546,7 @@ function addEditJurusanUnitOption() {
             </div>
             <div className="px-5 py-4">
               <p className="text-[12px] text-slate-700">
-                Yakin ingin menghapus <span className="font-semibold">{selectedPengajuanIds.size} pengajuan</span> yang dipilih? Tindakan ini tidak bisa dibatalkan.
+                Yakin ingin menghapus <span className="font-semibold">{selectedPengajuanIds.size} pengajuan</span> yang dipilih? Pengajuan hanya hilang dari Data Pengajuan admin — pengusul (internal/eksternal) tetap bisa melihatnya.
               </p>
             </div>
             <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">

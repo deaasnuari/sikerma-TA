@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Trash2, Search, RotateCcw, Info, ShieldAlert, FileText } from 'lucide-react';
+import { Trash2, Search, RotateCcw, Info, ShieldAlert, FileText, CheckSquare, Square } from 'lucide-react';
 import {
   fetchTrashDokumenFromApi,
   restoreDokumenKerjasamaById,
@@ -33,6 +33,9 @@ export default function SampahDokumenPage() {
   const [permanentCandidate, setPermanentCandidate] = useState<TrashDokumenApiItem | null>(null);
   const [permanentLoading, setPermanentLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkAction, setBulkAction] = useState<'restore' | 'delete' | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   const loadTrash = async () => {
     setLoading(true);
@@ -85,6 +88,43 @@ export default function SampahDokumenPage() {
       item.noDokumen.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Yang dihitung "terpilih" hanya yang masih tampil di hasil pencarian saat ini.
+  const selectedVisibleIds = filtered.filter((item) => selectedIds.has(item.id)).map((item) => item.id);
+  const allVisibleSelected = filtered.length > 0 && selectedVisibleIds.length === filtered.length;
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allVisibleSelected ? new Set() : new Set(filtered.map((item) => item.id)));
+  };
+
+  const confirmBulkAction = async () => {
+    if (!bulkAction || selectedVisibleIds.length === 0) return;
+    const ids = selectedVisibleIds;
+    const action = bulkAction === 'restore' ? restoreDokumenKerjasamaById : permanentDeleteDokumenKerjasamaById;
+
+    setBulkLoading(true);
+    const results = await Promise.allSettled(ids.map((id) => action(id)));
+    const berhasil = ids.filter((_, i) => results[i].status === 'fulfilled');
+    const gagal = ids.length - berhasil.length;
+
+    setData((prev) => prev.filter((d) => !berhasil.includes(d.id)));
+    setSelectedIds((prev) => new Set([...prev].filter((id) => !berhasil.includes(id))));
+    setError(
+      gagal > 0
+        ? `${gagal} dari ${ids.length} dokumen gagal ${bulkAction === 'restore' ? 'dipulihkan' : 'dihapus permanen'}. Silakan coba lagi.`
+        : null
+    );
+    setBulkLoading(false);
+    setBulkAction(null);
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -136,7 +176,29 @@ export default function SampahDokumenPage() {
             className="input-field w-full pl-9 pr-4 py-2.5 text-[12px]"
           />
         </div>
-        <span className="text-[11px] text-gray-500">{filtered.length} dokumen di Sampah</span>
+        <div className="flex items-center gap-2">
+          {selectedVisibleIds.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setBulkAction('restore')}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-green-300 bg-green-50 px-4 text-[12px] font-semibold text-green-700 hover:bg-green-100"
+              >
+                <RotateCcw size={14} />
+                Pulihkan ({selectedVisibleIds.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkAction('delete')}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 text-[12px] font-semibold text-white hover:bg-red-700"
+              >
+                <Trash2 size={14} />
+                Hapus Permanen ({selectedVisibleIds.length})
+              </button>
+            </>
+          )}
+          <span className="text-[11px] text-gray-500">{filtered.length} dokumen di Sampah</span>
+        </div>
       </div>
 
       <div className="table-shell">
@@ -144,6 +206,17 @@ export default function SampahDokumenPage() {
           <table className="min-w-[900px] w-full text-[12px] border-collapse">
             <thead>
               <tr className="table-head border-b border-gray-200 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+                <th className="py-3 px-4 w-10">
+                  <button
+                    type="button"
+                    onClick={toggleSelectAll}
+                    disabled={filtered.length === 0}
+                    className="text-gray-500 hover:text-[#1E376C] disabled:opacity-40"
+                    title={allVisibleSelected ? 'Batalkan pilih semua' : 'Pilih semua'}
+                  >
+                    {allVisibleSelected ? <CheckSquare size={16} className="text-[#1E376C]" /> : <Square size={16} />}
+                  </button>
+                </th>
                 <th className="py-3 px-4 whitespace-nowrap">No. Dokumen</th>
                 <th className="py-3 px-4">Nama Mitra</th>
                 <th className="py-3 px-4 whitespace-nowrap">Jenis</th>
@@ -158,21 +231,29 @@ export default function SampahDokumenPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-gray-400">
+                  <td colSpan={10} className="py-10 text-center text-gray-400">
                     Memuat data...
                   </td>
                 </tr>
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-gray-400">
+                  <td colSpan={10} className="py-10 text-center text-gray-400">
                     Sampah kosong
                   </td>
                 </tr>
               )}
               {!loading &&
                 filtered.map((item) => (
-                  <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={item.id}
+                    className={`border-b border-gray-100 transition-colors ${selectedIds.has(item.id) ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                  >
+                    <td className="py-3 px-4">
+                      <button type="button" onClick={() => toggleSelect(item.id)} className="text-gray-400 hover:text-[#1E376C]">
+                        {selectedIds.has(item.id) ? <CheckSquare size={16} className="text-[#1E376C]" /> : <Square size={16} />}
+                      </button>
+                    </td>
                     <td className="py-3 px-4 font-medium text-gray-900 whitespace-nowrap text-[10px]">
                       {item.noDokumen}
                     </td>
@@ -264,6 +345,26 @@ export default function SampahDokumenPage() {
         loading={permanentLoading}
         onConfirm={confirmPermanentDelete}
         onCancel={() => setPermanentCandidate(null)}
+      />
+
+      <ConfirmDialog
+        open={bulkAction !== null}
+        title={bulkAction === 'restore' ? `Pulihkan ${selectedVisibleIds.length} Dokumen?` : `Hapus Permanen ${selectedVisibleIds.length} Dokumen?`}
+        message={
+          bulkAction === 'restore' ? (
+            `${selectedVisibleIds.length} dokumen yang dipilih akan dikembalikan ke Rekap Data seperti semula.`
+          ) : (
+            <span className="flex items-start gap-1.5">
+              <ShieldAlert size={14} className="mt-0.5 shrink-0 text-red-500" />
+              {selectedVisibleIds.length} dokumen yang dipilih akan dihapus permanen dari database dan tidak bisa dikembalikan lagi.
+            </span>
+          )
+        }
+        confirmLabel={bulkAction === 'restore' ? 'Ya, Pulihkan' : 'Ya, Hapus Permanen'}
+        tone={bulkAction === 'restore' ? 'default' : 'danger'}
+        loading={bulkLoading}
+        onConfirm={confirmBulkAction}
+        onCancel={() => setBulkAction(null)}
       />
     </div>
   );

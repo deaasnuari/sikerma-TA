@@ -73,6 +73,7 @@ class Pengajuan extends Model
         'tahapan_stage',
         'tahapan_group',
         'tahapan_riwayat',
+        'direvisi_pengusul_pada',
         'distribusi_user_ids',
         'dihapus_admin_pada',
         'dihapus_user_pada',
@@ -88,8 +89,8 @@ class Pengajuan extends Model
         'is_from_admin' => 'boolean',
 
         // New schema casts
-        // 'ruang_lingkup_ids' => PgArrayCast::class,
-        'ruang_lingkup_ids' => 'array',
+        'ruang_lingkup_ids' => PgArrayCast::class,
+        // 'ruang_lingkup_ids' => 'array',
         'tanggal_mulai' => 'date',
         'tanggal_berakhir' => 'date',
         'diajukan_pada' => 'datetime',
@@ -98,6 +99,7 @@ class Pengajuan extends Model
         'acc_mitra_at' => 'datetime',
         'final_approved_at' => 'datetime',
         'tahapan_riwayat' => 'array',
+        'direvisi_pengusul_pada' => 'datetime',
         'distribusi_user_ids' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

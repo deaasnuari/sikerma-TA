@@ -822,7 +822,9 @@ export default function InternalAjukanKerjasamaForm({
         setSubmitError('File utama wajib diunggah untuk jenis dokumen MoA atau IA.');
         return;
       }
-      if (dokumenPendukung.length === 0) {
+      // Mode edit/perbaikan: lampiran lama yang masih dipertahankan sudah dihitung, jadi
+      // pengusul tidak dipaksa upload ulang dokumen pendukung yang sama.
+      if (dokumenPendukung.length === 0 && existingFileAttachments.length === 0) {
         setSubmitError('Dokumen pendukung (TOR, KAK, atau Proposal/Laporan Kegiatan) wajib dilampirkan untuk jenis dokumen MoA atau IA.');
         return;
       }
@@ -947,7 +949,7 @@ export default function InternalAjukanKerjasamaForm({
 
   return (
     <div className={`mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white shadow-sm${isModal ? ' flex flex-col max-h-[92vh]' : ''}`}>
-      <div className={`${isModal ? 'flex-none ' : 'sticky top-0 z-10 '}flex items-start justify-between gap-4 rounded-t-2xl border-b border-slate-200 bg-white px-5 py-4`}>
+      <div className={`${isModal ? 'flex-none ' : ''}flex items-start justify-between gap-4 rounded-t-2xl border-b border-slate-200 bg-white px-5 py-4`}>
         <div>
           <p className="text-[12px] font-semibold text-[#173B82]">{appearanceSettings.topBadgeText}</p>
           <h1 className="mt-1 text-[17px] font-bold text-slate-900">{appearanceSettings.pageTitle}</h1>
@@ -1816,7 +1818,9 @@ export default function InternalAjukanKerjasamaForm({
           </div>
         )}
 
-        <div className="sticky bottom-0 z-10 -mx-6 -mb-5 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 pb-5 pt-4">
+        {/* Di modal tombol tetap menempel di bawah area scroll modal; di halaman biasa ikut
+            ter-scroll supaya header & tombol tidak memakan ruang isi form. */}
+        <div className={`${isModal ? 'sticky bottom-0 z-10 ' : ''}-mx-6 -mb-5 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 pb-5 pt-4`}>
           <button
             type="button"
             onClick={() => {

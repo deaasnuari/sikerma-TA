@@ -437,6 +437,95 @@ class PengajuanTest extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_pemilik_dapat_perbaiki_pengajuan_revisi_dan_status_kembali_menunggu(): void
+    {
+        $user      = $this->internal();
+        $pengajuan = $this->buatPengajuan([
+            'user_pengusul_id' => $user->id,
+            'status_pengajuan' => 'revisi',
+            'catatan_revisi'   => 'Lengkapi tanggal berakhir',
+        ]);
+
+        $this->actingAs($user)->patchJson("/api/pengajuan/{$pengajuan->id}", [
+            'judul_pengajuan' => 'Judul Sudah Diperbaiki',
+        ])->assertOk();
+
+        $pengajuan->refresh();
+        $this->assertSame('Judul Sudah Diperbaiki', $pengajuan->judul_pengajuan);
+        $this->assertSame('menunggu', $pengajuan->status_pengajuan);
+        $this->assertNotNull($pengajuan->direvisi_pengusul_pada);
+        // Catatan revisi admin tetap tersimpan sebagai jejak.
+        $this->assertSame('Lengkapi tanggal berakhir', $pengajuan->catatan_revisi);
+        $this->assertDatabaseHas('pengajuan_log', [
+            'pengajuan_id' => $pengajuan->id,
+            'status_lama'  => 'revisi',
+            'status_baru'  => 'menunggu',
+        ]);
+    }
+
+    public function test_pemilik_eksternal_dapat_kirim_ulang_perbaikan_revisi(): void
+    {
+        $user      = User::factory()->create(['role' => 'external']);
+        $pengajuan = $this->buatPengajuan([
+            'user_pengusul_id'   => $user->id,
+            'kategori_pengajuan' => 'eksternal',
+            'status_pengajuan'   => 'revisi',
+        ]);
+
+        $this->actingAs($user)->patchJson("/api/pengajuan/{$pengajuan->id}", [
+            'judul_pengajuan' => 'Perbaikan dari Mitra',
+        ])->assertOk();
+
+        $pengajuan->refresh();
+        $this->assertSame('Perbaikan dari Mitra', $pengajuan->judul_pengajuan);
+        $this->assertSame('menunggu', $pengajuan->status_pengajuan);
+        $this->assertNotNull($pengajuan->direvisi_pengusul_pada);
+    }
+
+    public function test_pemilik_dapat_ubah_pengajuan_menunggu_tanpa_ubah_status(): void
+    {
+        $user      = $this->internal();
+        $pengajuan = $this->buatPengajuan(['user_pengusul_id' => $user->id, 'status_pengajuan' => 'menunggu']);
+
+        $this->actingAs($user)->patchJson("/api/pengajuan/{$pengajuan->id}", [
+            'judul_pengajuan' => 'Judul Baru',
+        ])->assertOk();
+
+        $pengajuan->refresh();
+        $this->assertSame('Judul Baru', $pengajuan->judul_pengajuan);
+        $this->assertSame('menunggu', $pengajuan->status_pengajuan);
+        $this->assertNull($pengajuan->direvisi_pengusul_pada);
+    }
+
+    public function test_pemilik_tidak_bisa_ubah_pengajuan_yang_sedang_diproses(): void
+    {
+        $user      = $this->internal();
+        $pengajuan = $this->buatPengajuan(['user_pengusul_id' => $user->id, 'status_pengajuan' => 'diproses']);
+
+        $this->actingAs($user)->patchJson("/api/pengajuan/{$pengajuan->id}", [
+            'judul_pengajuan' => 'Coba Ubah',
+        ])->assertStatus(422);
+
+        $this->assertSame('Kerja Sama Penelitian', $pengajuan->fresh()->judul_pengajuan);
+    }
+
+    public function test_pemilik_tidak_bisa_menyetujui_pengajuannya_sendiri(): void
+    {
+        $user      = $this->internal();
+        $pengajuan = $this->buatPengajuan(['user_pengusul_id' => $user->id, 'status_pengajuan' => 'revisi']);
+
+        $this->actingAs($user)->patchJson("/api/pengajuan/{$pengajuan->id}", [
+            'status_pengajuan' => 'disetujui',
+            'catatan_revisi'   => 'dihapus',
+            'nomor_pengajuan'  => 'PMH-PALSU',
+        ])->assertOk();
+
+        $pengajuan->refresh();
+        $this->assertSame('menunggu', $pengajuan->status_pengajuan);
+        $this->assertNotSame('PMH-PALSU', $pengajuan->nomor_pengajuan);
+        $this->assertSame(0, DokumenKerjasama::where('sumber_pengajuan_id', $pengajuan->id)->count());
+    }
+
     // ------------------------------------------------------------------
     // updateTahapan
     // ------------------------------------------------------------------
@@ -493,8 +582,8 @@ class PengajuanTest extends TestCase
 
     public function test_admin_dapat_hapus_pengajuan(): void
     {
-        // "Hapus" oleh admin sekarang hapus PERMANEN dari database (bukan cuma disembunyikan) —
-        // hilang dari semua orang termasuk pemiliknya sendiri.
+        // Hapus oleh admin hanya menyembunyikan dari admin & pengguna lain — pengusulnya sendiri
+        // (internal/eksternal) tetap melihat pengajuannya.
         $admin     = $this->admin();
         $pemilik   = $this->internal();
         $lainnya   = $this->internal();
@@ -503,28 +592,113 @@ class PengajuanTest extends TestCase
         $this->actingAs($admin)->deleteJson("/api/pengajuan/{$pengajuan->id}")
             ->assertOk()->assertJsonPath('success', true);
 
-        // Baris sudah benar-benar hilang dari database.
-        $this->assertDatabaseMissing('pengajuan_v2', ['id' => $pengajuan->id]);
+        // Baris masih ada di database, cuma ditandai dihapus admin.
+        $this->assertNotNull($pengajuan->fresh()->dihapus_admin_pada);
 
         // Hilang dari daftar kelola admin.
         $adminIds = collect($this->actingAs($admin)->getJson('/api/pengajuan?per_page=100')->json('data.data'))
             ->pluck('id');
         $this->assertNotContains($pengajuan->id, $adminIds);
+        $this->actingAs($admin)->getJson("/api/pengajuan/{$pengajuan->id}")->assertNotFound();
 
         // Hilang juga dari pengguna internal lain yang tidak terkait.
         $lainnyaIds = collect($this->actingAs($lainnya)->getJson('/api/pengajuan?per_page=100')->json('data.data'))
             ->pluck('id');
         $this->assertNotContains($pengajuan->id, $lainnyaIds);
 
-        // Sekarang hapus admin sungguhan hilang permanen, jadi pemiliknya sendiri pun sudah
-        // tidak bisa melihatnya lagi di daftar maupun detail.
+        // Pemiliknya tetap melihat pengajuannya di daftar maupun detail.
         $pemilikIds = collect($this->actingAs($pemilik)->getJson('/api/pengajuan?per_page=100')->json('data.data'))
             ->pluck('id');
-        $this->assertNotContains($pengajuan->id, $pemilikIds);
-        $this->actingAs($pemilik)->getJson("/api/pengajuan/{$pengajuan->id}")->assertNotFound();
+        $this->assertContains($pengajuan->id, $pemilikIds);
+        $this->actingAs($pemilik)->getJson("/api/pengajuan/{$pengajuan->id}")->assertOk();
+    }
 
-        // Akun pemiliknya sendiri (login/profil) tidak ikut tersentuh sama sekali.
-        $this->assertDatabaseHas('users', ['id' => $pemilik->id, 'email' => $pemilik->email]);
+    public function test_admin_hapus_pengajuan_eksternal_tetap_terlihat_oleh_mitra(): void
+    {
+        $admin     = $this->admin();
+        $mitra     = User::factory()->create(['role' => 'external']);
+        $pengajuan = $this->buatPengajuan(['user_pengusul_id' => $mitra->id, 'kategori_pengajuan' => 'eksternal']);
+
+        $this->actingAs($admin)->deleteJson("/api/pengajuan/{$pengajuan->id}")->assertOk();
+
+        $mitraIds = collect($this->actingAs($mitra)->getJson('/api/pengajuan?per_page=100')->json('data.data'))
+            ->pluck('id');
+        $this->assertContains($pengajuan->id, $mitraIds);
+    }
+
+    public function test_admin_hapus_pengajuan_eksternal_yang_sudah_diacc_tetap_ada_di_mitra(): void
+    {
+        $admin = $this->admin();
+        $mitra = User::factory()->create(['role' => 'external']);
+
+        foreach (['disetujui', 'final_approved'] as $status) {
+            $pengajuan = $this->buatPengajuan([
+                'user_pengusul_id'   => $mitra->id,
+                'kategori_pengajuan' => 'eksternal',
+                'status_pengajuan'   => $status,
+            ]);
+
+            $this->actingAs($admin)->deleteJson("/api/pengajuan/{$pengajuan->id}")->assertOk();
+
+            // Tetap ada di database dan tetap tampil di Daftar Kerjasama mitra, lengkap dengan statusnya.
+            $this->assertDatabaseHas('pengajuan_v2', ['id' => $pengajuan->id, 'status_pengajuan' => $status]);
+            $mitraRows = collect($this->actingAs($mitra)->getJson('/api/pengajuan?per_page=100')->json('data.data'));
+            $this->assertContains($pengajuan->id, $mitraRows->pluck('id'));
+            $this->actingAs($mitra)->getJson("/api/pengajuan/{$pengajuan->id}")->assertOk();
+        }
+    }
+
+    public function test_admin_hapus_pengajuan_dan_rekap_internal_yang_sudah_diacc_tetap_ada_di_internal(): void
+    {
+        $admin    = $this->admin();
+        $internal = $this->internal();
+        $unit     = MasterUnitProdi::create(['nama' => 'Jurusan Uji Internal', 'jenis_node' => 'unit']);
+        $pengajuan = $this->buatPengajuan([
+            'user_pengusul_id'   => $internal->id,
+            'kategori_pengajuan' => 'internal',
+            'status_pengajuan'   => 'final_approved',
+            'nomor_pengajuan'    => 'PMH-INT-ACC-001',
+        ]);
+        $dokumen = DokumenKerjasama::create([
+            'nomor_dokumen'       => 'INT-ACC-001/MOU.PL29/IX/2026',
+            'nama_dokumen'        => 'Dokumen Internal ACC',
+            'jenis_dokumen'       => 'MOU',
+            'no_permohonan'       => $pengajuan->nomor_pengajuan,
+            'sumber_pengajuan_id' => $pengajuan->id,
+            'unit_prodi_id'       => $unit->id,
+            'file'                => 'pengajuan/2026/09/int-acc.pdf',
+        ]);
+
+        // Admin menghapus dari Data Pengajuan dan dari Rekap Data.
+        $this->actingAs($admin)->deleteJson("/api/pengajuan/{$pengajuan->id}")->assertOk();
+        $this->actingAs($admin)->deleteJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+
+        // Internal tetap melihat pengajuannya (Data Pengajuan) ...
+        $pengajuanIds = collect($this->actingAs($internal)->getJson('/api/pengajuan?per_page=100')->json('data.data'))->pluck('id');
+        $this->assertContains($pengajuan->id, $pengajuanIds);
+
+        // ... dan dokumen kerjasamanya (Rekap Data).
+        $this->actingAs($internal)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
+    }
+
+    public function test_mitra_eksternal_tidak_bisa_hapus_pengajuannya(): void
+    {
+        $mitra     = User::factory()->create(['role' => 'external']);
+        $pengajuan = $this->buatPengajuan(['user_pengusul_id' => $mitra->id, 'kategori_pengajuan' => 'eksternal']);
+
+        $this->actingAs($mitra)->deleteJson("/api/pengajuan/{$pengajuan->id}")->assertForbidden();
+
+        $this->assertDatabaseHas('pengajuan_v2', ['id' => $pengajuan->id, 'dihapus_user_pada' => null]);
+    }
+
+    public function test_admin_hapus_pengajuan_buatan_admin_dihapus_permanen(): void
+    {
+        $admin     = $this->admin();
+        $pengajuan = $this->buatPengajuan(['user_pengusul_id' => $admin->id]);
+
+        $this->actingAs($admin)->deleteJson("/api/pengajuan/{$pengajuan->id}")->assertOk();
+
+        $this->assertDatabaseMissing('pengajuan_v2', ['id' => $pengajuan->id]);
     }
 
     public function test_admin_hapus_pengajuan_buatan_sendiri_tidak_muncul_balik_ke_admin(): void
@@ -601,11 +775,9 @@ class PengajuanTest extends TestCase
 
     public function test_admin_hapus_pengajuan_tidak_ikut_hapus_dokumen_kerjasama_terkait(): void
     {
-        // Beda dari test_hapus_pengajuan_ikut_sembunyikan_dokumen_kerjasama_terkait (yang itu
-        // soal pemilik menghapus miliknya sendiri, TETAP cascade menyembunyikan) — di sini admin
-        // menghapus dari Data Pengajuan itu murni hapus permanen pengajuannya saja. Rekap Data
-        // (dokumen_kerjasama) TIDAK ikut terhapus; masing-masing halaman punya tombol hapus
-        // sendiri-sendiri.
+        // Admin menghapus dari Data Pengajuan = menyembunyikan pengajuannya dari admin saja.
+        // Rekap Data (dokumen_kerjasama) TIDAK ikut terhapus; masing-masing halaman punya tombol
+        // hapus sendiri-sendiri.
         $admin   = $this->admin();
         $pemilik = $this->internal();
         $unit    = MasterUnitProdi::create(['nama' => 'Jurusan Uji Admin', 'jenis_node' => 'unit']);
@@ -622,10 +794,15 @@ class PengajuanTest extends TestCase
 
         $this->actingAs($admin)->deleteJson("/api/pengajuan/{$pengajuan->id}")->assertOk();
 
-        $this->assertDatabaseMissing('pengajuan_v2', ['id' => $pengajuan->id]);
+        // Pengajuan tetap ada untuk pengusulnya, hanya disembunyikan dari admin.
+        $this->assertNotNull($pengajuan->fresh()->dihapus_admin_pada);
 
-        // Dokumen kerjasama-nya tetap ada di Rekap Data, tidak ikut terhapus.
-        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
+        // Dokumen kerjasama-nya tetap ada di Rekap Data, tidak ikut terhapus / disembunyikan.
+        $this->assertDatabaseHas('dokumen_kerjasama', [
+            'id' => $dokumen->id,
+            'sumber_pengajuan_id' => $pengajuan->id,
+            'dihapus_admin_pada' => null,
+        ]);
     }
 
     public function test_hapus_pengajuan_ditolak_bukan_pemilik_dan_bukan_admin(): void

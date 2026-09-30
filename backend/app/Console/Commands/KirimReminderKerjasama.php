@@ -10,7 +10,8 @@ class KirimReminderKerjasama extends Command
 {
     protected $signature = 'sikerma:kirim-reminder-kerjasama
         {--dry-run : Tampilkan apa yang akan dikirim tanpa benar-benar mengirim / menyimpan}
-        {--tanggal= : Anggap tanggal ini sebagai "hari ini" (format Y-m-d), untuk pengujian}';
+        {--tanggal= : Anggap tanggal ini sebagai "hari ini" (format Y-m-d), untuk pengujian}
+        {--dokumen=* : Batasi ke ID dokumen tertentu saja (bisa diulang), untuk pengujian}';
 
     protected $description = 'Kirim email pengingat otomatis untuk dokumen kerja sama yang mendekati tanggal berakhir (3 bulan / 1 bulan / urgent)';
 
@@ -25,7 +26,9 @@ class KirimReminderKerjasama extends Command
             $dryRun ? ' (DRY RUN — tidak mengirim)' : '',
         ));
 
-        $hasil = $service->jalankan($hariIni, $dryRun);
+        $dokumenIds = array_values(array_filter(array_map('intval', (array) $this->option('dokumen'))));
+
+        $hasil = $service->jalankan($hariIni, $dryRun, $dokumenIds);
 
         if ($hasil['baris'] === []) {
             $this->line('Tidak ada dokumen yang perlu dikirimi pengingat.');

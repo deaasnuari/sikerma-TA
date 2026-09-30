@@ -1,6 +1,7 @@
 import { getAktivitasByKerjasamaId, type AktivitasItem } from './adminStoryAktivitasService';
 import type { PengajuanItem, PengajuanStatus } from './adminPengajuanService';
 import type { RekapDokumen } from './adminRekapDataService';
+import { formatSisaMasaBerlaku } from '@/lib/sisaMasaBerlaku';
 
 export interface StoryAktivitasTimelineItem extends AktivitasItem {
   sourcePengajuanId: number;
@@ -71,23 +72,7 @@ function formatMasaBerlaku(value?: string): string {
     return '-';
   }
 
-  const diffDays = Math.ceil((endDate.getTime() - Date.now()) / 86400000);
-  if (diffDays < 0) {
-    return 'Kadaluarsa';
-  }
-
-  if (diffDays === 0) {
-    return 'Hari ini';
-  }
-
-  const months = Math.floor(diffDays / 30);
-  const days = diffDays % 30;
-
-  if (months > 0) {
-    return days > 0 ? `${months} Bulan ${days} Hari` : `${months} Bulan`;
-  }
-
-  return `${diffDays} Hari`;
+  return formatSisaMasaBerlaku(endDate) ?? 'Kadaluarsa';
 }
 
 function compareDesc(left?: string, right?: string): number {

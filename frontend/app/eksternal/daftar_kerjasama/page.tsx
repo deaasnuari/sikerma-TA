@@ -2,6 +2,7 @@
 
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -14,21 +15,22 @@ import {
   Filter,
   MessageSquareText,
   Paperclip,
+  Pencil,
   Search,
+  Send,
   ShieldCheck,
   Tag,
-  Trash2,
   User,
   X,
   XCircle,
 } from 'lucide-react';
 import LaporanPelaksanaanModal, { type LaporanPelaksanaanData } from '@/components/LaporanPelaksanaanModal';
-import ConfirmDialog from '@/components/ConfirmDialog';
 import { exportToExcel } from '@/lib/exportExcel';
 import type { PengajuanItem } from '../../../services/adminPengajuanService';
-import { deletePengajuanItemApi, fetchPengajuanDataFromApi, refreshPengajuanDataFromApi } from '@/services/adminPengajuanService';
+import { fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
-import type { StageGroup } from '@/services/tahapanPengajuanService';
+import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
+import PerbaikanPengajuanModal, { bolehDiubahPengusul } from '@/components/PerbaikanPengajuanModal';
 import {
   getExternalPengajuanData,
   getExternalPengajuanUpdateEventName,
@@ -55,7 +57,7 @@ interface KerjasamaItem {
   fileAttachments: { name: string; url: string; isAcc?: boolean }[];
   finalFileName?: string | null;
   finalFilePath?: string | null;
-  status: 'Menunggu' | 'Diproses' | 'Aktif' | 'Berakhir';
+  status: 'Menunggu' | 'Diproses' | 'Revisi' | 'Aktif' | 'Berakhir';
   reviewState: 'Belum Direview' | 'Sudah Direview';
   reviewComment?: string;
   reviewedAt?: string;
@@ -66,6 +68,10 @@ interface KerjasamaItem {
   // tanggalBerakhir asli (bukan dari `status` yang di sini artinya "hasil review pengajuan",
   // beda dari status masa berlaku dokumen di Rekap Data admin/internal).
   masaBerlakuTier?: 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa' | null;
+  catatanRevisi?: string | null;
+  direvisiPengusulPada?: string | null;
+  // Data pengajuan asli dari API — dipakai form perbaikan/edit.
+  sumber: PengajuanItem;
 }
 
 function resolveMasaBerlakuTier(tanggalBerakhir?: string): 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa' | null {
@@ -90,8 +96,13 @@ function mapPengajuanToItem(item: PengajuanItem): KerjasamaItem {
   const tahun = (item.tanggalMulai || item.diajukanPada || new Date().toISOString()).slice(0, 4);
   const statusMap: Record<string, KerjasamaItem['status']> = {
     Menunggu: 'Menunggu',
+    'Menunggu Review': 'Menunggu',
     Diproses: 'Diproses',
+    Revisi: 'Revisi',
+    'Disetujui Internal': 'Diproses',
+    'Disetujui Mitra': 'Diproses',
     Disetujui: 'Aktif',
+    'Final Approved': 'Aktif',
     Ditolak: 'Berakhir',
   };
   return {
@@ -129,12 +140,16 @@ function mapPengajuanToItem(item: PengajuanItem): KerjasamaItem {
     tahapanStage: item.tahapanStage ?? null,
     tahapanGroup: item.tahapanGroup ?? null,
     masaBerlakuTier: statusMap[item.statusPengajuan] === 'Aktif' ? resolveMasaBerlakuTier(item.tanggalBerakhir) : null,
+    catatanRevisi: item.catatanRevisi ?? null,
+    direvisiPengusulPada: item.direvisiPengusulPada ?? null,
+    sumber: item,
   };
 }
 
 const statusStyle: Record<KerjasamaItem['status'], string> = {
   Menunggu: 'bg-amber-100 text-amber-700',
   Diproses: 'bg-sky-100 text-sky-700',
+  Revisi: 'bg-orange-100 text-orange-700',
   Aktif: 'bg-emerald-100 text-emerald-700',
   Berakhir: 'bg-rose-100 text-rose-700',
 };
@@ -154,6 +169,11 @@ const statusDetailConfig: Record<KerjasamaItem['status'], { className: string; i
     className: 'bg-sky-100 text-sky-700',
     icon: <Clock3 size={14} />,
     label: 'Diproses',
+  },
+  Revisi: {
+    className: 'bg-orange-100 text-orange-700',
+    icon: <AlertTriangle size={14} />,
+    label: 'Revisi',
   },
   Aktif: {
     className: 'bg-emerald-100 text-emerald-700',
@@ -176,6 +196,7 @@ const jenisStyle: Record<KerjasamaItem['jenis'], string> = {
 const reviewCopy: Record<KerjasamaItem['status'], string> = {
   Menunggu: 'Pengajuan sudah masuk dan sedang menunggu review dari admin.',
   Diproses: 'Admin sedang memeriksa detail pengajuan kerja sama ini.',
+  Revisi: 'Pengajuan perlu direvisi sesuai catatan admin.',
   Aktif: 'Pengajuan sudah disetujui admin dan siap ditindaklanjuti.',
   Berakhir: 'Pengajuan belum disetujui admin. Silakan cek catatan review.',
 };
@@ -184,9 +205,8 @@ export default function DaftarKerjasamaEksternalPage() {
   const [data, setData] = useState<KerjasamaItem[]>([]);
   const [detailItem, setDetailItem] = useState<KerjasamaItem | null>(null);
   const [laporanItem, setLaporanItem] = useState<LaporanPelaksanaanData | null>(null);
-  const [hapusTarget, setHapusTarget] = useState<KerjasamaItem | null>(null);
-  const [hapusLoading, setHapusLoading] = useState(false);
-  const [hapusError, setHapusError] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<PengajuanItem | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterReview, setFilterReview] = useState<'Semua Review' | 'Belum Direview' | 'Sudah Direview'>('Semua Review');
@@ -206,8 +226,7 @@ export default function DaftarKerjasamaEksternalPage() {
     // bukan cache localStorage per-browser (pengajuanKerjasamaDataEksternal:*) seperti sebelumnya.
     // Cache lokal itu cuma keisi kalau pengajuannya dibuat lewat form di browser yang SAMA, jadi
     // kalau akun eksternal login dari device/browser lain (atau cache-nya kosong/ke-clear),
-    // daftarnya kelihatan kosong — termasuk baris yang sebetulnya sudah dihapus/masih ada di
-    // server, bikin tombol Hapus seolah "tidak aktif" karena barisnya sendiri tidak pernah muncul.
+    // daftarnya kelihatan kosong padahal datanya masih ada di server.
     const sync = async () => {
       if (!isMounted) {
         return;
@@ -231,12 +250,40 @@ export default function DaftarKerjasamaEksternalPage() {
     window.addEventListener(updateEventName, sync);
     window.addEventListener('pengajuan-data-updated', sync);
 
+    // Polling supaya keputusan admin (revisi / ACC / tahapan) langsung kelihatan tanpa refresh.
+    // Di-skip saat tab tidak aktif; begitu tab dibuka lagi langsung fetch.
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') void sync();
+    }, 10000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void sync();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       isMounted = false;
+      clearInterval(intervalId);
       window.removeEventListener(updateEventName, sync);
       window.removeEventListener('pengajuan-data-updated', sync);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
+
+  // Modal detail yang sedang terbuka ikut diperbarui saat data baru masuk.
+  useEffect(() => {
+    setDetailItem((current) => (current ? data.find((item) => item.id === current.id) ?? current : current));
+  }, [data]);
+
+  const bukaPerbaikan = (item: KerjasamaItem) => {
+    if (!bolehDiubahPengusul(item.sumber.statusPengajuan)) {
+      setInfoMessage(
+        'Pengajuan ini sedang diproses admin sehingga belum bisa diubah. Perubahan hanya bisa dilakukan saat pengajuan masih menunggu review atau diminta revisi.'
+      );
+      return;
+    }
+    setDetailItem(null);
+    setEditingItem(item.sumber);
+  };
 
   const filteredItems = useMemo(() => {
     const keyword = search.toLowerCase().trim();
@@ -276,30 +323,6 @@ export default function DaftarKerjasamaEksternalPage() {
       totalKadaluarsa: disetujui.filter((item) => item.masaBerlakuTier === 'Kadaluarsa').length,
     };
   }, [data]);
-
-  const handleDelete = (item: KerjasamaItem) => {
-    setHapusError(null);
-    setHapusTarget(item);
-  };
-
-  const jalankanHapus = async () => {
-    if (!hapusTarget) return;
-    setHapusLoading(true);
-    setHapusError(null);
-    try {
-      // Backend memastikan yang boleh dihapus cuma milik sendiri — dan sekarang hapus permanen
-      // dari database (lihat PengajuanController::destroy), bukan cuma disembunyikan.
-      await deletePengajuanItemApi(hapusTarget.id);
-      // Refresh cache pengajuan dari server & broadcast 'pengajuan-data-updated' — listener yang
-      // sudah ada di halaman ini (lihat useEffect di atas) akan ikut sinkron ulang otomatis.
-      await refreshPengajuanDataFromApi(true);
-      setHapusTarget(null);
-    } catch (error) {
-      setHapusError(error instanceof Error ? error.message : 'Gagal menghapus pengajuan.');
-    } finally {
-      setHapusLoading(false);
-    }
-  };
 
   const handleExport = () => {
     const headers = ['No. Dokumen', 'Nama Mitra', 'Jenis Mitra', 'Tingkat Perusahaan', 'Jenis', 'Jurusan/Unit', 'Tanggal Mulai', 'Berlaku Hingga', 'Tahun', 'Status'];
@@ -371,6 +394,7 @@ export default function DaftarKerjasamaEksternalPage() {
               <option>Semua Status</option>
               <option>Menunggu</option>
               <option>Diproses</option>
+              <option>Revisi</option>
               <option>Aktif</option>
               <option>Berakhir</option>
             </select>
@@ -479,64 +503,94 @@ export default function DaftarKerjasamaEksternalPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1280px] w-full border-collapse text-[12px]">
+          {/* Kolom dipadatkan (mitra + jenis/tingkat, masa berlaku, status + review) dan kolom Aksi
+              menempel di kanan, supaya aksi selalu terlihat tanpa harus geser tabel jauh-jauh. */}
+          <table className="min-w-[920px] w-full border-collapse text-[12px]">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600">
                 <th className="px-4 py-3">No. Dokumen</th>
-                <th className="px-4 py-3">Nama Mitra</th>
-                <th className="px-4 py-3">Jenis Mitra</th>
-                <th className="px-4 py-3">Tingkat Perusahaan</th>
+                <th className="px-4 py-3">Mitra</th>
                 <th className="px-4 py-3">Jenis</th>
                 <th className="px-4 py-3">Jurusan/Unit</th>
-                <th className="px-4 py-3">Tanggal Mulai</th>
-                <th className="px-4 py-3">Berlaku Hingga</th>
+                <th className="px-4 py-3">Masa Berlaku</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Review</th>
-                <th className="px-4 py-3">Aksi</th>
+                <th className="sticky right-0 bg-slate-50 px-4 py-3 text-center shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.15)]">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                     Tidak ada data kerjasama.
                   </td>
                 </tr>
               ) : (
                 filteredItems.map((item) => (
-                  <tr key={item.id} className="border-b border-slate-100 text-slate-700 hover:bg-slate-50/70">
-                    <td className="px-4 py-3 font-medium text-slate-800">{item.noDokumen}</td>
-                    <td className="px-4 py-3">{item.namaMitra}</td>
-                    <td className="px-4 py-3">{item.jenisMitra}</td>
-                    <td className="px-4 py-3">{item.tingkatPerusahaan}</td>
+                  <tr key={item.id} className="group border-b border-slate-100 text-slate-700 hover:bg-slate-50">
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800">{item.noDokumen}</td>
+                    <td className="max-w-[260px] px-4 py-3">
+                      <p className="truncate font-medium text-slate-800" title={item.namaMitra}>{item.namaMitra}</p>
+                      <p className="truncate text-[10.5px] text-slate-500">
+                        {[item.jenisMitra, item.tingkatPerusahaan].filter((v) => v && v !== '-').join(' · ') || '-'}
+                      </p>
+                    </td>
                     <td className="px-4 py-3">
                       <span className="rounded-md bg-slate-100 px-2 py-1 text-[10.5px] font-semibold text-slate-700">
                         {item.jenis}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{item.unit}</td>
-                    <td className="px-4 py-3">{item.tanggalMulai}</td>
-                    <td className="px-4 py-3">{item.berlakuHingga}</td>
-                    <td className="px-4 py-3">
-                      <span className={`rounded-full px-2.5 py-1 text-[10.5px] font-semibold ${statusStyle[item.status]}`}>
-                        {item.status}
-                      </span>
+                    <td className="max-w-[200px] px-4 py-3">
+                      <p className="line-clamp-2" title={item.unit}>{item.unit}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-[11px]">
+                      {item.tanggalMulai} – {item.berlakuHingga}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`rounded-full px-2.5 py-1 text-[10.5px] font-semibold ${reviewStateStyle[item.reviewState]}`}>
-                        {item.reviewState}
-                      </span>
+                      <div className="flex flex-col items-start gap-1">
+                        <span className={`rounded-full px-2.5 py-1 text-[10.5px] font-semibold ${statusStyle[item.status]}`}>
+                          {item.status}
+                        </span>
+                        {item.status === 'Menunggu' && item.direvisiPengusulPada ? (
+                          <span className="text-[10px] font-medium text-sky-700">Perbaikan terkirim</span>
+                        ) : (
+                          <span className={`rounded-full px-2 py-0.5 text-[9.5px] font-semibold ${reviewStateStyle[item.reviewState]}`}>
+                            {item.reviewState}
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
+                    <td className="sticky right-0 bg-white px-3 py-3 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.15)] group-hover:bg-slate-50">
+                      <div className="flex items-center justify-center gap-1">
                         <button
                           type="button"
+                          title="Lihat Detail"
                           onClick={() => setDetailItem(item)}
-                          className="inline-flex items-center gap-2 text-slate-700 hover:text-slate-900"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                         >
                           <Eye size={16} />
-                          <span className="underline underline-offset-2">Lihat Detail</span>
                         </button>
+                        {item.status === 'Revisi' ? (
+                          <button
+                            type="button"
+                            title="Perbaiki & kirim ulang"
+                            onClick={() => bukaPerbaikan(item)}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-orange-600 px-2.5 text-[11px] font-semibold text-white hover:bg-orange-700"
+                          >
+                            <Send size={13} />
+                            Perbaiki
+                          </button>
+                        ) : (
+                          bolehDiubahPengusul(item.sumber.statusPengajuan) && (
+                            <button
+                              type="button"
+                              title="Edit pengajuan"
+                              onClick={() => bukaPerbaikan(item)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+                            >
+                              <Pencil size={15} />
+                            </button>
+                          )
+                        )}
                         <button
                           type="button"
                           title="Laporan Pelaksanaan"
@@ -548,18 +602,9 @@ export default function DaftarKerjasamaEksternalPage() {
                             unit:         item.unit,
                             pengajuanId:  item.id,
                           })}
-                          className="inline-flex items-center gap-1.5 text-emerald-600 hover:text-emerald-800"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800"
                         >
                           <FileText size={16} />
-                          <span className="underline underline-offset-2 text-[12px]">Laporan</span>
-                        </button>
-                        <button
-                          type="button"
-                          title="Hapus dari daftar saya"
-                          onClick={() => handleDelete(item)}
-                          className="inline-flex items-center gap-1.5 text-red-500 hover:text-red-700"
-                        >
-                          <Trash2 size={16} />
                         </button>
                       </div>
                     </td>
@@ -622,6 +667,33 @@ export default function DaftarKerjasamaEksternalPage() {
                   {detailItem.jenis}
                 </span>
               </div>
+
+              {detailItem.status === 'Revisi' && (
+                <section className="rounded-xl border border-orange-200 bg-orange-50 p-4">
+                  <p className="flex items-center gap-2 text-[12px] font-semibold text-orange-800">
+                    <AlertTriangle size={15} />
+                    Admin meminta revisi
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-[12px] text-orange-900">
+                    {detailItem.catatanRevisi || detailItem.reviewComment || 'Silakan perbaiki pengajuan sesuai arahan admin.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => bukaPerbaikan(detailItem)}
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-[12px] font-semibold text-white hover:bg-orange-700"
+                  >
+                    <Send size={14} />
+                    Perbaiki &amp; Kirim Ulang
+                  </button>
+                </section>
+              )}
+
+              {detailItem.status === 'Menunggu' && detailItem.direvisiPengusulPada && (
+                <p className="inline-flex items-center gap-1.5 rounded-lg bg-sky-50 px-3 py-1.5 text-[10.5px] font-medium text-sky-700">
+                  <CheckCircle2 size={13} />
+                  Perbaikan terkirim {new Date(detailItem.direvisiPengusulPada).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })} — menunggu review ulang admin.
+                </p>
+              )}
 
               <section>
                 <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">Informasi Umum</h3>
@@ -768,7 +840,12 @@ export default function DaftarKerjasamaEksternalPage() {
                 {detailItem.reviewComment ? (
                   <p className="text-[12px] text-slate-700">{detailItem.reviewComment}</p>
                 ) : (
-                  <p className="text-[12px] text-slate-700">{reviewCopy[detailItem.status]}</p>
+                  <p className="text-[12px] text-slate-700">
+                    {(detailItem.status !== 'Berakhir' && detailItem.status !== 'Revisi'
+                      ? reviewTextFromTahapan(detailItem.tahapanStage)
+                      : null) ||
+                      reviewCopy[detailItem.status]}
+                  </p>
                 )}
 
                 {(detailItem.reviewedAt || detailItem.reviewedBy) && (
@@ -800,37 +877,41 @@ export default function DaftarKerjasamaEksternalPage() {
         </div>
       )}
 
+      {editingItem && (
+        <PerbaikanPengajuanModal
+          item={editingItem}
+          nomorPengajuanSource="eksternal"
+          onClose={() => setEditingItem(null)}
+          onMessage={setInfoMessage}
+        />
+      )}
+
+      {infoMessage && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40 px-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h3 className="text-[15px] font-bold text-slate-900">Informasi</h3>
+            </div>
+            <p className="px-5 py-4 text-[12px] text-slate-700">{infoMessage}</p>
+            <div className="flex justify-end border-t border-slate-200 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setInfoMessage(null)}
+                className="h-9 rounded-lg bg-[#173B82] px-4 text-[12px] font-semibold text-white hover:bg-[#2A4A8F]"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <LaporanPelaksanaanModal
         isOpen={laporanItem !== null}
         onClose={() => setLaporanItem(null)}
         data={laporanItem}
       />
 
-      <ConfirmDialog
-        open={hapusTarget !== null}
-        title="Hapus pengajuan?"
-        message={
-          <>
-            Pengajuan <span className="font-semibold">{hapusTarget?.noDokumen}</span> akan dihapus{' '}
-            <span className="font-semibold">permanen</span> dan tidak bisa dikembalikan.
-          </>
-        }
-        confirmLabel="Ya, hapus"
-        loading={hapusLoading}
-        onConfirm={jalankanHapus}
-        onCancel={() => {
-          if (!hapusLoading) {
-            setHapusTarget(null);
-            setHapusError(null);
-          }
-        }}
-      />
-
-      {hapusError && (
-        <div className="fixed bottom-5 left-1/2 z-[95] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-[12px] font-semibold text-red-700 shadow-lg">
-          {hapusError}
-        </div>
-      )}
     </div>
   );
 }

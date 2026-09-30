@@ -21,9 +21,10 @@ use Illuminate\Support\Str;
 class KerjasamaReminderService
 {
     /**
+     * @param  int[]  $dokumenIds  Kosong = semua dokumen; diisi = hanya dokumen ini (untuk pengujian).
      * @return array{terkirim:int, gagal:int, dilewati:int, sudah_pernah:int, baris:array<int,array<string,mixed>>}
      */
-    public function jalankan(?Carbon $hariIni = null, bool $dryRun = false): array
+    public function jalankan(?Carbon $hariIni = null, bool $dryRun = false, array $dokumenIds = []): array
     {
         $hariIni = CarbonImmutable::parse(($hariIni ?? Carbon::now())->toDateString());
 
@@ -43,6 +44,7 @@ class KerjasamaReminderService
                 ->whereNull('dihapus_user_pada')
                 ->whereNull('diarsipkan_pada')
                 ->whereNotNull('tanggal_berakhir')
+                ->when($dokumenIds !== [], fn ($q) => $q->whereIn('id', $dokumenIds))
                 ->whereDate('tanggal_berakhir', '<=', $batasAtas)
                 ->whereDate('tanggal_berakhir', '>=', $batasBawah)
                 ->orderBy('tanggal_berakhir')

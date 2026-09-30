@@ -38,6 +38,7 @@ import {
   findStoryAktivitasGroupFromRekapByRouteParam,
   type StoryAktivitasTimelineItem,
 } from '@/services/storyAktivitasGrouping';
+import { formatSisaMasaBerlaku } from '@/lib/sisaMasaBerlaku';
 
 type AktivitasStatus = 'direncanakan' | 'berlangsung' | 'selesai';
 
@@ -125,26 +126,7 @@ function formatMasaBerlaku(value?: string): string {
     return '-';
   }
 
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const diffDays = Math.ceil((endDate.getTime() - now.getTime()) / 86400000);
-
-  if (diffDays < 0) {
-    return 'Kadaluarsa';
-  }
-
-  if (diffDays === 0) {
-    return 'Hari ini';
-  }
-
-  const months = Math.floor(diffDays / 30);
-  const days = diffDays % 30;
-
-  if (months > 0) {
-    return days > 0 ? `${months} bulan ${days} hari` : `${months} bulan`;
-  }
-
-  return `${diffDays} hari`;
+  return formatSisaMasaBerlaku(endDate) ?? 'Kadaluarsa';
 }
 
 function getKerjasamaStatus(tanggalBerakhir?: string): 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa' {

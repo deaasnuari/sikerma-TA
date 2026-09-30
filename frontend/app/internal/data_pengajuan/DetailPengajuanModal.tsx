@@ -4,7 +4,7 @@ import { X, FileText, User, Building2, CalendarDays, Tag, CheckCircle2, Clock3, 
 import type { PengajuanItem, PengajuanStatus } from '@/services/adminPengajuanService';
 import { pengajuanDokumenBadge } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
-import type { StageGroup } from '@/services/tahapanPengajuanService';
+import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
 
 interface Props {
   item: PengajuanItem;
@@ -35,6 +35,12 @@ const reviewCopy: Record<PengajuanStatus, string> = {
   'Final Approved': 'Pengajuan telah mendapat persetujuan final.',
   Ditolak: 'Pengajuan belum disetujui admin. Silakan cek catatan review.',
 };
+
+// Revisi / Ditolak butuh tindakan pengusul, jadi teks status tetap didahulukan di atas tahapan.
+function tahapanReviewText(item: PengajuanItem): string | null {
+  if (item.statusPengajuan === 'Revisi' || item.statusPengajuan === 'Ditolak') return null;
+  return reviewTextFromTahapan(item.tahapanStage);
+}
 
 function normalizeWhatsAppNumber(value?: string | null): string {
   return (value || '').replace(/[^\d]/g, '');
@@ -264,7 +270,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
               Hasil Review Admin
             </div>
             <p className="text-[12px] text-slate-700">
-              {item.reviewComment || reviewCopy[item.statusPengajuan]}
+              {item.reviewComment || tahapanReviewText(item) || reviewCopy[item.statusPengajuan]}
             </p>
             {item.reviewedAt && (
               <p className="mt-2 text-[10px] text-slate-500">

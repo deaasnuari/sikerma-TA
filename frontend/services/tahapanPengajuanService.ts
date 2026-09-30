@@ -30,6 +30,22 @@ export const STAGE_DIBATALKAN = 'Dibatalkan / Dihentikan';
 export const STAGE_SELESAI    = 'Selesai';
 export const STAGE_AWAL       = 'Pengajuan Awal';
 
+// Teks "Hasil Review Admin" untuk pengusul, mengikuti tahapan yang di-set admin.
+const TAHAPAN_REVIEW_TEXT: Record<string, string> = {
+  'Pengajuan Awal': 'Pengajuan sudah diterima admin dan berada di tahap awal (Pengajuan Awal).',
+  'Penyusunan Dokumen': 'Pengajuan sedang di tahap Penyusunan Dokumen kerja sama.',
+  'Koordinasi & Review Internal': 'Pengajuan sedang di tahap Koordinasi & Review Internal.',
+  'Review & Negosiasi Mitra': 'Pengajuan sedang di tahap Review & Negosiasi dengan mitra.',
+  'Finalisasi & Penandatanganan Dokumen': 'Pengajuan sedang di tahap Finalisasi & Penandatanganan Dokumen.',
+  'Dibatalkan / Dihentikan': 'Proses pengajuan ini dibatalkan / dihentikan oleh admin.',
+  'Selesai': 'Seluruh tahapan pengajuan kerja sama ini sudah selesai.',
+};
+
+export function reviewTextFromTahapan(stage?: string | null): string | null {
+  if (!stage) return null;
+  return TAHAPAN_REVIEW_TEXT[stage] ?? `Pengajuan sedang di tahap ${stage}.`;
+}
+
 export interface RiwayatEntry {
   stage: string;
   group: StageGroup;

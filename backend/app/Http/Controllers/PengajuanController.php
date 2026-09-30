@@ -25,6 +25,26 @@ use Illuminate\Validation\Rule;
 
 class PengajuanController extends Controller
 {
+    /** Status di mana pengusul masih boleh mengubah pengajuannya sendiri. */
+    private const STATUS_BOLEH_DIUBAH_PENGUSUL = ['menunggu', 'revisi'];
+
+    /** Field yang hanya boleh diubah admin lewat update(). */
+    private const FIELD_KHUSUS_ADMIN = [
+        'nomor_pengajuan',
+        'user_pengusul_id',
+        'kategori_pengajuan',
+        'status_pengajuan',
+        'catatan',
+        'catatan_revisi',
+        'keputusan',
+        'final_file_name',
+        'final_file_path',
+        'acc_actor',
+        'diajukan_pada',
+        'email_terverifikasi_pada',
+        'distribusi_user_ids',
+    ];
+
     private static array $pengajuanColumnCache = [];
     private static ?bool $pengajuanFileTableExists = null;
     private static ?bool $dokumenKerjasamaTableExists = null;
@@ -1368,8 +1388,27 @@ class PengajuanController extends Controller
 
     public function update(Request $request, Pengajuan $pengajuan): Response
     {
-        if ($response = $this->ensureAdmin($request)) {
-            return $response;
+        // Admin boleh ubah apa saja. Pemilik pengajuan (internal/eksternal) boleh memperbaiki
+        // isi pengajuannya sendiri, tapi hanya selama masih Menunggu Review atau diminta Revisi —
+        // begitu admin mulai memproses / menyetujui, pengajuan terkunci untuk pengusul.
+        $isAdmin = $this->ensureAdmin($request) === null;
+        if (! $isAdmin) {
+            $user = $request->user();
+            $isOwner = $user && (int) $pengajuan->user_pengusul_id === (int) $user->id;
+            if (! $isOwner || ! $this->useNewPengajuanSchema()) {
+                return response([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki akses untuk mengubah pengajuan ini.',
+                ], 403);
+            }
+
+            $statusSekarang = strtolower(trim((string) ($pengajuan->status_pengajuan ?? 'menunggu')));
+            if (! in_array($statusSekarang, self::STATUS_BOLEH_DIUBAH_PENGUSUL, true)) {
+                return response([
+                    'success' => false,
+                    'message' => 'Pengajuan sedang diproses admin sehingga tidak bisa diubah lagi.',
+                ], 422);
+            }
         }
 
         if (! $this->useNewPengajuanSchema()) {
@@ -1441,6 +1480,13 @@ class PengajuanController extends Controller
             'distribusi_user_ids.*' => ['integer', 'exists:users,id'],
         ]);
 
+        if (! $isAdmin) {
+            // Field keputusan/administrasi tetap milik admin — diabaikan kalau dikirim pengusul.
+            foreach (self::FIELD_KHUSUS_ADMIN as $field) {
+                unset($validated[$field]);
+            }
+        }
+
         if (array_key_exists('jenis_dokumen', $validated)) {
             $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
         }
@@ -1470,21 +1516,32 @@ class PengajuanController extends Controller
 
         $statusColumn = $this->hasPengajuanColumn('status_pengajuan') ? 'status_pengajuan' : 'status';
         $statusLama = (string) ($pengajuan->{$statusColumn} ?? 'menunggu');
+        $logComment = $request->input('review_comment') ?? $request->input('catatan');
+
+        // Pengusul memperbaiki pengajuan yang diminta Revisi -> otomatis kembali antre review admin.
+        if (! $isAdmin && strtolower(trim($statusLama)) === 'revisi') {
+            $validated[$statusColumn] = 'menunggu';
+            if ($this->hasPengajuanColumn('direvisi_pengusul_pada')) {
+                $validated['direvisi_pengusul_pada'] = now();
+            }
+            $logComment = 'Revisi dikirim ulang oleh pengusul';
+        }
+
         $statusBaru = (string) ($validated[$statusColumn] ?? $statusLama);
 
         try {
-            DB::transaction(function () use ($pengajuan, $validated, $statusBaru, $statusLama, $request) {
+            DB::transaction(function () use ($pengajuan, $validated, $statusBaru, $statusLama, $request, $logComment, $isAdmin) {
                 $pengajuan->update($validated);
 
                 // Write to pengajuan_log when status changes.
                 if ($statusBaru !== $statusLama) {
                     try {
-                        DB::transaction(function () use ($pengajuan, $statusLama, $statusBaru, $request) {
+                        DB::transaction(function () use ($pengajuan, $statusLama, $statusBaru, $request, $logComment) {
                             $this->writeReviewLog(
                                 $pengajuan,
                                 $statusLama,
                                 $statusBaru,
-                                $request->input('review_comment') ?? $request->input('catatan'),
+                                $logComment,
                                 $request->user()?->id
                             );
                         });
@@ -1501,15 +1558,22 @@ class PengajuanController extends Controller
                     // Do not fail main pengajuan update when optional attachment sync is incompatible.
                 }
 
-                try {
-                    DB::transaction(function () use ($pengajuan, $request) {
-                        $this->syncAccFiles($pengajuan, $request);
-                    });
-                } catch (\Throwable $ignored) {
-                    // Do not fail main update when acc file sync fails.
+                if ($isAdmin) {
+                    try {
+                        DB::transaction(function () use ($pengajuan, $request) {
+                            $this->syncAccFiles($pengajuan, $request);
+                        });
+                    } catch (\Throwable $ignored) {
+                        // Do not fail main update when acc file sync fails.
+                    }
                 }
 
                 $statusBaruNormalized = strtolower(trim($statusBaru));
+
+                if (! $isAdmin) {
+                    // Sisanya (ACC, berkas final, pindah ke Rekap Data) hanya untuk keputusan admin.
+                    return;
+                }
 
                 if ($statusBaruNormalized === 'revisi' && $request->filled('catatan_revisi')) {
                     $pengajuan->catatan_revisi = (string) $request->input('catatan_revisi');
@@ -1609,12 +1673,42 @@ class PengajuanController extends Controller
             ], 403);
         }
 
-        // Hapus PERMANEN dari database — baik dihapus admin (Data Pengajuan) maupun dihapus
-        // pemiliknya sendiri (internal/eksternal/kampus-LDAP, tombol Hapus di Daftar
-        // Kerjasama/Rekap Data masing-masing). Data Pengajuan dan Rekap Data (dokumen_kerjasama)
-        // masing-masing dihapus terpisah lewat halamannya sendiri-sendiri — hapus di sini TIDAK
-        // ikut menghapus dokumen kerjasama terkait. FK sumber_pengajuan_id sudah nullOnDelete
-        // jadi baris dokumen kerjasama-nya tetap ada, cuma sumber_pengajuan_id-nya jadi null.
+        // Mitra eksternal hanya boleh mengedit/memperbaiki pengajuannya, tidak menghapus.
+        // (Role eksternal tersimpan sebagai 'external' di users.role.)
+        if (!$isAdmin && in_array($normalizedRole, ['external', 'eksternal'], true)) {
+            return response([
+                'success' => false,
+                'message' => 'Mitra eksternal tidak dapat menghapus pengajuan.',
+            ], 403);
+        }
+
+        // Hapus oleh admin (Data Pengajuan) hanya MENYEMBUNYIKAN dari admin & pengguna lain lewat
+        // dihapus_admin_pada — pengusul internal/eksternal tetap melihat pengajuannya sendiri di
+        // Data Pengajuan / Daftar Kerjasama mereka (filter visibilitasnya ada di index() & show()).
+        // Dihapus permanen hanya kalau memang tidak ada lagi yang perlu melihatnya: pengajuan
+        // buatan admin sendiri / tanpa pemilik, atau yang sudah disembunyikan pemiliknya.
+        if ($isAdmin && $this->hasPengajuanColumn('dihapus_admin_pada')) {
+            $pemilik = $pengajuan->user_pengusul_id ? User::find($pengajuan->user_pengusul_id) : null;
+            $pemilikRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($pemilik?->role ?? ''))));
+            $pemilikMasihPerlu = $pemilik
+                && !in_array($pemilikRole, ['admin', 'admin-humas'], true)
+                && empty($pengajuan->dihapus_user_pada);
+
+            if ($pemilikMasihPerlu) {
+                $pengajuan->dihapus_admin_pada = now();
+                $pengajuan->save();
+
+                return response([
+                    'success' => true,
+                    'data' => null,
+                    'message' => 'Pengajuan dihapus dari Data Pengajuan admin (tetap terlihat oleh pengusul).',
+                ]);
+            }
+        }
+
+        // Hapus PERMANEN — dipakai saat pemilik menghapus pengajuannya sendiri, atau admin
+        // menghapus pengajuan yang tidak lagi dilihat siapa pun. Hapus di sini TIDAK ikut
+        // menghapus dokumen kerjasama terkait (FK sumber_pengajuan_id nullOnDelete).
         $pengajuan->delete();
 
         return response([

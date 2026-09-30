@@ -18,7 +18,10 @@ import MonthPicker from '@/components/MonthPicker';
 import { semuaBulanLabel } from '@/services/adminRekapDataService';
 import {
   createRenewalRecord,
+  createEmailLink,
   createWhatsAppLink,
+  hasEmailMitra,
+  hasWhatsAppNumber,
   deleteMonitoringItem,
   fetchMonitoringDataFromApi,
   fetchNotifikasiKerjasama,
@@ -644,8 +647,36 @@ export default function MonitoringdanstatusPage() {
                   <div>
                     <p className="font-medium text-gray-600">Kontak</p>
                     <div className="flex items-center gap-2 pt-0.5 text-gray-500">
-                      <Mail size={13} className="cursor-pointer hover:text-[#1E376C]" />
-                      <Phone size={13} className="cursor-pointer hover:text-[#1E376C]" />
+                      {hasEmailMitra(item) ? (
+                        <a
+                          href={createEmailLink(item)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`Email: ${item.emailMitra}`}
+                          className="hover:text-[#1E376C]"
+                        >
+                          <Mail size={13} />
+                        </a>
+                      ) : (
+                        <span title="Email belum tersedia" className="cursor-not-allowed text-gray-300">
+                          <Mail size={13} />
+                        </span>
+                      )}
+                      {hasWhatsAppNumber(item) ? (
+                        <a
+                          href={createWhatsAppLink(item)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`WhatsApp: ${item.whatsappNumber}`}
+                          className="hover:text-green-600"
+                        >
+                          <Phone size={13} />
+                        </a>
+                      ) : (
+                        <span title="Nomor HP belum tersedia" className="cursor-not-allowed text-gray-300">
+                          <Phone size={13} />
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

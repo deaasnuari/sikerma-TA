@@ -84,6 +84,8 @@ export interface PengajuanItem {
   tahapanStage?: string | null;
   tahapanGroup?: string | null;
   tahapanRiwayat?: { stage: string; group: string; changedAt: string; changedBy?: string }[];
+  // Diisi backend saat pengusul mengirim ulang pengajuan yang diminta Revisi.
+  direvisiPengusulPada?: string | null;
   isFromAdmin?: boolean;
   // Id user internal yang di-"distribusi"/CC-kan admin saat ACC, supaya mereka tahu ikut melihat dokumen final ini.
   distribusiUserIds?: number[];
@@ -269,6 +271,7 @@ type ApiPengajuanRow = {
   tahapan_stage?: string | null;
   tahapan_group?: string | null;
   tahapan_riwayat?: { stage: string; group: string; changed_at: string; changed_by?: string }[] | null;
+  direvisi_pengusul_pada?: string | null;
   distribusi_user_ids?: number[] | null;
   file_name?: string | null;
   file_attachments?: {
@@ -522,6 +525,7 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
     finalFileName: row.final_file_name || undefined,
     finalFilePath: row.final_file_path || undefined,
     tahapanStage: row.tahapan_stage ?? null,
+    direvisiPengusulPada: row.direvisi_pengusul_pada ?? null,
     tahapanGroup: row.tahapan_group ?? null,
     tahapanRiwayat: Array.isArray(row.tahapan_riwayat)
       ? row.tahapan_riwayat.map((r) => ({
@@ -651,9 +655,12 @@ export async function accFinalBerkasApi(id: number): Promise<PengajuanItem> {
 
 export async function updatePengajuanItemApi(
   id: number,
-  updates: Partial<Omit<PengajuanItem, 'id' | 'diajukanPada'>>
+  updates: Partial<Omit<PengajuanItem, 'id' | 'diajukanPada'>>,
+  // Field API mentah tambahan (mis. mitra_alamat / mitra_*_kontak_utama) yang tidak punya
+  // padanan langsung di PengajuanItem.
+  extraPayload: Record<string, unknown> = {}
 ): Promise<PengajuanItem> {
-  const payload: Record<string, unknown> = {};
+  const payload: Record<string, unknown> = { ...extraPayload };
   if (typeof updates.judulPengajuan === 'string') payload.judul_pengajuan = updates.judulPengajuan;
   if (typeof updates.deskripsiPengajuan === 'string') payload.deskripsi_pengajuan = updates.deskripsiPengajuan;
   if (typeof updates.manfaat === 'string') payload.manfaat = updates.manfaat;
