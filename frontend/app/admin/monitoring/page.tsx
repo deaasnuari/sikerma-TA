@@ -158,6 +158,22 @@ export default function MonitoringdanstatusPage() {
     }
   }, [isRealDataLoaded, monitoringData]);
 
+  // Diarahkan dari kolom Status Kerjasama di Rekap Data: saring ke dokumen itu lalu buka
+  // riwayat notifikasinya.
+  useEffect(() => {
+    if (!isRealDataLoaded) return;
+    const pendingId = sessionStorage.getItem('open-notifikasi-id');
+    if (!pendingId) return;
+    sessionStorage.removeItem('open-notifikasi-id');
+    const targetId = parseInt(pendingId, 10);
+    const found = monitoringData.find((k) => k.id === targetId);
+    if (!found) return;
+    const keyword = found.noDokumen && found.noDokumen !== '-' ? found.noDokumen : found.namaMitra;
+    setSearchInput(keyword);
+    setSearchKeyword(keyword);
+    setNotificationModal({ open: true, kerjasamaId: targetId });
+  }, [isRealDataLoaded, monitoringData]);
+
   useEffect(() => {
     let mounted = true;
     const syncMonitoringData = async () => {

@@ -846,8 +846,24 @@ export default function RekapDataPage() {
                     <td className="px-4 py-3 text-center">{row.durasiTahun ?? '-'}</td>
                     {/* Jurusan/Unit — satu kolom, isinya menyesuaikan pilihan Jurusan (+Prodi) atau Unit saat pengajuan */}
                     <td className="px-4 py-3">{jurusanUnitDisplay}</td>
+                    {/* Status — klik untuk ke halaman Status dan Progres Kerja Sama, langsung buka
+                        riwayat notifikasi (reminder) dokumen ini di sana. */}
                     <td className="px-4 py-3">
-                      <span className={`rounded-full px-3 py-1 text-[10px] font-semibold ${rekapStatusBadgeMap[row.status]}`}>{row.status}</span>
+                      {typeof row.id === 'number' ? (
+                        <button
+                          type="button"
+                          title="Lihat status & notifikasi kerja sama"
+                          onClick={() => {
+                            sessionStorage.setItem('open-notifikasi-id', String(row.id));
+                            router.push('/admin/monitoring');
+                          }}
+                          className={`cursor-pointer rounded-full px-3 py-1 text-[10px] font-semibold underline decoration-dotted underline-offset-2 hover:opacity-80 ${rekapStatusBadgeMap[row.status]}`}
+                        >
+                          {row.status}
+                        </button>
+                      ) : (
+                        <span className={`rounded-full px-3 py-1 text-[10px] font-semibold ${rekapStatusBadgeMap[row.status]}`}>{row.status}</span>
+                      )}
                     </td>
                     {/* Jenis — sekaligus jadi akses bukti kerja sama: jadi link ke file dokumen_final
                         kalau sudah ada yang diupload untuk dokumen ini, kalau belum tampil biasa saja. */}
