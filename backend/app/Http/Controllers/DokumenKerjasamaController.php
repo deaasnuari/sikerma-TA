@@ -1154,17 +1154,46 @@ class DokumenKerjasamaController extends Controller
         ]);
     }
 
-    public function renewalRequests(Request $request): Response
+    /**
+     * Pemilik dokumen = pembuat dokumen atau pengusul pengajuan sumbernya. Dipakai supaya
+     * internal/eksternal bisa mengajukan perpanjangan untuk kerja samanya sendiri tanpa
+     * lewat admin (admin tetap yang memutuskan lewat decideRenewalRequest()).
+     */
+    private function isDokumenOwner(Request $request, DokumenKerjasama $dokumen): bool
     {
-        if ($response = $this->ensureAdmin($request)) {
-            return $response;
+        $user = $request->user();
+        if (!$user) {
+            return false;
         }
 
-        $logs = DokumenLog::query()
+        $dokumen->loadMissing('pengajuan:id,user_pengusul_id');
+
+        return (int) $dokumen->dibuat_oleh_user_id === (int) $user->id
+            || (int) $dokumen->pengajuan?->user_pengusul_id === (int) $user->id;
+    }
+
+    public function renewalRequests(Request $request): Response
+    {
+        $isAdmin = $this->isAdminUser($request);
+        $user = $request->user();
+
+        if (!$isAdmin && !$user) {
+            return response(['success' => false, 'message' => 'Unauthenticated'], 401);
+        }
+
+        $query = DokumenLog::query()
             ->with(['dokumen:id,nomor_dokumen,mitra_id', 'dokumen.mitra:id,nama_mitra'])
-            ->where('tipe_log', 'perpanjangan')
-            ->orderByDesc('dibuat_pada')
-            ->get();
+            ->where('tipe_log', 'perpanjangan');
+
+        // Non-admin cuma melihat permintaan perpanjangan atas dokumen miliknya sendiri.
+        if (!$isAdmin) {
+            $query->whereHas('dokumen', function ($dokumen) use ($user) {
+                $dokumen->where('dibuat_oleh_user_id', $user->id)
+                    ->orWhereHas('pengajuan', fn ($p) => $p->where('user_pengusul_id', $user->id));
+            });
+        }
+
+        $logs = $query->orderByDesc('dibuat_pada')->get();
 
         return response([
             'success' => true,
@@ -1175,8 +1204,38 @@ class DokumenKerjasamaController extends Controller
 
     public function submitRenewalRequest(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
     {
-        if ($response = $this->ensureAdmin($request)) {
-            return $response;
+        $isAdmin = $this->isAdminUser($request);
+
+        if (!$isAdmin && !$this->isDokumenOwner($request, $dokumen_kerjasama)) {
+            return response([
+                'success' => false,
+                'message' => 'Hanya admin atau pemilik dokumen yang dapat mengajukan perpanjangan.',
+            ], 403);
+        }
+
+        if (!$isAdmin) {
+            // Pengusul wajib melampirkan dokumen perpanjangan (sama seperti form di admin) dan
+            // tidak boleh menumpuk permintaan selagi yang sebelumnya belum diputuskan admin.
+            $request->validate(['bukti_perpanjangan' => ['required', 'string']]);
+
+            $sudahMenunggu = DokumenLog::query()
+                ->where('dokumen_id', $dokumen_kerjasama->id)
+                ->where('tipe_log', 'perpanjangan')
+                ->where('status_perpanjangan', 'menunggu')
+                ->exists();
+            if ($sudahMenunggu) {
+                return response([
+                    'success' => false,
+                    'message' => 'Sudah ada permintaan perpanjangan yang menunggu keputusan admin untuk kerja sama ini.',
+                ], 422);
+            }
+
+            // Peran & tujuan notifikasi ditentukan server, bukan dari input klien.
+            $isEksternal = in_array(strtolower((string) $request->user()->role), ['external', 'eksternal'], true);
+            $request->merge([
+                'requester_role' => $isEksternal ? 'eksternal' : 'internal',
+                'notification_href' => $isEksternal ? '/eksternal/daftar_kerjasama' : '/internal/rekap_data',
+            ]);
         }
 
         $validated = $request->validate([
@@ -1230,7 +1289,9 @@ class DokumenKerjasamaController extends Controller
             'dokumen_id' => $dokumen_kerjasama->id,
             'tipe_log' => 'perpanjangan',
             'judul_log' => 'Pengajuan perpanjangan dokumen',
-            'isi_log' => 'Permintaan perpanjangan diajukan dari modul Monitoring Kerjasama.',
+            'isi_log' => $isAdmin
+                ? 'Permintaan perpanjangan diajukan dari modul Monitoring Kerjasama.'
+                : 'Permintaan perpanjangan diajukan oleh pengusul (' . ($request->user()?->name ?? '-') . ').',
             'payload_json' => ['ruang_lingkup' => $ruangLingkupBaru],
             // Struktur lama JSON monitoring dipisah ke kolom tabel dokumen_log.
             'nomor' => $nomorDokumen,
@@ -1331,14 +1392,18 @@ class DokumenKerjasamaController extends Controller
 
                 // Catat perpanjangan yang disetujui sebagai aktivitas baru di Story & Aktivitas,
                 // supaya riwayat kerjasama tetap lengkap (bukan cuma penandatanganan awal).
-                if ($dokumen->sumber_pengajuan_id && Schema::hasTable('pengajuan_aktivitas')) {
+                // Diikat ke dokumen (jalur Story & Aktivitas dari Rekap Data) DAN ke pengajuan
+                // sumbernya bila ada — dokumen tanpa pengajuan sumber (data lama/import) tetap
+                // dapat catatannya.
+                if (Schema::hasTable('pengajuan_aktivitas')) {
                     $namaMitra = $dokumen->mitra?->nama_mitra ?? $dokumen->snap_nama_mitra ?? 'mitra';
                     $tanggalBerakhirBaru = optional($dokumen_log->tanggal_berakhir_perpanjangan)->format('d-m-Y');
 
                     PengajuanAktivitas::create([
                         'pengajuan_id' => $dokumen->sumber_pengajuan_id,
+                        'dokumen_kerjasama_id' => $dokumen->id,
                         'judul' => 'Perpanjangan Kerja Sama',
-                        'jenis_aktivitas' => 'Lainnya',
+                        'jenis_aktivitas' => 'Perpanjangan',
                         'tanggal' => now()->toDateString(),
                         'jumlah_peserta' => 0,
                         'deskripsi' => "Kerja sama dengan {$namaMitra} telah disetujui untuk diperpanjang"

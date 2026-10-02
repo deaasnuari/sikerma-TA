@@ -14,6 +14,9 @@ export interface RenewalRequestItem {
   buktiPerpanjanganUrl?: string | null;
   buktiPerpanjanganNama?: string | null;
   ruangLingkup?: string[];
+  // Periode kerja sama SEBELUM perpanjangan ini (snapshot saat diajukan) — dipakai Story &
+  // Aktivitas supaya kartu kerja sama awal tetap menampilkan periode aslinya.
+  monitoringFields?: { tgl_mulai?: string | null; tgl_berakhir?: string | null };
   status: RenewalRequestStatus;
   requestedAt: string;
   requesterRole: 'admin' | 'internal' | 'eksternal' | 'pimpinan';

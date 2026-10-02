@@ -5,10 +5,14 @@ import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploa
 import { templateFilesByJenis, templateUrl } from '@/lib/templateDokumen';
 
 interface RenewalUploadFormProps {
-  onSubmit: (data: { tanggalMulaiBaru: string; tanggalBerakhirBaru: string; catatan: string; dokumen: File[] }) => void;
+  onSubmit: (data: { tanggalMulaiBaru: string; tanggalBerakhirBaru: string; catatan: string; dokumen: File[] }) => void | Promise<void>;
+  // Backend perpanjangan menyimpan satu berkas per permintaan — dipakai form pengusul
+  // (internal/eksternal) supaya tidak ada file kedua yang diam-diam terbuang.
+  singleFile?: boolean;
+  submitting?: boolean;
 }
 
-export default function RenewalUploadForm({ onSubmit }: RenewalUploadFormProps) {
+export default function RenewalUploadForm({ onSubmit, singleFile = false, submitting = false }: RenewalUploadFormProps) {
   const [tanggalMulaiBaru, setTanggalMulaiBaru] = useState('');
   const [tanggalBerakhirBaru, setTanggalBerakhirBaru] = useState('');
   const [catatan, setCatatan] = useState('');
@@ -35,7 +39,7 @@ export default function RenewalUploadForm({ onSubmit }: RenewalUploadFormProps) 
         quality: 0.8,
         minBytesToCompress: 400 * 1024,
       });
-      setDokumen((prev) => [...prev, processedFile]);
+      setDokumen((prev) => (singleFile ? [processedFile] : [...prev, processedFile]));
     };
     input.click();
   };
@@ -44,7 +48,7 @@ export default function RenewalUploadForm({ onSubmit }: RenewalUploadFormProps) 
     setDokumen((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!tanggalMulaiBaru || !tanggalBerakhirBaru) {
@@ -59,7 +63,13 @@ export default function RenewalUploadForm({ onSubmit }: RenewalUploadFormProps) 
       setError('Silakan upload dokumen perpanjangan.');
       return;
     }
-    onSubmit({ tanggalMulaiBaru, tanggalBerakhirBaru, catatan, dokumen });
+    try {
+      await onSubmit({ tanggalMulaiBaru, tanggalBerakhirBaru, catatan, dokumen });
+    } catch (err) {
+      // Form tetap terisi supaya pengguna tidak perlu mengunggah ulang.
+      setError(err instanceof Error ? err.message : 'Gagal mengajukan perpanjangan.');
+      return;
+    }
     setTanggalMulaiBaru('');
     setTanggalBerakhirBaru('');
     setCatatan('');
@@ -70,7 +80,7 @@ export default function RenewalUploadForm({ onSubmit }: RenewalUploadFormProps) 
     <form onSubmit={handleSubmit} className="rounded-lg border border-blue-200 bg-blue-50 p-4 mb-4">
       <div className="mb-3 flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
         <AlertCircle size={16} className="text-yellow-600" />
-        <span className="text-xs text-yellow-800">Upload dokumen terbaru (MoU/MoA/IA) jika ingin perpanjang, <b>tapi hubungi mitra terlebih dahulu</b>.</span>
+        <span className="text-xs text-yellow-800">Unggah dokumen kerja sama terbaru (MoU/MoA/IA) sebagai dasar perpanjangan.</span>
       </div>
       <div className="mb-3">
         <span className="block text-xs font-semibold text-blue-700 mb-1">Template Dokumen</span>
@@ -144,15 +154,16 @@ export default function RenewalUploadForm({ onSubmit }: RenewalUploadFormProps) 
           className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 py-4 text-sm font-medium text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-700"
         >
           <Plus size={16} />
-          Tambah Dokumen
+          {singleFile && dokumen.length > 0 ? 'Ganti Dokumen' : 'Tambah Dokumen'}
         </button>
       </div>
       {error && <div className="mt-2 text-xs text-red-600">{error}</div>}
       <button
         type="submit"
-        className="mt-3 inline-flex h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+        disabled={submitting}
+        className="mt-3 inline-flex h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
       >
-        Ajukan Perpanjangan
+        {submitting ? 'Mengirim...' : 'Ajukan Perpanjangan'}
       </button>
     </form>
   );

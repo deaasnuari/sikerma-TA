@@ -36,6 +36,10 @@ export interface Aktivitas {
 
 export interface DokumenRingkas {
   id: number;
+  /** Tanggal mentah (ISO) untuk kartu dokumen di detail Story — format tampilannya dibuat di sana. */
+  diajukanPada?: string;
+  tanggalMulaiRaw?: string;
+  tanggalBerakhirRaw?: string;
   noDokumen: string;
   jenis: string;
   status: StatusKerjasama;
@@ -95,6 +99,9 @@ function mapStoryGroupToStory(group: StoryAktivitasGroup): KerjasamaStory {
       noDokumen: p.nomorPengajuan,
       jenis: p.jenisDokumen,
       status: st,
+      diajukanPada: p.diajukanPada,
+      tanggalMulaiRaw: p.tanggalMulai,
+      tanggalBerakhirRaw: p.tanggalBerakhir,
       tanggalMulai: toDisplayDate(p.tanggalMulai),
       tanggalBerakhir: toDisplayDate(p.tanggalBerakhir),
       unit: p.namaUnitProdi || '-',

@@ -9,6 +9,8 @@ import EditDokumenModal from './EditDokumenModal';
 import LaporanPelaksanaanModal, { type LaporanPelaksanaanData } from '@/components/LaporanPelaksanaanModal';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import PerpanjanganKerjasamaModal from '@/components/PerpanjanganKerjasamaModal';
+import { getRenewalRequests } from '@/services/adminRenewalRequestService';
 import MonthPicker from '@/components/MonthPicker';
 
 import {
@@ -40,6 +42,7 @@ interface KerjasamaItem {
   tanggalMulaiRaw?: string;
   tahun?: string;
   berlakuHingga: string;
+  berlakuHinggaRaw?: string;
   status: ApprovalStatus;
   ruangLingkup: string[];
   dibuatOlehRole?: string | null;
@@ -79,6 +82,7 @@ function mapRekapToItem(d: RekapDokumen): KerjasamaItem {
     tanggalMulaiRaw: d.tanggalMulaiRaw,
     tahun: d.tahun,
     berlakuHingga: d.berlakuHingga,
+    berlakuHinggaRaw: d.berlakuHinggaRaw,
     status: statusMap[d.status] ?? 'Menunggu',
     ruangLingkup: d.ruangLingkup ?? [],
     dibuatOlehRole: d.dibuatOlehRole ?? null,
@@ -98,6 +102,16 @@ function mapRekapToItem(d: RekapDokumen): KerjasamaItem {
     unitKerjaNama: d.unitKerjaNama,
     dokumenTerkait: d.dokumenTerkait,
   };
+}
+
+// Perpanjangan ditawarkan begitu masa berlaku tinggal <= 90 hari (sama dengan batas "Akan
+// Berakhir" di Rekap Data) atau sudah lewat. Dihitung dari tanggal asli, bukan status_siklus
+// yang statis.
+function bolehAjukanPerpanjangan(item: KerjasamaItem): boolean {
+  if (typeof item.id !== 'number' || !item.berlakuHinggaRaw) return false;
+  const end = new Date(item.berlakuHinggaRaw);
+  if (Number.isNaN(end.getTime())) return false;
+  return Math.ceil((end.getTime() - Date.now()) / 86400000) <= 90;
 }
 
 const APPROVED_STATUSES = new Set<PengajuanStatus>([
@@ -173,6 +187,22 @@ export default function InternalRekapDataPage() {
   const [hapusLoading, setHapusLoading] = useState(false);
   const [hapusError, setHapusError] = useState<string | null>(null);
   const [laporanItem, setLaporanItem] = useState<LaporanPelaksanaanData | null>(null);
+  const [perpanjangItem, setPerpanjangItem] = useState<KerjasamaItem | null>(null);
+  const [perpanjanganInfo, setPerpanjanganInfo] = useState<string | null>(null);
+  // ID dokumen yang permintaan perpanjangannya masih menunggu keputusan admin.
+  const [perpanjanganMenunggu, setPerpanjanganMenunggu] = useState<Set<number>>(new Set());
+
+  const refreshPerpanjanganMenunggu = () => {
+    getRenewalRequests()
+      .then((items) =>
+        setPerpanjanganMenunggu(new Set(items.filter((r) => r.status === 'menunggu').map((r) => r.kerjasamaId))),
+      )
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    refreshPerpanjanganMenunggu();
+  }, []);
 
   // Dipakai untuk mengisi tab Kontak & Histori di modal Detail Kerjasama dengan data pengajuan
   // asli yang sudah di-ACC admin (mitraPicNama, accInternalAt, tahapanRiwayat, dst), bukan dummy.
@@ -717,6 +747,22 @@ export default function InternalRekapDataPage() {
                         >
                           <FileText size={16} />
                         </button>
+                        {bolehAjukanPerpanjangan(row) && (
+                          perpanjanganMenunggu.has(row.id as number) ? (
+                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700" title="Menunggu keputusan admin">
+                              Perpanjangan menunggu
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              title="Ajukan perpanjangan"
+                              onClick={() => setPerpanjangItem(row)}
+                              className="rounded-md bg-blue-600 px-2 py-1 text-[10px] font-semibold text-white transition-colors hover:bg-blue-700"
+                            >
+                              Perpanjang
+                            </button>
+                          )
+                        )}
                         <button
                           type="button"
                           title="Hapus dari daftar saya"
@@ -785,6 +831,40 @@ export default function InternalRekapDataPage() {
             alert(`Dokumen "${data.namaMitra}" berhasil diperbarui.`);
           }}
         />
+      )}
+
+      {perpanjangItem && (
+        <PerpanjanganKerjasamaModal
+          target={{
+            dokumenId: perpanjangItem.id as number,
+            namaMitra: perpanjangItem.namaMitra,
+            noDokumen: perpanjangItem.noDokumen,
+            berlakuHingga: perpanjangItem.berlakuHingga,
+          }}
+          onClose={() => setPerpanjangItem(null)}
+          onSubmitted={(message) => {
+            setPerpanjangItem(null);
+            setPerpanjanganInfo(message);
+            refreshPerpanjanganMenunggu();
+          }}
+        />
+      )}
+
+      {perpanjanganInfo && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <p className="px-5 py-4 text-[12px] text-slate-700">{perpanjanganInfo}</p>
+            <div className="flex justify-end border-t border-slate-200 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setPerpanjanganInfo(null)}
+                className="h-9 rounded-lg bg-[#173B82] px-4 text-[12px] font-semibold text-white hover:bg-[#2A4A8F]"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <LaporanPelaksanaanModal

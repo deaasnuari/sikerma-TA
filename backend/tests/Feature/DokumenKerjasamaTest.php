@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\DokumenKerjasama;
+use App\Models\DokumenLog;
 use App\Models\MasterMitra;
 use App\Models\MasterUnitProdi;
 use App\Models\Pengajuan;
@@ -499,6 +500,146 @@ class DokumenKerjasamaTest extends TestCase
 
         $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
         $this->assertDatabaseHas('pengajuan_v2', ['id' => $pengajuanPemilik->id]);
+    }
+
+    private function dokumenMilik(User $pemilik): DokumenKerjasama
+    {
+        $pengajuan = $this->buatPengajuanDenganNomor('PMH-' . rand(100, 999));
+        $pengajuan->update(['user_pengusul_id' => $pemilik->id]);
+
+        return $this->buatDokumen([
+            'no_permohonan' => $pengajuan->nomor_pengajuan,
+            'sumber_pengajuan_id' => $pengajuan->id,
+            'dibuat_oleh_user_id' => $pemilik->id,
+            'tanggal_mulai' => '2024-01-01',
+            'tanggal_berakhir' => '2026-12-31',
+        ]);
+    }
+
+    private function payloadPerpanjangan(array $override = []): array
+    {
+        return array_merge([
+            'tanggal_mulai_baru' => '2027-01-01',
+            'tanggal_berakhir_baru' => '2029-12-31',
+            'catatan_perpanjangan' => 'Lanjut kerja sama',
+            'bukti_perpanjangan' => 'data:application/pdf;base64,' . base64_encode('%PDF-1.4 test'),
+            'bukti_perpanjangan_nama' => 'perpanjangan.pdf',
+        ], $override);
+    }
+
+    public function test_pemilik_dapat_ajukan_perpanjangan_dan_peran_ditentukan_server(): void
+    {
+        Storage::fake('public');
+        $pemilik = $this->internal();
+        $dokumen = $this->dokumenMilik($pemilik);
+
+        // requester_role/notification_href dari klien diabaikan untuk non-admin.
+        $this->actingAs($pemilik)->postJson(
+            "/api/dokumen-kerjasama/{$dokumen->id}/perpanjangan",
+            $this->payloadPerpanjangan(['requester_role' => 'admin', 'notification_href' => '/x'])
+        )->assertCreated()
+            ->assertJsonPath('data.status', 'menunggu')
+            ->assertJsonPath('data.requesterRole', 'internal')
+            ->assertJsonPath('data.notificationHref', '/internal/rekap_data');
+
+        // Pemilik hanya melihat permintaannya sendiri; admin melihat semuanya.
+        $this->actingAs($pemilik)->getJson('/api/dokumen-kerjasama/perpanjangan/requests')
+            ->assertOk()->assertJsonCount(1, 'data');
+        $lain = $this->internal();
+        $this->actingAs($lain)->getJson('/api/dokumen-kerjasama/perpanjangan/requests')
+            ->assertOk()->assertJsonCount(0, 'data');
+
+        // Keputusan tetap hanya di tangan admin.
+        $logId = DokumenLog::where('dokumen_id', $dokumen->id)->value('id');
+        $this->actingAs($pemilik)->patchJson("/api/dokumen-kerjasama/perpanjangan/{$logId}/status", ['status' => 'disetujui'])
+            ->assertForbidden();
+    }
+
+    public function test_perpanjangan_disetujui_mengubah_tanggal_rekap_dan_masuk_story_aktivitas(): void
+    {
+        Storage::fake('public');
+        $pemilik = $this->internal();
+        $dokumen = $this->dokumenMilik($pemilik);
+
+        $this->actingAs($pemilik)->postJson(
+            "/api/dokumen-kerjasama/{$dokumen->id}/perpanjangan",
+            $this->payloadPerpanjangan()
+        )->assertCreated();
+        $logId = DokumenLog::where('dokumen_id', $dokumen->id)->value('id');
+
+        // Ditolak -> tanggal tidak berubah, tidak ada aktivitas.
+        $this->actingAs($this->admin())->patchJson("/api/dokumen-kerjasama/perpanjangan/{$logId}/status", ['status' => 'ditolak'])
+            ->assertOk();
+        $this->assertSame('2026-12-31', $dokumen->fresh()->tanggal_berakhir->toDateString());
+        $this->assertDatabaseMissing('pengajuan_aktivitas', ['dokumen_kerjasama_id' => $dokumen->id]);
+
+        // Permintaan baru lalu disetujui -> tanggal Rekap Data berubah & aktivitas tercatat.
+        $this->actingAs($pemilik)->postJson(
+            "/api/dokumen-kerjasama/{$dokumen->id}/perpanjangan",
+            $this->payloadPerpanjangan()
+        )->assertCreated();
+        $logBaru = DokumenLog::where('dokumen_id', $dokumen->id)->latest('id')->value('id');
+        $this->actingAs($this->admin())->patchJson("/api/dokumen-kerjasama/perpanjangan/{$logBaru}/status", ['status' => 'disetujui'])
+            ->assertOk();
+
+        $fresh = $dokumen->fresh();
+        $this->assertSame('2027-01-01', $fresh->tanggal_mulai->toDateString());
+        $this->assertSame('2029-12-31', $fresh->tanggal_berakhir->toDateString());
+        $this->assertDatabaseHas('pengajuan_aktivitas', [
+            'dokumen_kerjasama_id' => $dokumen->id,
+            'judul' => 'Perpanjangan Kerja Sama',
+        ]);
+    }
+
+    public function test_perpanjangan_disetujui_untuk_dokumen_tanpa_pengajuan_sumber_tetap_masuk_aktivitas(): void
+    {
+        Storage::fake('public');
+        $admin = $this->admin();
+        $dokumen = $this->buatDokumen([
+            'tanggal_mulai' => '2024-01-01',
+            'tanggal_berakhir' => '2026-12-31',
+        ]);
+
+        $this->actingAs($admin)->postJson(
+            "/api/dokumen-kerjasama/{$dokumen->id}/perpanjangan",
+            $this->payloadPerpanjangan()
+        )->assertCreated();
+        $logId = DokumenLog::where('dokumen_id', $dokumen->id)->value('id');
+        $this->actingAs($admin)->patchJson("/api/dokumen-kerjasama/perpanjangan/{$logId}/status", ['status' => 'disetujui'])
+            ->assertOk();
+
+        $this->assertDatabaseHas('pengajuan_aktivitas', [
+            'dokumen_kerjasama_id' => $dokumen->id,
+            'pengajuan_id' => null,
+        ]);
+    }
+
+    public function test_perpanjangan_non_pemilik_ditolak_dan_dokumen_wajib_diunggah(): void
+    {
+        Storage::fake('public');
+        $pemilik = $this->internal();
+        $dokumen = $this->dokumenMilik($pemilik);
+
+        $this->actingAs($this->internal())->postJson(
+            "/api/dokumen-kerjasama/{$dokumen->id}/perpanjangan",
+            $this->payloadPerpanjangan()
+        )->assertForbidden();
+
+        $this->actingAs($pemilik)->postJson(
+            "/api/dokumen-kerjasama/{$dokumen->id}/perpanjangan",
+            $this->payloadPerpanjangan(['bukti_perpanjangan' => null])
+        )->assertUnprocessable();
+    }
+
+    public function test_perpanjangan_kedua_ditolak_selagi_yang_pertama_menunggu(): void
+    {
+        Storage::fake('public');
+        $pemilik = $this->internal();
+        $dokumen = $this->dokumenMilik($pemilik);
+        $url = "/api/dokumen-kerjasama/{$dokumen->id}/perpanjangan";
+
+        $this->actingAs($pemilik)->postJson($url, $this->payloadPerpanjangan())->assertCreated();
+        $this->actingAs($pemilik)->postJson($url, $this->payloadPerpanjangan())->assertUnprocessable();
     }
 
     public function test_hapus_dokumen_ditolak_bukan_pemilik_dan_bukan_admin(): void

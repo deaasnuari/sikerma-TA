@@ -14,6 +14,7 @@ import AdminFooter from '@/components/admin/AdminFooter';
 import AdminSidebar, { type SidebarMenuItem } from '@/components/admin/AdminSidebar';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useViewportScale } from '@/lib/useViewportScale';
+import { useRenewalDecisionNotifier } from '@/hooks/useRenewalDecisionNotifier';
 
 const menuItems: SidebarMenuItem[] = [
   {
@@ -43,6 +44,7 @@ export default function InternalLayout({ children }: { children: React.ReactNode
   const { logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const viewportScale = useViewportScale();
+  useRenewalDecisionNotifier();
 
   useEffect(() => {
     const handleResize = () => {

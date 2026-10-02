@@ -6,10 +6,12 @@ import AdminNavbar from '@/components/admin/AdminNavbar';
 import AdminFooter from '@/components/admin/AdminFooter';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useViewportScale } from '@/lib/useViewportScale';
+import { useRenewalRequestNotifier } from '@/hooks/useRenewalRequestNotifier';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const viewportScale = useViewportScale();
+  useRenewalRequestNotifier();
 
   // Handle responsive sidebar behavior
   useEffect(() => {

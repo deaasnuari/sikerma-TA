@@ -31,6 +31,10 @@ import { fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
 import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
 import PerbaikanPengajuanModal, { bolehDiubahPengusul } from '@/components/PerbaikanPengajuanModal';
+import PerpanjanganKerjasamaModal from '@/components/PerpanjanganKerjasamaModal';
+import { parseTanggal } from '@/lib/parseTanggal';
+import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
+import { getRenewalRequests } from '@/services/adminRenewalRequestService';
 import {
   getExternalPengajuanData,
   getExternalPengajuanUpdateEventName,
@@ -75,9 +79,8 @@ interface KerjasamaItem {
 }
 
 function resolveMasaBerlakuTier(tanggalBerakhir?: string): 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa' | null {
-  if (!tanggalBerakhir) return null;
-  const end = new Date(tanggalBerakhir);
-  if (Number.isNaN(end.getTime())) return null;
+  const end = parseTanggal(tanggalBerakhir);
+  if (!end) return null;
   const diffDays = Math.ceil((end.getTime() - Date.now()) / 86400000);
   if (diffDays < 0) return 'Kadaluarsa';
   if (diffDays <= 90) return 'Akan Berakhir';
@@ -86,14 +89,14 @@ function resolveMasaBerlakuTier(tanggalBerakhir?: string): 'Aktif' | 'Akan Berak
 
 function toDisplayDate(value?: string): string {
   if (!value) return '-';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
+  const d = parseTanggal(value);
+  if (!d) return value;
   return d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function mapPengajuanToItem(item: PengajuanItem): KerjasamaItem {
   const jenis = (['MoA', 'MoU', 'IA'].includes(item.jenisDokumen) ? item.jenisDokumen : 'MoU') as KerjasamaItem['jenis'];
-  const tahun = (item.tanggalMulai || item.diajukanPada || new Date().toISOString()).slice(0, 4);
+  const tahun = String((parseTanggal(item.tanggalMulai) ?? parseTanggal(item.diajukanPada) ?? new Date()).getFullYear());
   const statusMap: Record<string, KerjasamaItem['status']> = {
     Menunggu: 'Menunggu',
     'Menunggu Review': 'Menunggu',
@@ -207,6 +210,39 @@ export default function DaftarKerjasamaEksternalPage() {
   const [laporanItem, setLaporanItem] = useState<LaporanPelaksanaanData | null>(null);
   const [editingItem, setEditingItem] = useState<PengajuanItem | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [perpanjangItem, setPerpanjangItem] = useState<KerjasamaItem | null>(null);
+  // Daftar ini berbasis pengajuan, sedangkan perpanjangan diikat ke dokumen kerja sama —
+  // dipetakan lewat sumber_pengajuan_id dari data rekap.
+  const [dokumenIdByPengajuan, setDokumenIdByPengajuan] = useState<Map<number, number>>(new Map());
+  const [perpanjanganMenunggu, setPerpanjanganMenunggu] = useState<Set<number>>(new Set());
+
+  const refreshPerpanjangan = () => {
+    fetchRekapDokumenFromApi({ forceRefresh: true })
+      .then((rows) => {
+        const map = new Map<number, number>();
+        rows.forEach((row) => {
+          if (row.sourcePengajuanId && typeof row.id === 'number') map.set(row.sourcePengajuanId, row.id);
+        });
+        setDokumenIdByPengajuan(map);
+      })
+      .catch(() => {});
+    getRenewalRequests()
+      .then((items) =>
+        setPerpanjanganMenunggu(new Set(items.filter((r) => r.status === 'menunggu').map((r) => r.kerjasamaId))),
+      )
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    refreshPerpanjangan();
+  }, []);
+
+  // Tombol muncul untuk kerja sama yang sudah disetujui dan masa berlakunya tinggal <= 90 hari
+  // atau sudah lewat; mengembalikan ID dokumen kalau berhak, null kalau tidak.
+  const dokumenIdPerpanjangan = (item: KerjasamaItem): number | null => {
+    if (item.status !== 'Aktif' || item.masaBerlakuTier === 'Aktif' || !item.masaBerlakuTier) return null;
+    return dokumenIdByPengajuan.get(item.id) ?? null;
+  };
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterReview, setFilterReview] = useState<'Semua Review' | 'Belum Direview' | 'Sudah Direview'>('Semua Review');
@@ -591,6 +627,24 @@ export default function DaftarKerjasamaEksternalPage() {
                             </button>
                           )
                         )}
+                        {(() => {
+                          const dokumenId = dokumenIdPerpanjangan(item);
+                          if (dokumenId === null) return null;
+                          return perpanjanganMenunggu.has(dokumenId) ? (
+                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700" title="Menunggu keputusan admin">
+                              Perpanjangan menunggu
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              title="Ajukan perpanjangan"
+                              onClick={() => setPerpanjangItem(item)}
+                              className="inline-flex h-8 items-center rounded-lg bg-blue-600 px-2.5 text-[11px] font-semibold text-white hover:bg-blue-700"
+                            >
+                              Perpanjang
+                            </button>
+                          );
+                        })()}
                         <button
                           type="button"
                           title="Laporan Pelaksanaan"
@@ -885,6 +939,27 @@ export default function DaftarKerjasamaEksternalPage() {
           onMessage={setInfoMessage}
         />
       )}
+
+      {perpanjangItem && (() => {
+        const dokumenId = dokumenIdPerpanjangan(perpanjangItem);
+        if (dokumenId === null) return null;
+        return (
+          <PerpanjanganKerjasamaModal
+            target={{
+              dokumenId,
+              namaMitra: perpanjangItem.namaMitra,
+              noDokumen: perpanjangItem.noDokumen,
+              berlakuHingga: perpanjangItem.berlakuHingga,
+            }}
+            onClose={() => setPerpanjangItem(null)}
+            onSubmitted={(message) => {
+              setPerpanjangItem(null);
+              setInfoMessage(message);
+              refreshPerpanjangan();
+            }}
+          />
+        );
+      })()}
 
       {infoMessage && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40 px-4 backdrop-blur-[2px]">

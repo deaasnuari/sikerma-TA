@@ -15,6 +15,7 @@ import {
   MapPin,
   Pencil,
   Plus,
+  RefreshCw,
   Trash2,
   Users,
 } from 'lucide-react';
@@ -26,6 +27,8 @@ import {
   type LaporanPelaksanaanRecord,
 } from '@/services/laporanPelaksanaanService';
 import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
+import { getRenewalRequests, type RenewalRequestItem } from '@/services/adminRenewalRequestService';
+import RiwayatPerpanjangan from '@/components/RiwayatPerpanjangan';
 import type { RekapDokumen } from '@/services/adminRekapDataService';
 import {
   createAktivitasForDokumenApi,
@@ -64,8 +67,16 @@ const jenisAktivitasOptions = [
   'Sertifikasi',
   'Pertukaran Mahasiswa',
   'Pertukaran Dosen',
+  'Perpanjangan',
   'Lainnya',
 ];
+
+// Aktivitas otomatis dari perpanjangan yang disetujui. Aktivitas lama dicatat dengan jenis
+// 'Lainnya', jadi dikenali juga dari judulnya.
+const JUDUL_AKTIVITAS_PERPANJANGAN = 'Perpanjangan Kerja Sama';
+function isAktivitasPerpanjangan(item: { jenisAktivitas: string; judul: string }): boolean {
+  return item.jenisAktivitas === 'Perpanjangan' || item.judul === JUDUL_AKTIVITAS_PERPANJANGAN;
+}
 
 function parseDate(value?: string): Date | null {
   if (!value) {
@@ -219,6 +230,21 @@ export default function DetailStoryAktivitasPage() {
   const [konfirmasi, setKonfirmasi] = useState<{ jenis: 'aktivitas' | 'laporan'; id: number } | null>(null);
   const [konfirmasiLoading, setKonfirmasiLoading] = useState(false);
   const [pesanError, setPesanError] = useState<string | null>(null);
+  // Perpanjangan yang sudah disetujui, dikelompokkan per dokumen kerja sama (terlama dulu).
+  const [perpanjanganByDokumen, setPerpanjanganByDokumen] = useState<Map<number, RenewalRequestItem[]>>(new Map());
+
+  useEffect(() => {
+    getRenewalRequests()
+      .then((items) => {
+        const map = new Map<number, RenewalRequestItem[]>();
+        items
+          .filter((item) => item.status === 'disetujui')
+          .sort((a, b) => a.id - b.id)
+          .forEach((item) => map.set(item.kerjasamaId, [...(map.get(item.kerjasamaId) ?? []), item]));
+        setPerpanjanganByDokumen(map);
+      })
+      .catch(() => {});
+  }, [aktivitasRevision]);
 
   useEffect(() => {
     if (!pesanError) return;
@@ -646,6 +672,13 @@ export default function DetailStoryAktivitasPage() {
           )}
           {filteredPengajuan.map((pengajuan) => {
             const statusDok = docStatus(pengajuan);
+            // Kartu ini = kerja sama AWAL; tanggal di dokumen sudah ditimpa perpanjangan, jadi
+            // periode aslinya diambil dari snapshot perpanjangan pertama, dan tiap perpanjangan
+            // ditampilkan sebagai kartu terpisah di bawahnya.
+            const perpanjangan = perpanjanganByDokumen.get(pengajuan.id) ?? [];
+            const periodeAwal = perpanjangan[0]?.monitoringFields;
+            const mulaiAwal = periodeAwal?.tgl_mulai ?? pengajuan.tanggalMulai;
+            const berakhirAwal = periodeAwal?.tgl_berakhir ?? pengajuan.tanggalBerakhir;
             return (
             <article key={pengajuan.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -654,9 +687,15 @@ export default function DetailStoryAktivitasPage() {
                   <h3 className="mt-1 text-[12px] font-bold text-slate-900">{pengajuan.judulPengajuan}</h3>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${kerjasamaStatusBadge[statusDok]}`}>
-                    {statusDok}
-                  </span>
+                  {perpanjangan.length > 0 ? (
+                    <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700">
+                      Diperpanjang {perpanjangan.length}x
+                    </span>
+                  ) : (
+                    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${kerjasamaStatusBadge[statusDok]}`}>
+                      {statusDok}
+                    </span>
+                  )}
                   <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600">
                     {pengajuan.jenisDokumen}
                   </span>
@@ -670,7 +709,7 @@ export default function DetailStoryAktivitasPage() {
                 </p>
                 <p className="inline-flex items-center gap-1.5">
                   <Clock3 size={12} className="text-slate-400" />
-                  Berlaku: {formatDate(pengajuan.tanggalMulai)} - {formatDate(pengajuan.tanggalBerakhir)}
+                  Berlaku: {formatDate(mulaiAwal)} - {formatDate(berakhirAwal)}
                 </p>
                 {pengajuan.namaUnitProdi && (
                   <p className="inline-flex items-center gap-1.5">
@@ -693,6 +732,8 @@ export default function DetailStoryAktivitasPage() {
                   </span>
                 ))}
               </div>
+
+              <RiwayatPerpanjangan items={perpanjangan} statusTerkini={statusDok} tautanDokumen />
             </article>
             );
           })}
@@ -969,10 +1010,22 @@ export default function DetailStoryAktivitasPage() {
                   <span className={`block h-full w-full rounded-full ${statusDot(item.status)}`} />
                 </span>
 
-                <article className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                <article
+                  className={`rounded-xl border bg-white p-4 shadow-sm ${
+                    isAktivitasPerpanjangan(item) ? 'border-blue-200 border-l-4 border-l-blue-500 bg-blue-50/40' : 'border-slate-100'
+                  }`}
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-[12px] font-bold text-slate-900">{item.judul}</p>
+                      <p className="flex flex-wrap items-center gap-2 text-[12px] font-bold text-slate-900">
+                        {item.judul}
+                        {isAktivitasPerpanjangan(item) && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2 py-0.5 text-[9.5px] font-semibold text-white">
+                            <RefreshCw size={10} />
+                            Perpanjangan
+                          </span>
+                        )}
+                      </p>
                       <p className="mt-1 text-[10px] text-slate-500">
                         {formatDate(item.tanggal)} • {item.jenisAktivitas} • {item.peserta} peserta
                       </p>

@@ -16,12 +16,16 @@ import {
   Pencil,
   Phone,
   Plus,
+  RefreshCw,
   Trash2,
   Users,
 } from 'lucide-react';
+import { isAktivitasPerpanjangan } from '@/lib/aktivitasPerpanjangan';
 import type { KerjasamaStory, Aktivitas } from './page';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import KartuDokumenKerjasama from '@/components/KartuDokumenKerjasama';
+import { usePerpanjanganDisetujui } from '@/hooks/usePerpanjanganDisetujui';
 import { getLaporanPelaksanaanByDokumenKerjasamaIds, type LaporanPelaksanaanRecord } from '@/services/laporanPelaksanaanService';
 import { createAktivitasForDokumenApi, deleteAktivitasApi } from '@/services/adminStoryAktivitasService';
 
@@ -92,6 +96,7 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
   const [filterAktivitasStatus, setFilterAktivitasStatus] = useState<'semua' | StatusAktivitas>('semua');
   const [konfirmasiHapus, setKonfirmasiHapus] = useState(false);
   const [pesanError, setPesanError] = useState<string | null>(null);
+  const perpanjanganByDokumen = usePerpanjanganDisetujui(story.dokumenKerjasamaIds.join(','));
   const konfirmResolveRef = useRef<((v: boolean) => void) | null>(null);
   const mintaKonfirmasi = (): Promise<boolean> => {
     setKonfirmasiHapus(true);
@@ -316,44 +321,6 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
         </div>
       </div>
 
-      {/* Dokumen Kerja Sama pada mitra ini */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-[13.5px] font-bold text-gray-900">
-            Dokumen Kerja Sama
-            <span className="ml-2 text-[11px] font-medium text-gray-500">({story.dokumen.length} dokumen)</span>
-          </h3>
-          <div className="flex flex-wrap gap-2 text-[10px] font-semibold">
-            {(['Aktif', 'Akan Berakhir', 'Kadaluarsa'] as const).map((label) => (
-              <span key={label} className={`rounded-full border px-2.5 py-1 ${kerjasamaStatusBadge[label]}`}>
-                {story.rincianStatus[label]} {label}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-2.5">
-          {story.dokumen.map((d) => (
-            <div key={d.id} className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold text-gray-800">{d.noDokumen}</p>
-                <div className="flex items-center gap-1.5">
-                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${kerjasamaStatusBadge[d.status]}`}>
-                    {d.status}
-                  </span>
-                  <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600">
-                    {d.jenis}
-                  </span>
-                </div>
-              </div>
-              <p className="mt-1 text-[10px] text-gray-500">
-                {d.tanggalMulai} – {d.tanggalBerakhir}
-                {d.unit && d.unit !== '-' && <> <span className="text-gray-300">•</span> {d.unit}</>}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* Stat Cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <MiniStat
@@ -390,11 +357,44 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
         />
       </div>
 
+      {/* Story Kerja Sama: kartu tiap dokumen kerja sama + perpanjangannya (sama dengan admin) */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-[13.5px] font-bold text-gray-900">
+            Story Kerja Sama
+            <span className="ml-2 text-[11px] font-medium text-gray-500">({story.dokumen.length} dokumen kerja sama)</span>
+          </h3>
+          <div className="flex flex-wrap gap-2 text-[10px] font-semibold">
+            {(['Aktif', 'Akan Berakhir', 'Kadaluarsa'] as const).map((label) => (
+              <span key={label} className={`rounded-full border px-2.5 py-1 ${kerjasamaStatusBadge[label]}`}>
+                {story.rincianStatus[label]} {label}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-2.5">
+          {story.dokumen.map((d) => (
+            <KartuDokumenKerjasama
+              key={d.id}
+              noDokumen={d.noDokumen}
+              jenis={d.jenis}
+              status={d.status}
+              diajukanPada={d.diajukanPada}
+              tanggalMulai={d.tanggalMulaiRaw}
+              tanggalBerakhir={d.tanggalBerakhirRaw}
+              unit={d.unit}
+              ruangLingkup={d.ruangLingkup}
+              perpanjangan={perpanjanganByDokumen.get(d.id) ?? []}
+            />
+          ))}
+        </div>
+      </div>
+
       {/* Story Kerjasama & Aktivitas */}
       <div>
         <div className="flex items-center justify-between">
           <h3 className="text-[13.5px] font-bold text-gray-900">
-            <span className="mr-1">📖</span> Story Kerjasama & Aktivitas
+            <span className="mr-1">📖</span> Timeline Aktivitas
           </h3>
           <div className="flex items-center gap-2">
             <button
@@ -439,7 +439,12 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
             filteredAktivitasList.map((a) => {
               const badge = aktivitasStatusBadge[a.status];
               return (
-                <div key={a.id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div
+                  key={a.id}
+                  className={`rounded-xl border bg-white p-5 shadow-sm ${
+                    isAktivitasPerpanjangan(a.judul) ? 'border-blue-200 border-l-4 border-l-blue-500 bg-blue-50/40' : 'border-gray-200'
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
                       <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${aktivitasIconBg[a.status]}`}>
@@ -448,6 +453,12 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="text-[12px] font-bold text-gray-900">{a.judul}</p>
+                          {isAktivitasPerpanjangan(a.judul) && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2 py-0.5 text-[9.5px] font-semibold text-white">
+                              <RefreshCw size={10} />
+                              Perpanjangan
+                            </span>
+                          )}
                         </div>
                         <div className="mt-0.5 flex items-center gap-3 text-[10px] text-gray-500">
                           <span className="inline-flex items-center gap-1">

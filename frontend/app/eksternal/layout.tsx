@@ -9,12 +9,14 @@ import AdminFooter from '@/components/admin/AdminFooter';
 import AdminSidebar, { type SidebarMenuItem } from '@/components/admin/AdminSidebar';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useViewportScale } from '@/lib/useViewportScale';
+import { useRenewalDecisionNotifier } from '@/hooks/useRenewalDecisionNotifier';
 
 export default function EksternalLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const viewportScale = useViewportScale();
+  useRenewalDecisionNotifier();
 
   useEffect(() => {
     const handleResize = () => {
