@@ -101,6 +101,7 @@ export default function AdminDashboard() {
   // Statistik Kerjasama — sumber data sama persis dengan landing page (endpoint publik).
   const [publicStats, setPublicStats] = useState({
     total: 0,
+    kategori: [] as { label: string; value: number }[],
     dalam_negeri: 0,
     luar_negeri: 0,
     dudi_nasional: 0,

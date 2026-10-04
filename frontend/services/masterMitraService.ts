@@ -148,3 +148,50 @@ export async function deleteMasterMitra(id: number): Promise<boolean> {
 
   return true;
 }
+
+export interface NamaMitraBentrok {
+  id: number;
+  nama_mitra: string;
+  kode_mitra: string | null;
+}
+
+export interface HasilCekNamaMitra {
+  /** Nama yang sama dengan mitra lain — penyimpanan akan ditolak server. */
+  bentrok: NamaMitraBentrok | null;
+  /** Nama yang hanya mirip (mis. "Infineon" vs "PT Infineon Technologies Batam") — peringatan saja. */
+  mirip: NamaMitraBentrok[];
+}
+
+/** Cek apakah nama sudah dipakai / mirip mitra lain (aturan sama dengan penolakan di server). */
+export async function cekNamaMitra(nama: string, exceptId?: number): Promise<HasilCekNamaMitra> {
+  const params = new URLSearchParams({ nama });
+  if (exceptId) params.set('except_id', String(exceptId));
+
+  const response = await apiRequest<
+    ApiResponse<{ ada: boolean; mitra: NamaMitraBentrok | null; mirip?: NamaMitraBentrok[] }>
+  >(`/master/mitra/cek-nama?${params.toString()}`);
+
+  return {
+    bentrok: response.data?.ada ? response.data.mitra : null,
+    mirip: response.data?.mirip ?? [],
+  };
+}
+
+export interface MitraSerupa {
+  id: number;
+  nama_mitra: string;
+  kode_mitra?: string | null;
+}
+
+/**
+ * Cari mitra yang namanya cocok dengan yang diketik di form tambah (sebagian kata, awalan, atau
+ * salah ketik kecil). Khusus admin dan tidak di-cache, jadi selalu mencerminkan data terbaru.
+ */
+export async function cariMitraSerupa(kata: string): Promise<{ items: MitraSerupa[]; total: number }> {
+  const response = await apiRequest<{ data: MitraSerupa[]; total?: number }>(
+    `/master/mitra/cari?q=${encodeURIComponent(kata)}`,
+  );
+  const items = response.data ?? [];
+
+  return { items, total: response.total ?? items.length };
+}

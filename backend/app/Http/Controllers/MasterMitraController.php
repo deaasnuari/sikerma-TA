@@ -160,6 +160,130 @@ class MasterMitraController extends Controller
         ]);
     }
 
+    /**
+     * Pencarian saran mitra untuk form TAMBAH di Data Kemitraan (khusus admin, tidak di-cache
+     * seperti /public/mitra). Lebih peka dari pencarian publik: cocok sebagian per kata, dan
+     * toleran salah ketik (mis. "infinion" menemukan "PT Infineon Technologies Batam").
+     */
+    public function cari(Request $request): Response
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        $kata = mb_strtolower(trim((string) $request->query('q', '')));
+        $tokens = array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', $kata) ?: []));
+        if (mb_strlen(implode('', $tokens)) < 2) {
+            return response(['success' => true, 'data' => [], 'total' => 0]);
+        }
+
+        $kunci = MasterMitraResolver::normalize($kata);
+        $hasil = [];
+        foreach (DB::table('master_mitra')->select('id', 'nama_mitra', 'kode_mitra')->get() as $row) {
+            $nama = mb_strtolower((string) $row->nama_mitra);
+            $kataNama = array_values(array_filter(preg_split('/[^\p{L}\p{N}]+/u', $nama) ?: []));
+
+            // Tiap kata yang diketik harus cocok dengan sebuah kata di nama: awalan/bagian kata,
+            // atau salah ketik kecil untuk kata yang cukup panjang.
+            $skor = 0;
+            $semuaCocok = true;
+            foreach ($tokens as $token) {
+                $terbaik = null;
+                foreach ($kataNama as $kn) {
+                    if (str_starts_with($kn, $token)) {
+                        $terbaik = 1;
+                        break;
+                    }
+                    if (mb_strlen($token) >= 3 && str_contains($kn, $token)) {
+                        $terbaik = min($terbaik ?? 2, 2);
+                    }
+                    $panjang = min(mb_strlen($token), mb_strlen($kn));
+                    $batasTypo = $panjang >= 8 ? 2 : ($panjang >= 4 ? 1 : 0);
+                    if ($batasTypo > 0 && levenshtein($token, $kn) <= $batasTypo) {
+                        $terbaik = min($terbaik ?? 3, 3);
+                    }
+                }
+                if ($terbaik === null) {
+                    $semuaCocok = false;
+                    break;
+                }
+                $skor += $terbaik;
+            }
+            if (! $semuaCocok) {
+                continue;
+            }
+
+            $normal = MasterMitraResolver::normalize($nama);
+            $peringkat = $normal === $kunci ? 0 : (str_starts_with($normal, $kunci) ? 1 : $skor + 1);
+            $hasil[] = ['peringkat' => $peringkat, 'row' => $row];
+        }
+
+        usort($hasil, fn ($a, $b) => [$a['peringkat'], mb_strtolower((string) $a['row']->nama_mitra)] <=> [$b['peringkat'], mb_strtolower((string) $b['row']->nama_mitra)]);
+
+        return response([
+            'success' => true,
+            'data' => array_map(
+                fn ($h) => ['id' => $h['row']->id, 'nama_mitra' => $h['row']->nama_mitra, 'kode_mitra' => $h['row']->kode_mitra],
+                array_slice($hasil, 0, 50),
+            ),
+            'total' => count($hasil),
+        ]);
+    }
+
+    /**
+     * Cek apakah sebuah nama sudah dipakai mitra lain (aturan sama dengan tolakKalauNamaGanda),
+     * dipakai form Data Kemitraan untuk memberi peringatan langsung saat admin mengetik nama.
+     */
+    public function cekNama(Request $request): Response
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        $resolver = app(MasterMitraResolver::class);
+        $nama = (string) $request->query('nama', '');
+        $exceptId = $request->filled('except_id') ? (int) $request->query('except_id') : null;
+
+        $ada = $resolver->findByName($nama, $exceptId);
+        $mirip = $ada ? [] : array_map(
+            fn ($m) => ['id' => $m->id, 'nama_mitra' => $m->nama_mitra, 'kode_mitra' => $m->kode_mitra],
+            $resolver->findMirip($nama, $exceptId),
+        );
+
+        return response([
+            'success' => true,
+            'data' => [
+                'ada' => (bool) $ada,
+                'mitra' => $ada ? ['id' => $ada->id, 'nama_mitra' => $ada->nama_mitra, 'kode_mitra' => $ada->kode_mitra] : null,
+                // Bukan pasti sama — hanya peringatan, penyimpanan tetap boleh.
+                'mirip' => $mirip,
+            ],
+            'message' => 'Cek nama mitra',
+        ]);
+    }
+
+    /**
+     * Tolak nama yang sama dengan mitra lain yang sudah ada (abaikan huruf besar/kecil, tanda
+     * baca, PT/CV, salah ketik kecil — aturan yang sama dengan penggabungan mitra ganda), supaya
+     * satu instansi tidak masuk Data Kemitraan dua kali. Mengembalikan response 422 atau null.
+     */
+    private function tolakKalauNamaGanda(?string $nama, ?int $exceptId = null): ?Response
+    {
+        $ada = app(MasterMitraResolver::class)->findByName($nama, $exceptId);
+        if (! $ada) {
+            return null;
+        }
+
+        $kode = trim((string) $ada->kode_mitra) !== '' ? ' (kode '.$ada->kode_mitra.')' : '';
+
+        return response([
+            'success' => false,
+            'message' => 'Mitra "'.$ada->nama_mitra.'"'.$kode.' sudah ada di Data Kemitraan. Gunakan data yang sudah ada atau ubah datanya, jangan buat mitra ganda.',
+            'errors' => ['nama_mitra' => ['Nama mitra sudah ada: '.$ada->nama_mitra]],
+            'data' => ['mitra_id' => $ada->id],
+        ], 422);
+    }
+
     public function store(Request $request): Response
     {
         if ($response = $this->ensureAdmin($request)) {
@@ -184,6 +308,10 @@ class MasterMitraController extends Controller
             'telepon_kontak_utama' => 'nullable|string|max:50',
             'aktif' => 'boolean',
         ]);
+
+        if ($response = $this->tolakKalauNamaGanda($validated['nama_mitra'])) {
+            return $response;
+        }
 
         $kontak = $this->validateKontak($request);
 
@@ -244,6 +372,13 @@ class MasterMitraController extends Controller
             'telepon_kontak_utama' => 'nullable|string|max:50',
             'aktif' => 'boolean',
         ]);
+
+        // Hanya diperiksa kalau namanya benar-benar diganti, supaya mengedit kolom lain tidak
+        // terblokir.
+        if (isset($validated['nama_mitra']) && trim($validated['nama_mitra']) !== trim((string) $mitra->nama_mitra)
+            && ($response = $this->tolakKalauNamaGanda($validated['nama_mitra'], $mitra->id))) {
+            return $response;
+        }
 
         $kontak = $this->validateKontak($request);
 

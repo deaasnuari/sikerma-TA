@@ -1,5 +1,6 @@
 'use client';
 
+import KategoriMitraDonutCard from '@/components/KategoriMitraDonutCard';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -114,6 +115,7 @@ export default function Home() {
   // Stat cards — diambil dari database
   const [stats, setStats] = useState({
     total: 478,
+    kategori: [] as { label: string; value: number }[],
     dalam_negeri: 447,
     luar_negeri: 31,
     dudi_nasional: 154,
@@ -187,7 +189,7 @@ export default function Home() {
   // supaya angka yang tampil ke publik selalu konsisten dengan data internal.
   useEffect(() => {
     let mounted = true;
-    apiRequest<{ success: boolean; data: { total: number; dalam_negeri: number; luar_negeri: number; dudi_nasional: number; dudi_internasional: number; instansi_nasional: number; instansi_internasional: number } }>('/dokumen-kerjasama/stats/mitra')
+    apiRequest<{ success: boolean; data: { total: number; kategori: { label: string; value: number }[]; dalam_negeri: number; luar_negeri: number; dudi_nasional: number; dudi_internasional: number; instansi_nasional: number; instansi_internasional: number } }>('/dokumen-kerjasama/stats/mitra')
       .then((res) => {
         if (mounted && res.data) setStats(res.data);
       })
@@ -492,38 +494,8 @@ export default function Home() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
-            {/* Card 1: Jenis Mitra & Wilayah */}
-            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-4 md:p-5">
-              <h3 className="text-[12px] font-bold text-slate-800">Jenis Mitra &amp; Wilayah</h3>
-              <div className="mt-4 flex items-center justify-center">
-                <DonutChart
-                  size={180}
-                  centerLabel={String(stats.total)}
-                  segments={[
-                    { value: stats.instansi_nasional,     color: '#173B82' },
-                    { value: stats.instansi_internasional, color: '#3B82F6' },
-                    { value: stats.dudi_nasional,          color: '#93C5FD' },
-                    { value: stats.dudi_internasional,     color: '#BFDBFE' },
-                  ]}
-                />
-              </div>
-              <div className="mt-4 space-y-2">
-                {[
-                  { label: 'Instansi Dalam Negeri', value: stats.instansi_nasional,      color: '#173B82' },
-                  { label: 'Instansi Luar Negeri',  value: stats.instansi_internasional, color: '#3B82F6' },
-                  { label: 'DUDI Dalam Negeri',     value: stats.dudi_nasional,          color: '#93C5FD' },
-                  { label: 'DUDI Luar Negeri',      value: stats.dudi_internasional,     color: '#BFDBFE' },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-1.5 text-slate-600">
-                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      {item.label}
-                    </span>
-                    <span className="font-semibold text-slate-800">{item.value.toLocaleString('id-ID')}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Card 1: Kategori Mitra (sama dengan filter Kategori di Data Kemitraan) */}
+            <KategoriMitraDonutCard total={stats.total} kategori={stats.kategori} />
 
             {/* Card 2: Komposisi Dokumen */}
             <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-slate-50 p-4 md:p-5">

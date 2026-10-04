@@ -716,6 +716,7 @@ class DokumenKerjasamaController extends Controller
         $dudiInternasional = 0;
         $instansiNasional = 0;
         $instansiInternasional = 0;
+        $perKategori = [];
 
         DB::table('master_mitra')
             ->select('id', 'kategori_mitra', 'negara', 'tingkat_perusahaan')
@@ -728,9 +729,14 @@ class DokumenKerjasamaController extends Controller
                 &$dudiNasional,
                 &$dudiInternasional,
                 &$instansiNasional,
-                &$instansiInternasional
+                &$instansiInternasional,
+                &$perKategori
             ) {
                 $total++;
+
+                $labelKategori = trim((string) $row->kategori_mitra);
+                $labelKategori = $labelKategori === '' ? 'Belum diisi' : $labelKategori;
+                $perKategori[$labelKategori] = ($perKategori[$labelKategori] ?? 0) + 1;
 
                 $luar = $isLuarNegeri($row->tingkat_perusahaan, $row->negara);
                 $dudi = $isDudiKategori($row->kategori_mitra);
@@ -750,10 +756,38 @@ class DokumenKerjasamaController extends Controller
                 }
             });
 
+        // Urutan sama dengan dropdown filter "Kategori" di Data Kemitraan (admin/master_mitra),
+        // supaya tiap potongan grafik bisa dicocokkan 1:1 dengan hasil filternya. Kategori di
+        // luar daftar itu (kalau ada) ditaruh di belakang.
+        $urutanKategori = [
+            'Perguruan Tinggi',
+            'Sekolah/Institusi Pendidikan Lain',
+            'Pemerintahan',
+            'Swasta/Dunia Usaha dan Dunia Industri (DUDI)',
+            'Organisasi Non-Profit / LSM',
+            'dudi dalam negeri',
+            'dudi luar negeri',
+            'instansi dalam negeri',
+            'instansi luar negeri',
+        ];
+        $kategori = [];
+        foreach ($urutanKategori as $label) {
+            if (isset($perKategori[$label])) {
+                $kategori[] = ['label' => $label, 'value' => $perKategori[$label]];
+                unset($perKategori[$label]);
+            }
+        }
+        // Sisanya: terbanyak dulu, jumlah sama diurutkan abjad supaya urutannya selalu pasti.
+        uksort($perKategori, fn ($a, $b) => [$perKategori[$b], $a] <=> [$perKategori[$a], $b]);
+        foreach ($perKategori as $label => $value) {
+            $kategori[] = ['label' => (string) $label, 'value' => $value];
+        }
+
         return response([
             'success' => true,
             'data'    => [
                 'total'                  => $total,
+                'kategori'               => $kategori,
                 'dalam_negeri'           => $total - $luarNegeri,
                 'luar_negeri'            => $luarNegeri,
                 'dudi_nasional'          => $dudiNasional,

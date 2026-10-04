@@ -33,6 +33,8 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::get('/master/unit-prodi/tree', [MasterUnitProdiController::class, 'tree']);
 	Route::apiResource('/master/unit-prodi', MasterUnitProdiController::class);
 	Route::post('/master/mitra/upsert-by-name', [MasterMitraController::class, 'upsertByName']);
+	Route::get('/master/mitra/cek-nama', [MasterMitraController::class, 'cekNama']);
+	Route::get('/master/mitra/cari', [MasterMitraController::class, 'cari']);
 	Route::apiResource('/master/mitra', MasterMitraController::class);
 	Route::apiResource('/master/negara', MasterNegaraController::class)
 		->parameters(['negara' => 'negara']);

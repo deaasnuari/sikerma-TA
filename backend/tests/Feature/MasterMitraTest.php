@@ -293,4 +293,112 @@ class MasterMitraTest extends TestCase
             'kontak' => [['nama' => '', 'email' => 'x@x.id']],
         ])->assertUnprocessable()->assertJsonValidationErrors('kontak.0.nama');
     }
+
+    public function test_tambah_mitra_ditolak_kalau_namanya_sama_dengan_yang_sudah_ada(): void
+    {
+        $admin = $this->admin();
+        $ada = $this->buatMitra(['nama_mitra' => 'PT Bank Mandiri (Persero) Tbk', 'kode_mitra' => 'BA03']);
+
+        // Beda huruf besar/kecil, titik, dan badan usaha tetap dianggap sama.
+        foreach (['PT. Bank Mandiri', 'bank mandiri', 'PT BANK MANDIRI (PERSERO) TBK'] as $nama) {
+            $this->actingAs($admin)->postJson('/api/master/mitra', $this->dataMitra(['nama_mitra' => $nama]))
+                ->assertStatus(422)
+                ->assertJsonPath('errors.nama_mitra.0', 'Nama mitra sudah ada: PT Bank Mandiri (Persero) Tbk')
+                ->assertJsonPath('data.mitra_id', $ada->id);
+        }
+
+        $this->assertSame(1, MasterMitra::count());
+    }
+
+    public function test_tambah_mitra_dengan_nama_berbeda_tetap_boleh(): void
+    {
+        $admin = $this->admin();
+        $this->buatMitra(['nama_mitra' => 'SMK Negeri 1 Batam']);
+
+        // Nomor berbeda = sekolah lain.
+        $this->actingAs($admin)->postJson('/api/master/mitra', $this->dataMitra(['nama_mitra' => 'SMK Negeri 3 Batam']))
+            ->assertCreated();
+    }
+
+    public function test_ubah_nama_mitra_jadi_sama_dengan_mitra_lain_ditolak_tapi_edit_lain_boleh(): void
+    {
+        $admin = $this->admin();
+        $a = $this->buatMitra(['nama_mitra' => 'PT Alpha Jaya']);
+        $b = $this->buatMitra(['nama_mitra' => 'PT Beta Sentosa']);
+
+        $this->actingAs($admin)->putJson("/api/master/mitra/{$b->id}", ['nama_mitra' => 'pt. alpha jaya'])
+            ->assertStatus(422);
+        $this->assertSame('PT Beta Sentosa', $b->fresh()->nama_mitra);
+
+        // Menyimpan ulang dengan nama sendiri / mengubah kolom lain tidak diblokir.
+        $this->actingAs($admin)->putJson("/api/master/mitra/{$b->id}", ['nama_mitra' => 'PT Beta Sentosa', 'negara' => 'Malaysia'])
+            ->assertOk();
+        $this->actingAs($admin)->putJson("/api/master/mitra/{$a->id}", ['negara' => 'Singapura'])
+            ->assertOk();
+    }
+
+    public function test_cek_nama_memberi_tahu_mitra_yang_sudah_ada(): void
+    {
+        $admin = $this->admin();
+        $ada = $this->buatMitra(['nama_mitra' => 'PT Bank Mandiri (Persero) Tbk', 'kode_mitra' => 'BA03']);
+
+        $this->actingAs($admin)->getJson('/api/master/mitra/cek-nama?nama=' . urlencode('PT. Bank Mandiri'))
+            ->assertOk()
+            ->assertJsonPath('data.ada', true)
+            ->assertJsonPath('data.mitra.id', $ada->id)
+            ->assertJsonPath('data.mitra.kode_mitra', 'BA03');
+
+        $this->actingAs($admin)->getJson('/api/master/mitra/cek-nama?nama=' . urlencode('PT Lain Sekali'))
+            ->assertOk()->assertJsonPath('data.ada', false);
+
+        // Mitra yang sedang diedit tidak dihitung bentrok dengan dirinya sendiri.
+        $this->actingAs($admin)->getJson("/api/master/mitra/cek-nama?nama=" . urlencode('PT Bank Mandiri') . "&except_id={$ada->id}")
+            ->assertOk()->assertJsonPath('data.ada', false);
+    }
+
+    public function test_cek_nama_hanya_untuk_admin(): void
+    {
+        $this->actingAs($this->internal())->getJson('/api/master/mitra/cek-nama?nama=PT+Apa')->assertForbidden();
+    }
+
+    public function test_cek_nama_memberi_peringatan_mirip_tanpa_memblokir_penyimpanan(): void
+    {
+        $admin = $this->admin();
+        $ada = $this->buatMitra(['nama_mitra' => 'PT Samsung Electronics Batam']);
+
+        $this->actingAs($admin)->getJson('/api/master/mitra/cek-nama?nama=Samsung')
+            ->assertOk()
+            ->assertJsonPath('data.ada', false)
+            ->assertJsonPath('data.mirip.0.id', $ada->id);
+
+        // Mirip hanya peringatan: server tetap mau menyimpan.
+        $this->actingAs($admin)->postJson('/api/master/mitra', $this->dataMitra(['nama_mitra' => 'Samsung']))
+            ->assertCreated();
+    }
+
+    public function test_cari_menemukan_mitra_walau_nama_belum_lengkap_atau_salah_ketik(): void
+    {
+        $admin = $this->admin();
+        $ada = $this->buatMitra(['nama_mitra' => 'PT Infineon Technologies Batam', 'kode_mitra' => 'PTI01']);
+        $this->buatMitra(['nama_mitra' => 'Universitas Jambi']);
+
+        foreach (['infi', 'Infineon', 'infineon batam', 'infinion', 'technologies infineon'] as $ketikan) {
+            $res = $this->actingAs($admin)->getJson('/api/master/mitra/cari?q=' . urlencode($ketikan))->assertOk();
+            $this->assertSame($ada->id, $res->json('data.0.id'), "tidak ditemukan untuk ketikan: {$ketikan}");
+            $this->assertSame('PTI01', $res->json('data.0.kode_mitra'));
+        }
+
+        // Yang tidak berkaitan tidak ikut muncul.
+        $res = $this->actingAs($admin)->getJson('/api/master/mitra/cari?q=' . urlencode('infineon'))->assertOk();
+        $this->assertSame(1, $res->json('total'));
+
+        $this->actingAs($admin)->getJson('/api/master/mitra/cari?q=' . urlencode('zzzzzz'))
+            ->assertOk()->assertJsonPath('total', 0);
+    }
+
+    public function test_cari_hanya_untuk_admin(): void
+    {
+        $this->actingAs($this->internal())->getJson('/api/master/mitra/cari?q=infineon')->assertForbidden();
+    }
 }
+

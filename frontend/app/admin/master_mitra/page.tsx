@@ -2,13 +2,17 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { AlertCircle, Building2, ChevronDown, ChevronLeft, ChevronRight, Globe, Pencil, Plus, Search, Trash2, Users, X, type LucideIcon } from 'lucide-react';
+import { AlertCircle, Building2, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Globe, Loader2, Pencil, Plus, Search, Trash2, Users, X, type LucideIcon } from 'lucide-react';
 import { getPageNumbers } from '@/lib/pagination';
 import {
+  cariMitraSerupa,
+  cekNamaMitra,
   createMasterMitra,
   deleteMasterMitra,
   updateMasterMitra,
   type MasterMitra,
+  type MitraSerupa,
+  type NamaMitraBentrok,
 } from '@/services/masterMitraService';
 import { refreshPengajuanDataFromApi, type PengajuanItem } from '@/services/adminPengajuanService';
 import { useMasterMitra } from '@/hooks/useMasterData';
@@ -159,10 +163,95 @@ export default function MasterMitraPage() {
   const [kontakRows, setKontakRows] = useState<KontakRow[]>([]);
   const [pengajuanItems, setPengajuanItems] = useState<PengajuanItem[]>([]);
   const [dismissedMitraAlerts, setDismissedMitraAlerts] = useState<string[]>([]);
+  // Mitra lain yang namanya sama dengan nama yang sedang diketik di form (cek langsung ke server).
+  const [namaBentrok, setNamaBentrok] = useState<NamaMitraBentrok | null>(null);
+  // Mitra yang namanya hanya mirip — peringatan saja, tidak memblokir Simpan.
+  const [namaMirip, setNamaMirip] = useState<NamaMitraBentrok[]>([]);
+  // Saran mitra yang sudah ada saat mengetik nama di form TAMBAH (seperti autocomplete di
+  // registrasi): memilih salah satu berarti data sudah ada, jadi tidak boleh dibuat lagi.
+  const [saranMitra, setSaranMitra] = useState<MitraSerupa[]>([]);
+  const [saranTotal, setSaranTotal] = useState(0);
+  const [saranMemeriksa, setSaranMemeriksa] = useState(false);
+  // Kata yang SUDAH selesai dicek (sukses atau gagal) — supaya "Belum terdaftar" tidak muncul
+  // sebelum pengecekan untuk teks yang sedang diketik benar-benar selesai.
+  const [saranSelesaiUntuk, setSaranSelesaiUntuk] = useState('');
+  const [saranGagal, setSaranGagal] = useState(false);
+  const [saranTerbuka, setSaranTerbuka] = useState(false);
 
   useEffect(() => {
     setDismissedMitraAlerts(getDismissedMitraAlerts());
   }, []);
+
+  useEffect(() => {
+    const kata = form.nama_mitra.trim();
+    if (!showModal || editingRow || namaBentrok || kata.length < 2) {
+      setSaranMitra([]);
+      setSaranTotal(0);
+      setSaranMemeriksa(false);
+      setSaranSelesaiUntuk('');
+      setSaranGagal(false);
+      return;
+    }
+
+    let aktif = true;
+    setSaranMemeriksa(true);
+    setSaranGagal(false);
+    const timer = setTimeout(() => {
+      cariMitraSerupa(kata)
+        .then((hasil) => {
+          if (!aktif) return;
+          setSaranMitra(hasil.items);
+          setSaranTotal(hasil.total);
+          setSaranSelesaiUntuk(kata);
+        })
+        .catch(() => {
+          if (!aktif) return;
+          setSaranMitra([]);
+          setSaranTotal(0);
+          setSaranGagal(true);
+          setSaranSelesaiUntuk(kata);
+        })
+        .finally(() => {
+          if (aktif) setSaranMemeriksa(false);
+        });
+    }, 250);
+
+    return () => {
+      aktif = false;
+      clearTimeout(timer);
+    };
+  }, [form.nama_mitra, showModal, editingRow, namaBentrok]);
+
+  // Peringatan langsung saat admin mengetik nama mitra, sebelum menekan Simpan. Saat mengedit,
+  // nama yang belum diubah tidak diperiksa (supaya tidak bentrok dengan dirinya sendiri).
+  useEffect(() => {
+    const nama = form.nama_mitra.trim();
+    if (!showModal || nama.length < 3 || (editingRow && nama === editingRow.nama_mitra.trim())) {
+      setNamaBentrok(null);
+      setNamaMirip([]);
+      return;
+    }
+
+    let aktif = true;
+    const timer = setTimeout(() => {
+      cekNamaMitra(nama, editingRow?.id)
+        .then((hasil) => {
+          if (!aktif) return;
+          setNamaBentrok(hasil.bentrok);
+          setNamaMirip(hasil.mirip);
+        })
+        .catch(() => {
+          if (!aktif) return;
+          setNamaBentrok(null);
+          setNamaMirip([]);
+        });
+    }, 400);
+
+    return () => {
+      aktif = false;
+      clearTimeout(timer);
+    };
+  }, [form.nama_mitra, showModal, editingRow]);
 
   const dismissMitraAlert = (nama: string) => {
     const normalized = normalizeMitraName(nama);
@@ -316,6 +405,34 @@ export default function MasterMitraPage() {
     setEditingRow(null);
     setForm(emptyForm);
     setKontakRows([]);
+    setNamaBentrok(null);
+    setNamaMirip([]);
+    setSaranMitra([]);
+    setSaranTerbuka(false);
+  };
+
+  // Memilih saran = mitra itu SUDAH ADA: nama diisi persis seperti yang ada dan langsung ditandai
+  // bentrok (Simpan nonaktif), supaya tidak bisa ditambahkan lagi.
+  const pilihMitraDariSaran = (mitra: MitraSerupa) => {
+    const lengkap = rows.find((row) => row.id === mitra.id);
+    setForm((prev) => ({ ...prev, nama_mitra: mitra.nama_mitra }));
+    setNamaBentrok({ id: mitra.id, nama_mitra: mitra.nama_mitra, kode_mitra: lengkap?.kode_mitra ?? null });
+    setNamaMirip([]);
+    setSaranMitra([]);
+    setSaranTerbuka(false);
+  };
+
+  // Dari peringatan "nama sudah ada": tutup form tambah dan buka mitra yang sudah ada untuk diedit.
+  const bukaMitraYangSudahAda = (bentrok: NamaMitraBentrok) => {
+    const target = rows.find((row) => row.id === bentrok.id);
+    if (!target) {
+      setSearch(bentrok.nama_mitra);
+      closeModal();
+      return;
+    }
+    setNamaBentrok(null);
+    setNamaMirip([]);
+    openEdit(target);
   };
 
   const updateKontakRow = (key: string, field: 'nama' | 'jabatan' | 'email' | 'telepon', value: string) => {
@@ -850,7 +967,114 @@ export default function MasterMitraPage() {
                 <input value={form.kode_mitra} onChange={(event) => setForm((prev) => ({ ...prev, kode_mitra: event.target.value }))} className="input-field w-full px-4 py-2.5 text-[12px] font-mono" placeholder="mis. PT001, UN01" />
               </Field>
               <Field label="Nama Mitra *">
-                <input value={form.nama_mitra} onChange={(event) => setForm((prev) => ({ ...prev, nama_mitra: event.target.value }))} className="input-field w-full px-4 py-2.5 text-[12px]" />
+                <div className="relative">
+                  <input
+                    value={form.nama_mitra}
+                    onChange={(event) => {
+                      setForm((prev) => ({ ...prev, nama_mitra: event.target.value }));
+                      setNamaBentrok(null);
+                      setSaranTerbuka(true);
+                    }}
+                    onFocus={() => setSaranTerbuka(true)}
+                    onBlur={() => window.setTimeout(() => setSaranTerbuka(false), 150)}
+                    autoComplete="off"
+                    placeholder={editingRow ? undefined : 'Ketik nama mitra — cek dulu apakah sudah terdaftar'}
+                    className={`input-field w-full px-4 py-2.5 text-[12px] ${namaBentrok ? 'border-amber-400!' : ''}`}
+                  />
+                  {saranTerbuka && !editingRow && saranMitra.length > 0 && (
+                    <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-xl border border-gray-200 bg-white py-1 text-[12px] shadow-lg">
+                      <li className="sticky top-0 border-b border-gray-100 bg-white px-3 py-1 text-[11px] text-gray-500">
+                        {saranTotal > saranMitra.length
+                          ? `Ditampilkan ${saranMitra.length} dari ${saranTotal} mitra yang sudah ada. Ketik lebih lengkap untuk mempersempit.`
+                          : `${saranTotal} mitra yang sudah ada ditemukan — pilih kalau instansinya sama`}
+                      </li>
+                      {saranMitra.map((mitra) => (
+                        <li key={mitra.id}>
+                          <button
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => pilihMitraDariSaran(mitra)}
+                            className="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-[#EEF2FF]"
+                          >
+                            {mitra.nama_mitra}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {!editingRow && !namaBentrok && form.nama_mitra.trim().length < 2 && (
+                  <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-500">
+                    <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                    Ketik nama mitra. Kalau instansinya sudah ada, namanya akan muncul di daftar dan tidak bisa ditambahkan lagi.
+                  </p>
+                )}
+                {!editingRow && !namaBentrok && form.nama_mitra.trim().length >= 2 && (saranMemeriksa || saranSelesaiUntuk !== form.nama_mitra.trim()) && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-gray-500">
+                    <Loader2 size={13} className="animate-spin" />
+                    Mengecek nama mitra...
+                  </p>
+                )}
+                {!editingRow && !namaBentrok && !saranMemeriksa && !saranGagal && saranSelesaiUntuk === form.nama_mitra.trim() && saranMitra.length > 0 && (
+                  <p className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1.5 text-[11px] text-sky-900">
+                    <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                    Ada mitra dengan nama serupa. Pilih dari daftar kalau instansinya sama; kalau memang berbeda, lanjutkan mengisi.
+                  </p>
+                )}
+                {!editingRow && !namaBentrok && !saranMemeriksa && saranGagal && saranSelesaiUntuk === form.nama_mitra.trim() && (
+                  <p className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-800">
+                    <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                    Gagal mengecek apakah mitra ini sudah ada. Periksa koneksi lalu ketik ulang; server tetap menolak nama yang sama saat disimpan.
+                  </p>
+                )}
+                {!editingRow && !namaBentrok && !saranMemeriksa && !saranGagal && saranSelesaiUntuk === form.nama_mitra.trim() && saranMitra.length === 0 && (
+                  <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-emerald-700">
+                    <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
+                    Belum terdaftar — mitra ini bisa ditambahkan.
+                  </p>
+                )}
+                {namaBentrok && (
+                  <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                    <p className="flex items-start gap-1.5 font-semibold">
+                      <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                      Mitra ini sudah ada: {namaBentrok.nama_mitra}
+                      {namaBentrok.kode_mitra ? ` (kode ${namaBentrok.kode_mitra})` : ''}
+                    </p>
+                    <p className="mt-0.5">Data ini sudah ada di sistem, jadi tidak bisa ditambahkan lagi. Ubah data yang sudah ada, atau tulis nama yang jelas berbeda kalau memang instansi lain.</p>
+                    <button
+                      type="button"
+                      onClick={() => bukaMitraYangSudahAda(namaBentrok)}
+                      className="mt-1.5 rounded-md border border-amber-400 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-900 transition hover:bg-amber-100"
+                    >
+                      Buka mitra yang sudah ada
+                    </button>
+                  </div>
+                )}
+                {!namaBentrok && editingRow && namaMirip.length > 0 && (
+                  <div className="mt-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-[11px] text-sky-900">
+                    <p className="flex items-start gap-1.5 font-semibold">
+                      <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                      Ada mitra dengan nama mirip. Pastikan ini bukan instansi yang sama:
+                    </p>
+                    <ul className="mt-1 space-y-1">
+                      {namaMirip.map((item) => (
+                        <li key={item.id} className="flex flex-wrap items-center gap-2">
+                          <span>
+                            {item.nama_mitra}
+                            {item.kode_mitra ? ` (kode ${item.kode_mitra})` : ''}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => bukaMitraYangSudahAda(item)}
+                            className="rounded-md border border-sky-400 bg-white px-2 py-0.5 text-[11px] font-semibold text-sky-900 transition hover:bg-sky-100"
+                          >
+                            Buka
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </Field>
               <Field label="Kategori Mitra">
                 <select
@@ -1004,7 +1228,7 @@ export default function MasterMitraPage() {
               <button onClick={closeModal} className="rounded-lg border border-gray-200 px-4 py-2.5 text-[12px] font-medium text-gray-700 transition hover:bg-gray-50">
                 Batal
               </button>
-              <button onClick={handleSave} disabled={submitting} className="btn-primary px-4 py-2.5 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-60">
+              <button onClick={handleSave} disabled={submitting || namaBentrok !== null} title={namaBentrok ? 'Nama mitra ini sudah ada di Data Kemitraan' : undefined} className="btn-primary px-4 py-2.5 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-60">
                 {submitting ? 'Menyimpan...' : 'Simpan'}
               </button>
             </div>

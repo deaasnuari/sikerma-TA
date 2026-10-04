@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\MasterMitra;
+use App\Support\MitraNameMatcher;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -12,7 +13,9 @@ use Illuminate\Support\Facades\Schema;
  * instansi tidak masuk Data Kemitraan dua kali hanya karena beda penulisan.
  *
  * Nama dinormalkan: huruf kecil, lalu semua spasi & tanda baca dibuang, jadi
- * "PT. Berkah Jaya", "PT Berkah  Jaya" dan "pt berkah jaya" dianggap sama.
+ * "PT. Berkah Jaya", "PT Berkah  Jaya" dan "pt berkah jaya" dianggap sama. Kecocokan
+ * longgar (PT/CV/Tbk diabaikan, salah ketik kecil) dipakai sebagai cadangan — lihat
+ * MitraNameMatcher.
  *
  * Catatan: tambah mitra manual di halaman Data Kemitraan (MasterMitraController::store)
  * sengaja TIDAK memakai ini — admin tetap boleh membuat baris terpisah.
@@ -24,7 +27,7 @@ class MasterMitraResolver
         return preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower(trim((string) $nama))) ?? '';
     }
 
-    public function findByName(?string $nama): ?MasterMitra
+    public function findByName(?string $nama, ?int $exceptId = null): ?MasterMitra
     {
         $key = self::normalize($nama);
         if ($key === '') {
@@ -33,21 +36,61 @@ class MasterMitraResolver
 
         // Normalisasi tidak bisa dilakukan portabel di SQL (pgsql vs sqlite), jadi
         // dicocokkan di PHP. Hanya kolom id & nama yang dibaca; datanya ratusan baris.
-        $matchId = null;
+        // Kecocokan persis (setelah tanda baca dibuang) diutamakan; kalau tidak ada, pakai
+        // kecocokan longgar (abaikan PT/CV/Tbk/..., atau salah ketik kecil — lihat
+        // MitraNameMatcher) supaya satu instansi tidak masuk dua kali.
+        $exactId = null;
+        $looseId = null;
         DB::table('master_mitra')->select('id', 'nama_mitra')->orderBy('id')
-            ->chunk(500, function ($rows) use ($key, &$matchId) {
+            ->chunk(500, function ($rows) use ($key, $nama, $exceptId, &$exactId, &$looseId) {
                 foreach ($rows as $row) {
+                    if ($exceptId !== null && (int) $row->id === $exceptId) {
+                        continue;
+                    }
                     if (self::normalize($row->nama_mitra) === $key) {
-                        $matchId = $row->id;
+                        $exactId = $row->id;
 
                         return false;
+                    }
+                    if ($looseId === null && MitraNameMatcher::sama($nama, $row->nama_mitra)) {
+                        $looseId = $row->id;
                     }
                 }
 
                 return true;
             });
 
+        $matchId = $exactId ?? $looseId;
+
         return $matchId ? MasterMitra::find($matchId) : null;
+    }
+
+    /**
+     * Mitra yang namanya MIRIP (bukan pasti sama) — untuk peringatan di form Data Kemitraan.
+     *
+     * @return object[] baris dengan kolom id, nama_mitra, kode_mitra
+     */
+    public function findMirip(?string $nama, ?int $exceptId = null, int $batas = 5): array
+    {
+        $hasil = [];
+        DB::table('master_mitra')->select('id', 'nama_mitra', 'kode_mitra')->orderBy('id')
+            ->chunk(500, function ($rows) use ($nama, $exceptId, $batas, &$hasil) {
+                foreach ($rows as $row) {
+                    if ($exceptId !== null && (int) $row->id === $exceptId) {
+                        continue;
+                    }
+                    if (MitraNameMatcher::mirip($nama, $row->nama_mitra)) {
+                        $hasil[] = $row;
+                        if (count($hasil) >= $batas) {
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
+            });
+
+        return $hasil;
     }
 
     /**

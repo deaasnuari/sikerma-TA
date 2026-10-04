@@ -30,6 +30,17 @@ class RegistrasiMasterMitraTest extends TestCase
         $this->postJson('/api/otp/verify', ['email' => $email, 'otp' => $otp])->assertCreated();
     }
 
+    public function test_pencarian_mitra_mengabaikan_badan_usaha_dan_salah_ketik_kecil(): void
+    {
+        $ada = MasterMitra::create(['nama_mitra' => 'PT Bank Mandiri (Persero) Tbk', 'aktif' => true]);
+        $typo = MasterMitra::create(['nama_mitra' => 'Yayasan Ikbal-M-Yos Batam', 'aktif' => true]);
+        $resolver = new MasterMitraResolver();
+
+        $this->assertSame($ada->id, $resolver->findByName('PT. Bank Mandiri')?->id);
+        $this->assertSame($typo->id, $resolver->findByName('Yayasa Ikbal M Yos Batam')?->id);
+        $this->assertNull($resolver->findByName('Bank Indonesia'));
+    }
+
     public function test_normalisasi_nama_abaikan_huruf_spasi_dan_tanda_baca(): void
     {
         $this->assertSame(

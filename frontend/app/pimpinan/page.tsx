@@ -1,5 +1,6 @@
 'use client';
 
+import KategoriMitraDonutCard from '@/components/KategoriMitraDonutCard';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -59,6 +60,7 @@ export default function PimpinanPage() {
   // supaya angkanya tidak berbeda dari yang ditampilkan ke Admin.
   const [mitraStats, setMitraStats] = useState({
     total: 0,
+    kategori: [] as { label: string; value: number }[],
     dalam_negeri: 0,
     luar_negeri: 0,
     dudi_nasional: 0,
@@ -268,38 +270,8 @@ export default function PimpinanPage() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          {/* Card 1: Jenis Mitra & Wilayah */}
-          <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-4 md:p-5">
-            <h3 className="text-[12px] font-bold text-slate-800">Jenis Mitra &amp; Wilayah</h3>
-            <div className="mt-4 flex items-center justify-center">
-              <DonutChart
-                size={180}
-                centerLabel={String(totalMitra)}
-                segments={[
-                  { value: mitraStats.instansi_nasional, color: '#173B82' },
-                  { value: mitraStats.instansi_internasional, color: '#3B82F6' },
-                  { value: mitraStats.dudi_nasional, color: '#93C5FD' },
-                  { value: mitraStats.dudi_internasional, color: '#BFDBFE' },
-                ]}
-              />
-            </div>
-            <div className="mt-4 space-y-2">
-              {[
-                { label: 'Instansi Dalam Negeri', value: mitraStats.instansi_nasional, color: '#173B82' },
-                { label: 'Instansi Luar Negeri', value: mitraStats.instansi_internasional, color: '#3B82F6' },
-                { label: 'DUDI Dalam Negeri', value: mitraStats.dudi_nasional, color: '#93C5FD' },
-                { label: 'DUDI Luar Negeri', value: mitraStats.dudi_internasional, color: '#BFDBFE' },
-              ].map((item) => (
-                <div key={item.label} className="flex items-center justify-between text-[11px]">
-                  <span className="flex items-center gap-1.5 text-slate-600">
-                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                    {item.label}
-                  </span>
-                  <span className="font-semibold text-slate-800">{item.value.toLocaleString('id-ID')}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Card 1: Kategori Mitra (sama dengan filter Kategori di Data Kemitraan) */}
+          <KategoriMitraDonutCard total={totalMitra} kategori={mitraStats.kategori} />
 
           {/* Card 2: Komposisi Dokumen */}
           <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-slate-50 p-4 md:p-5">

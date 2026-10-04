@@ -919,6 +919,38 @@ class DokumenKerjasamaTest extends TestCase
         $this->assertEquals(1, $response->json('data.dalam_negeri'));
     }
 
+    public function test_mitra_stats_mengelompokkan_per_kategori_sesuai_urutan_filter_data_kemitraan(): void
+    {
+        $admin = $this->admin();
+
+        // Sengaja dibuat urutan input acak & ada kategori di luar daftar filter + kategori kosong.
+        foreach ([
+            'dudi dalam negeri', 'Pemerintahan', 'Perguruan Tinggi', 'Perguruan Tinggi',
+            'Kategori Aneh', null,
+        ] as $i => $kategori) {
+            MasterMitra::create([
+                'nama_mitra'     => "Mitra {$i}",
+                'kategori_mitra' => $kategori,
+                'aktif'          => true,
+            ]);
+        }
+
+        $kategori = $this->actingAs($admin)->getJson('/api/dokumen-kerjasama/stats/mitra')
+            ->assertOk()->json('data.kategori');
+
+        // Urutan = urutan dropdown Kategori di Data Kemitraan, lalu sisanya di belakang.
+        $this->assertSame([
+            ['label' => 'Perguruan Tinggi', 'value' => 2],
+            ['label' => 'Pemerintahan', 'value' => 1],
+            ['label' => 'dudi dalam negeri', 'value' => 1],
+            ['label' => 'Belum diisi', 'value' => 1],
+            ['label' => 'Kategori Aneh', 'value' => 1],
+        ], array_map(fn ($row) => ['label' => $row['label'], 'value' => $row['value']], $kategori));
+
+        // Jumlah semua potongan = total mitra.
+        $this->assertSame(6, array_sum(array_column($kategori, 'value')));
+    }
+
     // ------------------------------------------------------------------
     // structural access (Ketua Jurusan/Ketua Prodi/Kepala Unit) — role di DB
     // tetap 'internal', cerminan dari test yang sama di PengajuanTest.
