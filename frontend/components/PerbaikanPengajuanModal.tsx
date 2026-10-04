@@ -119,6 +119,7 @@ export default function PerbaikanPengajuanModal({ item, nomorPengajuanSource, on
       await updatePengajuanItemApi(
         item.id,
         {
+          updatedAt: item.updatedAt,
           judulPengajuan: form.judulKerjasama.trim(),
           namaMitra,
           // Nama mitra diganti -> biarkan backend mencari/membuat mitra dari nama baru.

@@ -386,6 +386,80 @@ class PengajuanTest extends TestCase
             ->assertJsonPath('data.judul_pengajuan', 'Judul Diperbarui');
     }
 
+    public function test_update_dengan_token_updated_at_terbaru_berhasil_dan_mengembalikan_token_baru(): void
+    {
+        $admin     = $this->admin();
+        $pengajuan = $this->buatPengajuan();
+
+        $response = $this->actingAs($admin)->putJson("/api/pengajuan/{$pengajuan->id}", [
+            'updated_at'      => $pengajuan->fresh()->updated_at->toISOString(),
+            'judul_pengajuan' => 'Judul Admin A',
+        ]);
+
+        $response->assertOk()->assertJsonPath('data.judul_pengajuan', 'Judul Admin A');
+        $this->assertNotNull($response->json('data.updated_at'));
+    }
+
+    public function test_update_dengan_token_kedaluwarsa_ditolak_409_dan_tidak_menimpa(): void
+    {
+        $admin     = $this->admin();
+        $pengajuan = $this->buatPengajuan();
+
+        // Kedua admin membuka form di waktu yang sama -> memegang token yang sama.
+        $tokenAwal = $pengajuan->fresh()->updated_at->toISOString();
+
+        // Waktu berjalan; admin A menyimpan lebih dulu.
+        $this->travel(5)->seconds();
+        $this->actingAs($admin)->putJson("/api/pengajuan/{$pengajuan->id}", [
+            'updated_at'      => $tokenAwal,
+            'judul_pengajuan' => 'Judul Admin A',
+        ])->assertOk();
+
+        // Admin B masih memegang token lama.
+        $this->travel(5)->seconds();
+        $this->actingAs($admin)->putJson("/api/pengajuan/{$pengajuan->id}", [
+            'updated_at'      => $tokenAwal,
+            'judul_pengajuan' => 'Judul Admin B',
+        ])->assertStatus(409)->assertJsonPath('conflict', true);
+
+        $this->assertSame('Judul Admin A', $pengajuan->fresh()->judul_pengajuan);
+    }
+
+    public function test_review_status_dengan_token_kedaluwarsa_ditolak_409(): void
+    {
+        $admin     = $this->admin();
+        $pengajuan = $this->buatPengajuan();
+        $tokenAwal = $pengajuan->fresh()->updated_at->toISOString();
+
+        $this->travel(5)->seconds();
+        $this->actingAs($admin)->patchJson("/api/pengajuan/{$pengajuan->id}", [
+            'updated_at'       => $tokenAwal,
+            'status_pengajuan' => 'ditolak',
+        ])->assertOk();
+
+        // Admin lain masih memegang token lama dan mencoba menyetujui.
+        $this->travel(5)->seconds();
+        $this->actingAs($admin)->patchJson("/api/pengajuan/{$pengajuan->id}", [
+            'updated_at'       => $tokenAwal,
+            'status_pengajuan' => 'diproses',
+        ])->assertStatus(409);
+
+        $this->assertSame('ditolak', $pengajuan->fresh()->status_pengajuan);
+    }
+
+    public function test_update_tanpa_token_tetap_berjalan_seperti_sebelumnya(): void
+    {
+        $admin     = $this->admin();
+        $pengajuan = $this->buatPengajuan();
+
+        $this->travel(5)->seconds();
+        $this->actingAs($admin)->putJson("/api/pengajuan/{$pengajuan->id}", ['judul_pengajuan' => 'Satu'])->assertOk();
+        $this->travel(5)->seconds();
+        $this->actingAs($admin)->putJson("/api/pengajuan/{$pengajuan->id}", ['judul_pengajuan' => 'Dua'])->assertOk();
+
+        $this->assertSame('Dua', $pengajuan->fresh()->judul_pengajuan);
+    }
+
     public function test_admin_dapat_update_status_ke_diproses(): void
     {
         $admin     = $this->admin();

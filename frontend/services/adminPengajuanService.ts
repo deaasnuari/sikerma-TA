@@ -87,6 +87,9 @@ export interface PengajuanItem {
   // Diisi backend saat pengusul mengirim ulang pengajuan yang diminta Revisi.
   direvisiPengusulPada?: string | null;
   isFromAdmin?: boolean;
+  // Token optimistic locking: waktu terakhir pengajuan diubah di server saat data ini dimuat.
+  // Dikirim balik saat menyimpan supaya backend bisa menolak (409) bila sudah diubah orang lain.
+  updatedAt?: string;
   // Id user internal yang di-"distribusi"/CC-kan admin saat ACC, supaya mereka tahu ikut melihat dokumen final ini.
   distribusiUserIds?: number[];
 }
@@ -216,6 +219,7 @@ type ApiSingleResponse<T> = {
 
 type ApiPengajuanRow = {
   id: number;
+  updated_at?: string | null;
   // New schema keys
   nomor_pengajuan: string;
   nama_pengusul: string;
@@ -536,6 +540,7 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
         }))
       : [],
     distribusiUserIds: Array.isArray(row.distribusi_user_ids) ? row.distribusi_user_ids : [],
+    updatedAt: row.updated_at || undefined,
   };
 }
 
@@ -577,11 +582,14 @@ export async function savePengajuanReviewApi(
   id: number,
   status: PengajuanStatus,
   comment?: string,
-  distribusiUserIds?: number[]
+  distribusiUserIds?: number[],
+  // Token optimistic locking (PengajuanItem.updatedAt) — lihat updatePengajuanItemApi.
+  updatedAt?: string
 ): Promise<PengajuanItem> {
   const response = await apiRequest<ApiSingleResponse<ApiPengajuanRow>>(`/pengajuan/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({
+      ...(updatedAt ? { updated_at: updatedAt } : {}),
       status_pengajuan: mapStatusToApi(status),
       status: mapStatusToApi(status),
       catatan: comment?.trim() || null,
@@ -601,11 +609,13 @@ export async function savePengajuanReviewApi(
 export async function savePengajuanRevisionApi(
   id: number,
   catatanRevisi: string,
-  comment?: string
+  comment?: string,
+  updatedAt?: string
 ): Promise<PengajuanItem> {
   const response = await apiRequest<ApiSingleResponse<ApiPengajuanRow>>(`/pengajuan/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({
+      ...(updatedAt ? { updated_at: updatedAt } : {}),
       status_pengajuan: mapStatusToApi('Revisi'),
       status: mapStatusToApi('Revisi'),
       catatan: comment?.trim() || null,
@@ -625,21 +635,24 @@ export async function savePengajuanRevisionApi(
 
 export async function uploadAccFileApi(
   id: number,
-  file: { name: string; url: string; type?: string; size?: number }
+  file: { name: string; url: string; type?: string; size?: number },
+  updatedAt?: string
 ): Promise<PengajuanItem> {
   const response = await apiRequest<ApiSingleResponse<ApiPengajuanRow>>(`/pengajuan/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({
+      ...(updatedAt ? { updated_at: updatedAt } : {}),
       acc_file_attachments: [{ name: file.name, url: file.url, type: file.type, size: file.size }],
     }),
   });
   return mapApiPengajuanToItem(response.data);
 }
 
-export async function accFinalBerkasApi(id: number): Promise<PengajuanItem> {
+export async function accFinalBerkasApi(id: number, updatedAt?: string): Promise<PengajuanItem> {
   const response = await apiRequest<ApiSingleResponse<ApiPengajuanRow>>(`/pengajuan/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({
+      ...(updatedAt ? { updated_at: updatedAt } : {}),
       status_pengajuan: mapStatusToApi('Disetujui'),
       status: mapStatusToApi('Disetujui'),
       keputusan: 'Disetujui',
@@ -661,6 +674,7 @@ export async function updatePengajuanItemApi(
   extraPayload: Record<string, unknown> = {}
 ): Promise<PengajuanItem> {
   const payload: Record<string, unknown> = { ...extraPayload };
+  if (typeof updates.updatedAt === 'string' && updates.updatedAt) payload.updated_at = updates.updatedAt;
   if (typeof updates.judulPengajuan === 'string') payload.judul_pengajuan = updates.judulPengajuan;
   if (typeof updates.deskripsiPengajuan === 'string') payload.deskripsi_pengajuan = updates.deskripsiPengajuan;
   if (typeof updates.manfaat === 'string') payload.manfaat = updates.manfaat;

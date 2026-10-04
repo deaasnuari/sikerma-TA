@@ -56,6 +56,7 @@ import { getDistribusiKandidat, provisionDistribusiUser, type DistribusiKandidat
 
 type EditFormState = {
   id: number;
+  updatedAt?: string;
   judulPengajuan: string;
   namaMitra: string;
   namaUnitProdi: string;
@@ -963,10 +964,10 @@ async function saveReview() {
           setInfoModalMessage('Catatan Revisi wajib diisi.');
           return;
         }
-        const updated = await savePengajuanRevisionApi(reviewItem.id, reviewComment, reviewComment);
+        const updated = await savePengajuanRevisionApi(reviewItem.id, reviewComment, reviewComment, reviewItem.updatedAt);
         setPengajuanData((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
       } else {
-        const updated = await savePengajuanReviewApi(reviewItem.id, reviewDecision, reviewComment);
+        const updated = await savePengajuanReviewApi(reviewItem.id, reviewDecision, reviewComment, undefined, reviewItem.updatedAt);
         setPengajuanData((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
       }
     } catch (err) {
@@ -989,7 +990,7 @@ async function saveReview() {
 
     if (reviewDecision === 'Revisi') {
       try {
-        const updated = await savePengajuanRevisionApi(reviewItem.id, reviewComment, reviewComment);
+        const updated = await savePengajuanRevisionApi(reviewItem.id, reviewComment, reviewComment, reviewItem.updatedAt);
         setPengajuanData((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
         addAdminNotification({
           title: 'Pengajuan Diminta Revisi',
@@ -1018,20 +1019,25 @@ async function saveReview() {
       const usingLink = !reviewFinalFile && trimmedLink.length > 0;
 
       try {
+        // Upload ACC dan keputusan adalah dua PATCH berurutan; token dari balasan upload
+        // dipakai untuk PATCH berikutnya supaya tidak dianggap konflik dengan dirinya sendiri.
+        let lockToken = reviewItem.updatedAt;
         if (reviewFinalFile && reviewFinalFilePreview) {
-          await uploadAccFileApi(reviewItem.id, {
+          const uploaded = await uploadAccFileApi(reviewItem.id, {
             name: reviewFinalFile.name,
             url: reviewFinalFilePreview.url,
             type: reviewFinalFile.type,
             size: reviewFinalFile.size,
-          });
+          }, lockToken);
+          lockToken = uploaded.updatedAt ?? lockToken;
         } else if (usingLink) {
-          await uploadAccFileApi(reviewItem.id, {
+          const uploaded = await uploadAccFileApi(reviewItem.id, {
             name: 'Tautan Dokumen Final',
             url: trimmedLink,
-          });
+          }, lockToken);
+          lockToken = uploaded.updatedAt ?? lockToken;
         }
-        const reviewUpdated = await savePengajuanReviewApi(reviewItem.id, reviewDecision, reviewComment, reviewDistribusiUserIds);
+        const reviewUpdated = await savePengajuanReviewApi(reviewItem.id, reviewDecision, reviewComment, reviewDistribusiUserIds, lockToken);
         if ((reviewFinalFile && reviewFinalFilePreview) || usingLink) {
           const accAttachment = reviewFinalFile && reviewFinalFilePreview
             ? {
@@ -1147,6 +1153,7 @@ async function saveReview() {
 
     setEditForm({
       id: item.id,
+      updatedAt: item.updatedAt,
       judulPengajuan: item.judulPengajuan,
       namaMitra: item.namaMitra,
       namaUnitProdi: item.namaUnitProdi,
@@ -1279,6 +1286,7 @@ function addEditJurusanUnitOption() {
       : [];
 
     const editPayload = {
+      updatedAt: editForm.updatedAt,
       judulPengajuan: editForm.judulPengajuan.trim(),
       namaMitra: editForm.namaMitra.trim(),
       namaUnitProdi: editForm.namaUnitProdi.trim(),
@@ -1444,6 +1452,7 @@ function addEditJurusanUnitOption() {
       .filter((id): id is number => typeof id === 'number');
 
     const editPayload = {
+      updatedAt: editingItem.updatedAt,
       judulPengajuan: payload.formData.judulKerjasama.trim(),
       namaMitra: namaMitraTrimmed,
       mitraId: resolvedMitraId,

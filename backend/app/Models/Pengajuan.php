@@ -93,7 +93,7 @@ class Pengajuan extends Model
         'ruang_lingkup_ids' => 'array',
         'tanggal_mulai' => 'date',
         'tanggal_berakhir' => 'date',
-        'diajukan_pada' => 'datetime',
+        'diajukan_pada' => 'datetimse',
         'email_terv erifikasi_pada' => 'datetime',
         'acc_internal_at' => 'datetime',
         'acc_mitra_at' => 'datetime',

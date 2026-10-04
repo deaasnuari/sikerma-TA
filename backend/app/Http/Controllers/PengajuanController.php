@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\PengajuanKonflikException;
 use App\Models\DokumenFile;
 use App\Models\DokumenLog;
 use App\Models\DokumenKerjasama;
@@ -1386,6 +1387,38 @@ class PengajuanController extends Controller
         ]);
     }
 
+    private function parseLockToken(Request $request): ?int
+    {
+        $raw = $request->input('updated_at');
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        try {
+            return \Carbon\Carbon::parse($raw)->getTimestamp();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function isPengajuanStale(?Pengajuan $current, int $tokenTimestamp): bool
+    {
+        if (! $current || ! $current->updated_at) {
+            return false;
+        }
+
+        return $current->updated_at->getTimestamp() !== $tokenTimestamp;
+    }
+
+    private function konflikResponse(): Response
+    {
+        return response([
+            'success' => false,
+            'conflict' => true,
+            'message' => 'Pengajuan ini sudah diubah oleh pengguna lain sejak Anda membukanya. Muat ulang data lalu ulangi perubahan Anda.',
+        ], 409);
+    }
+
     public function update(Request $request, Pengajuan $pengajuan): Response
     {
         // Admin boleh ubah apa saja. Pemilik pengajuan (internal/eksternal) boleh memperbaiki
@@ -1487,6 +1520,16 @@ class PengajuanController extends Controller
             }
         }
 
+        // Optimistic locking: klien boleh mengirim `updated_at` yang ia terima saat memuat data.
+        // Kalau pengajuan sudah diubah orang lain sejak itu, tolak (409) supaya tidak menimpa
+        // perubahan tersebut. Tanpa token, perilaku lama (tanpa cek) tetap berlaku.
+        // Cek cepat di sini (sebelum efek samping seperti sinkron master mitra), lalu dicek
+        // ulang dengan row lock di dalam transaksi.
+        $tokenUpdatedAt = $this->parseLockToken($request);
+        if ($tokenUpdatedAt !== null && $this->isPengajuanStale($pengajuan->fresh(), $tokenUpdatedAt)) {
+            return $this->konflikResponse();
+        }
+
         if (array_key_exists('jenis_dokumen', $validated)) {
             $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
         }
@@ -1530,7 +1573,14 @@ class PengajuanController extends Controller
         $statusBaru = (string) ($validated[$statusColumn] ?? $statusLama);
 
         try {
-            DB::transaction(function () use ($pengajuan, $validated, $statusBaru, $statusLama, $request, $logComment, $isAdmin) {
+            DB::transaction(function () use ($pengajuan, $validated, $statusBaru, $statusLama, $request, $logComment, $isAdmin, $tokenUpdatedAt) {
+                if ($tokenUpdatedAt !== null) {
+                    $terkunci = Pengajuan::whereKey($pengajuan->id)->lockForUpdate()->first();
+                    if (! $terkunci || $this->isPengajuanStale($terkunci, $tokenUpdatedAt)) {
+                        throw new PengajuanKonflikException('Pengajuan sudah diubah orang lain.');
+                    }
+                }
+
                 $pengajuan->update($validated);
 
                 // Write to pengajuan_log when status changes.
@@ -1618,6 +1668,8 @@ class PengajuanController extends Controller
                     $this->moveApprovedPengajuanToDokumen($pengajuan->fresh(), $request);
                 }
             });
+        } catch (PengajuanKonflikException) {
+            return $this->konflikResponse();
         } catch (QueryException $exception) {
             return response([
                 'success' => false,
