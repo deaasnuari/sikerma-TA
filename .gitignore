@@ -73,6 +73,8 @@ Thumbs.db
 # ==========================================
 # Mengabaikan file database dump SQL
 *.sql
+# Mengabaikan hasil pg_dump -Fc (backup database sebelum operasi data)
+*.dump
 
 # Mengabaikan script ad-hoc/testing lokal di folder backend
 /backend/fix_*.php
