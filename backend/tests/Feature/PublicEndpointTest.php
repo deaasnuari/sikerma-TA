@@ -123,6 +123,35 @@ class PublicEndpointTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $response->json('data.total'));
     }
 
+    public function test_public_kerjasama_tidak_menampilkan_dokumen_yang_dihapus(): void
+    {
+        $base = ['jenis_dokumen' => 'MOU', 'file' => 't.pdf', 'nama_dokumen' => 'Dok'];
+        DokumenKerjasama::create($base + ['no_permohonan' => 'PUB-A', 'nomor_dokumen' => 'PUB-A']);
+        DokumenKerjasama::create($base + ['no_permohonan' => 'PUB-B', 'nomor_dokumen' => 'PUB-B', 'dihapus_admin_pada' => now()]);
+        DokumenKerjasama::create($base + ['no_permohonan' => 'PUB-C', 'nomor_dokumen' => 'PUB-C', 'dihapus_user_pada' => now()]);
+
+        $response = $this->getJson('/api/public/kerjasama');
+
+        $response->assertOk();
+        $this->assertSame(1, $response->json('data.total'));
+    }
+
+    public function test_public_stats_tidak_menghitung_dokumen_yang_dihapus(): void
+    {
+        $mitra = MasterMitra::create(['nama_mitra' => 'PT Stat', 'kategori_mitra' => 'Industri', 'negara' => 'Jepang', 'aktif' => true]);
+        $base = ['jenis_dokumen' => 'MOU', 'file' => 't.pdf', 'nama_dokumen' => 'Dok', 'mitra_id' => $mitra->id];
+        DokumenKerjasama::create($base + ['no_permohonan' => 'ST-A', 'nomor_dokumen' => 'ST-A']);
+        DokumenKerjasama::create($base + ['no_permohonan' => 'ST-B', 'nomor_dokumen' => 'ST-B', 'dihapus_admin_pada' => now()]);
+        DokumenKerjasama::create($base + ['no_permohonan' => 'ST-C', 'nomor_dokumen' => 'ST-C', 'dihapus_user_pada' => now()]);
+
+        $response = $this->getJson('/api/public/stats');
+
+        $response->assertOk();
+        $this->assertSame(1, $response->json('data.total'));
+        $this->assertSame(1, $response->json('data.luar_negeri'));
+        $this->assertSame(1, $response->json('data.dudi_internasional'));
+    }
+
     public function test_public_kerjasama_per_page_maksimal_1000(): void
     {
         $response = $this->getJson('/api/public/kerjasama?per_page=9999');

@@ -578,12 +578,23 @@ class DokumenKerjasamaController extends Controller
         ], 404);
     }
 
+    /**
+     * Dasar query dokumen untuk endpoint publik: dokumen yang sudah dihapus (masuk Sampah, oleh admin
+     * maupun pengusul) tidak boleh ikut terhitung/tampil. Kolom dikualifikasi karena dipakai bersama join.
+     */
+    private function dokumenPublikQuery(): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('dokumen_kerjasama')
+            ->whereNull('dokumen_kerjasama.dihapus_admin_pada')
+            ->whereNull('dokumen_kerjasama.dihapus_user_pada');
+    }
+
     //fungsi untuk menandai dokumen kerjasama sebagai dihapus oleh admin atau user
     public function publicStats(): Response
     {
-        $total = DB::table('dokumen_kerjasama')->count();
+        $total = $this->dokumenPublikQuery()->count();
 
-        $luarNegeri = DB::table('dokumen_kerjasama')
+        $luarNegeri = $this->dokumenPublikQuery()
             ->join('master_mitra', 'dokumen_kerjasama.mitra_id', '=', 'master_mitra.id')
             ->where('master_mitra.negara', '!=', 'Indonesia')
             ->whereNotNull('master_mitra.negara')
@@ -591,7 +602,7 @@ class DokumenKerjasamaController extends Controller
             ->count();
 
         // DUDI = Industri / Perusahaan category
-        $dudiNasional = DB::table('dokumen_kerjasama')
+        $dudiNasional = $this->dokumenPublikQuery()
             ->join('master_mitra', 'dokumen_kerjasama.mitra_id', '=', 'master_mitra.id')
             ->where(function ($q) {
                 $q->where('master_mitra.kategori_mitra', 'LIKE', '%Industri%')
@@ -604,7 +615,7 @@ class DokumenKerjasamaController extends Controller
             })
             ->count();
 
-        $dudiInternasional = DB::table('dokumen_kerjasama')
+        $dudiInternasional = $this->dokumenPublikQuery()
             ->join('master_mitra', 'dokumen_kerjasama.mitra_id', '=', 'master_mitra.id')
             ->where(function ($q) {
                 $q->where('master_mitra.kategori_mitra', 'LIKE', '%Industri%')
@@ -616,7 +627,7 @@ class DokumenKerjasamaController extends Controller
             ->count();
 
         // Instansi = non-Industri / non-Perusahaan category
-        $instansiNasional = DB::table('dokumen_kerjasama')
+        $instansiNasional = $this->dokumenPublikQuery()
             ->join('master_mitra', 'dokumen_kerjasama.mitra_id', '=', 'master_mitra.id')
             ->where('master_mitra.kategori_mitra', 'NOT LIKE', '%Industri%')
             ->where('master_mitra.kategori_mitra', 'NOT LIKE', '%Perusahaan%')
@@ -627,7 +638,7 @@ class DokumenKerjasamaController extends Controller
             })
             ->count();
 
-        $instansiInternasional = DB::table('dokumen_kerjasama')
+        $instansiInternasional = $this->dokumenPublikQuery()
             ->join('master_mitra', 'dokumen_kerjasama.mitra_id', '=', 'master_mitra.id')
             ->where('master_mitra.kategori_mitra', 'NOT LIKE', '%Industri%')
             ->where('master_mitra.kategori_mitra', 'NOT LIKE', '%Perusahaan%')
@@ -808,7 +819,9 @@ class DokumenKerjasamaController extends Controller
                 'mitra:id,nama_mitra,negara',
                 'unitProdi:id,nama',
             ])
-            ->select('id', 'jenis_dokumen', 'snap_nama_mitra', 'mitra_id', 'unit_prodi_id', 'ruang_lingkup_ids', 'keterangan');
+            ->select('id', 'jenis_dokumen', 'snap_nama_mitra', 'mitra_id', 'unit_prodi_id', 'ruang_lingkup_ids', 'keterangan')
+            ->whereNull('dihapus_admin_pada')
+            ->whereNull('dihapus_user_pada');
 
         $ruangLingkupMap = DB::table('master_ruang_lingkup')
             ->pluck('nama_ruang_lingkup', 'id')
