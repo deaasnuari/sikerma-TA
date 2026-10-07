@@ -9,10 +9,12 @@ use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
-// Pengingat masa berlaku kerja sama — dikirim otomatis tiap hari jam 07:00.
+// Pengingat masa berlaku kerja sama — dikirim otomatis tiap hari jam 07:00 WIB (app.timezone
+// aplikasi ini UTC, jadi zona waktu jadwalnya ditetapkan eksplisit di sini).
 // Butuh cron server: `* * * * * cd /path/ke/backend && php artisan schedule:run >> /dev/null 2>&1`
 Schedule::command('sikerma:kirim-reminder-kerjasama')
     ->dailyAt('07:00')
+    ->timezone('Asia/Jakarta')
     ->withoutOverlapping()
     ->onOneServer();
 
