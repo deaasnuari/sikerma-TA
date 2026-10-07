@@ -30,6 +30,32 @@ class KerjasamaStatus
 {
     public const EXPIRING_WINDOW_DAYS = 90;
 
+    /**
+     * Target status_siklus murni dari tanggal_berakhir (tanpa memperhatikan arsip manual) —
+     * aturan yang dipakai sikerma:sinkron-status-siklus dan sikerma:gabung-dokumen-ganda.
+     *
+     * @param  string  $hariIni  Y-m-d
+     * @param  string  $batasAkanBerakhir  Y-m-d (hari ini + ambang hari)
+     */
+    public static function siklusDariTanggal(?string $tanggalBerakhir, string $hariIni, string $batasAkanBerakhir): string
+    {
+        $tanggal = $tanggalBerakhir ? substr($tanggalBerakhir, 0, 10) : null;
+
+        if ($tanggal === null || $tanggal === '') {
+            return 'active';
+        }
+
+        if ($tanggal < $hariIni) {
+            return 'archived';
+        }
+
+        if ($tanggal <= $batasAkanBerakhir) {
+            return 'expiring';
+        }
+
+        return 'active';
+    }
+
     public static function fromTanggalBerakhir(DateTimeInterface|string|null $tanggalBerakhir, ?string $statusSiklus): string
     {
         // Diarsipkan manual (apa pun alasannya, lihat kolom alasan_arsip) selalu

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\KerjasamaStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -94,20 +95,6 @@ class SinkronStatusSiklus extends Command
 
     private function targetStatus(?string $tanggalBerakhir, string $hariIni, string $batasAkanBerakhir): string
     {
-        $tanggal = $tanggalBerakhir ? substr($tanggalBerakhir, 0, 10) : null;
-
-        if ($tanggal === null || $tanggal === '') {
-            return 'active';
-        }
-
-        if ($tanggal < $hariIni) {
-            return 'archived';
-        }
-
-        if ($tanggal <= $batasAkanBerakhir) {
-            return 'expiring';
-        }
-
-        return 'active';
+        return KerjasamaStatus::siklusDariTanggal($tanggalBerakhir, $hariIni, $batasAkanBerakhir);
     }
 }
