@@ -21,8 +21,10 @@ use Illuminate\Support\Facades\DB;
  *   php artisan sikerma:gabung-mitra-ganda --pasangan=1504:372,791:372            # pratinjau
  *   php artisan sikerma:gabung-mitra-ganda --pasangan=1504:372,791:372 --apply    # terapkan
  *
- *   # Batalkan satu kali --apply (mode otomatis maupun --pasangan):
- *   php artisan sikerma:gabung-mitra-ganda --rollback=cadangan-gabung-mitra-YYYYMMDD-HHMMSS.json
+ *   # Batalkan satu kali --apply (mode otomatis maupun --pasangan). Tanpa --apply hanya pratinjau:
+ *   php artisan sikerma:gabung-mitra-ganda --rollback=cadangan-gabung-mitra-YYYYMMDD-HHMMSS.json [--apply]
+ *   # Pulihkan hanya SEBAGIAN (mis. satu pasangan dari berkas yang berisi beberapa pasangan):
+ *   php artisan sikerma:gabung-mitra-ganda --rollback=cadangan-gabung-mitra-YYYYMMDD-HHMMSS.json --hanya=1235 [--apply]
  *
  * Dua nama dianggap sama (lihat App\Support\MitraNameMatcher) kalau beda cuma di huruf besar/kecil,
  * tanda baca, spasi, bentuk badan usaha (PT/CV/Tbk/Persero/Ltd/...), atau salah ketik kecil.
@@ -48,7 +50,8 @@ class GabungMitraGanda extends Command
     protected $signature = 'sikerma:gabung-mitra-ganda
         {--apply : Terapkan perubahan (tanpa flag ini hanya pratinjau)}
         {--pasangan= : Gabungkan pasangan yang ditentukan sendiri, format hapus:tujuan,hapus:tujuan (mis. 1504:372,791:372)}
-        {--rollback= : Batalkan satu kali --apply memakai berkas cadangan JSON di storage/app/}';
+        {--rollback= : Pulihkan dari berkas cadangan JSON di storage/app/ (pratinjau dulu; tambahkan --apply untuk memulihkan)}
+        {--hanya= : Dengan --rollback: pulihkan hanya mitra dengan id ini (pisah koma), pasangan lain di berkas yang sama tidak disentuh}';
 
     protected $description = 'Gabungkan mitra ganda di master_mitra berdasarkan kesamaan nama (induk = yang punya kode_mitra), atau pasangan hapus:tujuan yang ditentukan sendiri';
 
@@ -61,11 +64,11 @@ class GabungMitraGanda extends Command
 
     public function handle(): int
     {
-        if ($this->option('rollback')) {
-            return $this->rollback((string) $this->option('rollback'));
-        }
-
         $apply = (bool) $this->option('apply');
+
+        if ($this->option('rollback')) {
+            return $this->rollback((string) $this->option('rollback'), $apply, (string) $this->option('hanya'));
+        }
         $manual = trim((string) $this->option('pasangan')) !== '';
 
         $pakaiDok = DB::table('dokumen_kerjasama')->select('mitra_id', DB::raw('count(*) n'))
@@ -210,7 +213,7 @@ class GabungMitraGanda extends Command
             'Selesai. %d baris duplikat dihapus, %d dokumen + %d pengajuan dialihkan ke induk.',
             $totalDupHapus, $totalDokAlih, $totalPengAlih,
         ));
-        $this->line('Batalkan dengan: php artisan sikerma:gabung-mitra-ganda --rollback='.basename($berkas));
+        $this->line('Batalkan (pratinjau dulu, tambahkan --apply untuk memulihkan): php artisan sikerma:gabung-mitra-ganda --rollback='.basename($berkas));
 
         return self::SUCCESS;
     }
@@ -452,10 +455,16 @@ class GabungMitraGanda extends Command
     }
 
     /**
-     * Batalkan satu kali --apply: kolom INDUK yang di-backfill dikembalikan, mitra yang dihapus
-     * dihidupkan lagi (id aslinya), kontak dipulihkan, dan mitra_id dokumen/pengajuan dikembalikan.
+     * Pulihkan dari berkas cadangan. TANPA --apply hanya PRATINJAU.
+     *
+     *  - penuh (tanpa --hanya): batalkan satu kali --apply seluruhnya.
+     *  - sebagian (--hanya=id,id): hanya mitra yang dihapus dengan id itu yang dihidupkan lagi, beserta
+     *    dokumen/pengajuan/kontak miliknya; pasangan lain dalam berkas yang sama TIDAK disentuh.
+     *
+     * Urutan: kolom INDUK yang di-backfill dikembalikan lebih dulu (kode_mitra unik — kode yang disalin
+     * ke INDUK harus dilepas sebelum baris asalnya hidup lagi), lalu mitra dihidupkan, kontak, dokumen/pengajuan.
      */
-    private function rollback(string $path): int
+    private function rollback(string $path, bool $apply, string $hanyaOpsi): int
     {
         if (! is_file($path)) {
             $path = storage_path('app/'.ltrim($path, '/\\'));
@@ -478,54 +487,313 @@ class GabungMitraGanda extends Command
             return self::FAILURE;
         }
 
-        $hidup = 0;
-        DB::transaction(function () use ($data, &$hidup) {
-            // 1. Kembalikan kolom INDUK yang diisi backfill — LEBIH DULU dari langkah 2, karena
-            //    kode_mitra unik: kode yang disalin ke INDUK harus dilepas sebelum baris asalnya hidup lagi.
-            foreach ($data['induk_sebelum'] as $id => $row) {
-                $kolom = array_intersect_key($row, array_flip(self::FIELD_BACKFILL));
-                $kolom['updated_at'] = $row['updated_at'] ?? now();
-                DB::table('master_mitra')->where('id', $id)->update($kolom);
-            }
+        $hanya = null;
+        if (trim($hanyaOpsi) !== '') {
+            $hanya = [];
+            foreach (preg_split('/[\s,;]+/', trim($hanyaOpsi), -1, PREG_SPLIT_NO_EMPTY) as $p) {
+                if (! ctype_digit($p)) {
+                    $this->error("Nilai --hanya tidak valid: '{$p}' — pakai id mitra, pisahkan dengan koma.");
 
-            // 2. Hidupkan lagi mitra yang dihapus (id asli dipertahankan).
-            foreach ($data['mitra_dihapus'] as $row) {
-                if (! DB::table('master_mitra')->where('id', $row['id'])->exists()) {
-                    DB::table('master_mitra')->insert($row);
-                    $hidup++;
+                    return self::FAILURE;
+                }
+                $hanya[] = (int) $p;
+            }
+        }
+
+        $dihapus = collect($data['mitra_dihapus'])->keyBy(fn ($r) => (int) $r['id']);
+        if ($hanya !== null) {
+            $tidakAda = array_values(array_diff($hanya, $dihapus->keys()->all()));
+            if ($tidakAda !== []) {
+                $this->error('Mitra #'.implode(', #', $tidakAda).' tidak ada di daftar mitra_dihapus berkas ini.');
+
+                return self::FAILURE;
+            }
+            $dihapus = $dihapus->only($hanya);
+        }
+        $ids = $dihapus->keys()->map(fn ($v) => (int) $v)->all();
+        $indukDari = $this->indukDariCadangan($data, $ids);
+
+        // ---- Susun rencana ----
+        $mitraBaru = [];
+        $sudahAda = [];
+        foreach ($dihapus as $id => $row) {
+            if (DB::table('master_mitra')->where('id', $id)->exists()) {
+                $sudahAda[] = $id;
+            } else {
+                $mitraBaru[$id] = $row;
+            }
+        }
+
+        $dokBalik = $this->daftarBalik('dokumen_kerjasama', $data['dokumen_kerjasama_mitra_lama'], $ids, 'nomor_dokumen');
+        $pengBalik = $this->daftarBalik('pengajuan_v2', $data['pengajuan_v2_mitra_lama'], $ids, 'nomor_pengajuan');
+
+        // Kolom INDUK yang dikembalikan.
+        $indukRencana = [];
+        foreach ($data['induk_sebelum'] as $indukId => $before) {
+            $indukId = (int) $indukId;
+            $dups = $hanya === null ? $ids : array_values(array_filter($ids, fn ($d) => ($indukDari[$d] ?? null) === $indukId));
+            if ($dups === []) {
+                continue;
+            }
+            $now = DB::table('master_mitra')->where('id', $indukId)->first();
+            if (! $now) {
+                continue;
+            }
+            $kolom = [];
+            foreach (self::FIELD_BACKFILL as $f) {
+                $semula = $before[$f] ?? null;
+                if ($hanya === null) {
+                    if ((string) ($now->{$f} ?? null) !== (string) $semula) {
+                        $kolom[$f] = $semula;
+                    }
+
+                    continue;
+                }
+                // Sebagian: kembalikan HANYA kolom yang tadinya kosong dan kini berisi persis nilai dari mitra yang dipulihkan.
+                if (! $this->kosong($semula) || $this->kosong(($now->{$f} ?? null))) {
+                    continue;
+                }
+                foreach ($dups as $d) {
+                    if (trim((string) ($dihapus[$d][$f] ?? '')) !== '' && trim((string) $dihapus[$d][$f]) === trim((string) ($now->{$f} ?? null))) {
+                        $kolom[$f] = $semula;
+                        break;
+                    }
                 }
             }
+            if ($kolom !== []) {
+                $indukRencana[$indukId] = ['nama' => $now->nama_mitra, 'kolom' => $kolom, 'sekarang' => array_intersect_key((array) $now, $kolom)];
+            }
+        }
 
-            // 3. Kontak: buang kontak yang ditambahkan ke INDUK oleh penggabungan, lalu pulihkan kontak duplikat.
-            foreach ($data['kontak_induk_sebelum'] as $indukId => $rows) {
-                $keep = array_column($rows, 'id');
-                $q = DB::table('kontak_mitra')->where('mitra_id', $indukId);
-                if ($keep !== []) {
-                    $q->whereNotIn('id', $keep);
+        // Kontak.
+        $kontakBalik = array_values(array_filter($data['kontak_mitra'], fn ($r) => $hanya === null || in_array((int) $r['mitra_id'], $ids, true)));
+        $idKontakBalik = array_column($kontakBalik, 'id');
+        $kontakBuang = [];
+        foreach ($data['kontak_induk_sebelum'] as $indukId => $rows) {
+            $indukId = (int) $indukId;
+            $keep = array_column($rows, 'id');
+            $q = DB::table('kontak_mitra')->where('mitra_id', $indukId);
+            if ($keep !== []) {
+                $q->whereNotIn('id', $keep);
+            }
+            foreach ($q->get() as $k) {
+                if (in_array($k->id, $idKontakBalik, true)) {
+                    continue; // kontak asli milik mitra yang dipulihkan: dipindah balik, bukan dibuang
                 }
-                $q->delete();
+                if ($hanya !== null) {
+                    // Sebagian: buang hanya kontak yang dibuat dari PIC utama mitra yang dipulihkan.
+                    $cocok = false;
+                    foreach ($ids as $d) {
+                        if (($indukDari[$d] ?? null) !== $indukId) {
+                            continue;
+                        }
+                        $email = strtolower(trim((string) ($dihapus[$d]['email_kontak_utama'] ?? '')));
+                        $nama = mb_strtolower(trim((string) ($dihapus[$d]['nama_kontak_utama'] ?? '')));
+                        if (($email !== '' && strtolower(trim((string) $k->email)) === $email) || ($email === '' && $nama !== '' && mb_strtolower(trim((string) $k->nama)) === $nama)) {
+                            $cocok = true;
+                        }
+                    }
+                    if (! $cocok) {
+                        continue;
+                    }
+                }
+                $kontakBuang[] = (array) $k;
             }
-            foreach ($data['kontak_mitra'] as $row) {
-                if (! DB::table('kontak_mitra')->where('id', $row['id'])->exists()) {
-                    DB::table('kontak_mitra')->insert($row);
+        }
+
+        // Konflik kode_mitra unik untuk baris yang dihidupkan lagi.
+        $dilepas = [];
+        foreach ($indukRencana as $r) {
+            if (array_key_exists('kode_mitra', $r['kolom']) && ! $this->kosong($r['sekarang']['kode_mitra'] ?? null)) {
+                $dilepas[] = (string) $r['sekarang']['kode_mitra'];
+            }
+        }
+        $konflik = [];
+        foreach ($mitraBaru as $id => $row) {
+            $kode = trim((string) ($row['kode_mitra'] ?? ''));
+            if ($kode === '' || in_array($kode, $dilepas, true)) {
+                continue;
+            }
+            $pemegang = DB::table('master_mitra')->where('kode_mitra', $kode)->where('id', '!=', $id)->value('id');
+            if ($pemegang) {
+                $konflik[] = "kode '{$kode}' milik mitra #{$id} sudah dipakai mitra #{$pemegang}";
+            }
+        }
+
+        // ---- Pratinjau ----
+        $this->info('=== PEMULIHAN '.($hanya === null ? '(penuh: seluruh isi berkas)' : '(sebagian: hanya mitra #'.implode(', #', $ids).')').' ===');
+        if ($sudahAda !== []) {
+            $this->warn('Sudah ada di master_mitra (dilewati): #'.implode(', #', $sudahAda));
+        }
+
+        $this->line('Mitra yang dihidupkan lagi:');
+        $baris = [];
+        foreach ($mitraBaru as $id => $r) {
+            $baris[] = [$id, $r['nama_mitra'] ?? '', ($r['kode_mitra'] ?? null) ?: '-', ($r['kategori_mitra'] ?? null) ?: '-', ($r['negara'] ?? null) ?: '-'];
+        }
+        $baris === [] ? $this->line('  (tidak ada)') : $this->table(['id', 'nama_mitra', 'kode_mitra', 'kategori_mitra', 'negara'], $baris);
+
+        $this->line('Dokumen yang dikembalikan:');
+        $dokBalik === [] ? $this->line('  (tidak ada)') : $this->table(['id', 'nomor', 'status', 'mitra_id sekarang', '→ kembali ke'], array_map(fn ($r) => [$r['id'], $r['label'], $r['status'], $r['sekarang'], $r['lama']], $dokBalik));
+
+        $this->line('Pengajuan yang dikembalikan:');
+        $pengBalik === [] ? $this->line('  (tidak ada)') : $this->table(['id', 'nomor', 'status', 'mitra_id sekarang', '→ kembali ke'], array_map(fn ($r) => [$r['id'], $r['label'], $r['status'], $r['sekarang'], $r['lama']], $pengBalik));
+
+        $this->line(sprintf('Kontak: %d dipulihkan ke mitra asalnya, %d kontak hasil penggabungan dibuang.', count($kontakBalik), count($kontakBuang)));
+
+        $this->line('Kolom INDUK yang dikembalikan:');
+        if ($indukRencana === []) {
+            $this->line('  (tidak ada — penggabungan itu tidak mengisi kolom apa pun di induk)');
+        } else {
+            $baris = [];
+            foreach ($indukRencana as $indukId => $r) {
+                foreach ($r['kolom'] as $f => $semula) {
+                    $baris[] = [$indukId, $r['nama'], $f, ($r['sekarang'][$f] ?? '-') ?: '-', $semula === null || $semula === '' ? '(kosong)' : $semula];
                 }
             }
+            $this->table(['induk id', 'nama', 'kolom', 'sekarang', '→ semula'], $baris);
+        }
 
-            // 4. Kembalikan mitra_id dokumen & pengajuan.
-            foreach ($data['dokumen_kerjasama_mitra_lama'] as $id => $mitraId) {
-                DB::table('dokumen_kerjasama')->where('id', $id)->update(['mitra_id' => $mitraId]);
+        if ($konflik !== []) {
+            $this->error('KONFLIK — pemulihan tidak bisa dilanjutkan:');
+            foreach ($konflik as $k) {
+                $this->line('  - '.$k);
             }
-            foreach ($data['pengajuan_v2_mitra_lama'] as $id => $mitraId) {
-                DB::table('pengajuan_v2')->where('id', $id)->update(['mitra_id' => $mitraId]);
-            }
-        });
 
-        $this->info(sprintf(
-            'Rollback selesai: %d mitra dihidupkan lagi, %d dokumen + %d pengajuan dikembalikan ke mitra lama.',
-            $hidup, count($data['dokumen_kerjasama_mitra_lama']), count($data['pengajuan_v2_mitra_lama']),
+            return self::FAILURE;
+        }
+
+        $this->line(sprintf(
+            'Ringkasan: %d mitra dihidupkan | %d dokumen + %d pengajuan dikembalikan | %d kontak dipulihkan, %d dibuang | %d induk dikembalikan kolomnya.',
+            count($mitraBaru), count($dokBalik), count($pengBalik), count($kontakBalik), count($kontakBuang), count($indukRencana),
         ));
 
+        if (! $apply) {
+            $this->warn('Ini PRATINJAU. Jalankan lagi dengan --apply untuk memulihkan.');
+
+            return self::SUCCESS;
+        }
+
+        // ---- Cadangan kondisi SEKARANG (sebelum dipulihkan), lalu terapkan ----
+        $cadangan = storage_path('app/cadangan-pulihkan-mitra-'.now()->format('Ymd-His').'.json');
+        $isi = [
+            'perintah' => 'sikerma:gabung-mitra-ganda:pulihkan',
+            'dibuat' => now()->toIso8601String(),
+            'berkas_sumber' => basename($path),
+            'hanya' => $hanya,
+            'mitra_dihidupkan' => array_keys($mitraBaru),
+            'dokumen_sebelum' => array_column($dokBalik, 'sekarang', 'id'),
+            'pengajuan_sebelum' => array_column($pengBalik, 'sekarang', 'id'),
+            'induk_sebelum' => array_map(fn ($r) => $r['sekarang'], $indukRencana),
+            'kontak_dibuang' => $kontakBuang,
+            'kontak_dipindah_sebelum' => DB::table('kontak_mitra')->whereIn('id', $idKontakBalik)->pluck('mitra_id', 'id')->all(),
+        ];
+        if (file_put_contents($cadangan, json_encode($isi, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) === false) {
+            throw new \RuntimeException('Gagal menulis berkas cadangan: '.$cadangan);
+        }
+        $this->line('Cadangan kondisi sebelum pemulihan: '.$cadangan);
+
+        try {
+            DB::transaction(function () use ($indukRencana, $mitraBaru, $kontakBuang, $kontakBalik, $dokBalik, $pengBalik) {
+                foreach ($indukRencana as $indukId => $r) {
+                    DB::table('master_mitra')->where('id', $indukId)->update($r['kolom'] + ['updated_at' => now()]);
+                }
+                foreach ($mitraBaru as $row) {
+                    DB::table('master_mitra')->insert($row);
+                }
+                if ($kontakBuang !== []) {
+                    DB::table('kontak_mitra')->whereIn('id', array_column($kontakBuang, 'id'))->delete();
+                }
+                foreach ($kontakBalik as $row) {
+                    if (DB::table('kontak_mitra')->where('id', $row['id'])->exists()) {
+                        DB::table('kontak_mitra')->where('id', $row['id'])->update(['mitra_id' => $row['mitra_id']]);
+                    } else {
+                        DB::table('kontak_mitra')->insert($row);
+                    }
+                }
+                foreach ($dokBalik as $r) {
+                    DB::table('dokumen_kerjasama')->where('id', $r['id'])->update(['mitra_id' => $r['lama']]);
+                }
+                foreach ($pengBalik as $r) {
+                    DB::table('pengajuan_v2')->where('id', $r['id'])->update(['mitra_id' => $r['lama']]);
+                }
+            });
+        } catch (\Throwable $e) {
+            @unlink($cadangan);
+
+            throw $e;
+        }
+
+        $this->info(sprintf(
+            'Pemulihan selesai: %d mitra dihidupkan lagi, %d dokumen + %d pengajuan dikembalikan ke mitra lama.',
+            count($mitraBaru), count($dokBalik), count($pengBalik),
+        ));
+        if ($mitraBaru !== []) {
+            $this->line('Untuk menggabungkannya lagi: php artisan sikerma:gabung-mitra-ganda --pasangan=hapus:tujuan [--apply]');
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Baris dokumen/pengajuan yang tadinya milik mitra yang dipulihkan: id, label, status, mitra_id sekarang, mitra_id lama.
+     *
+     * @param  array<int|string, int>  $peta  id baris => mitra_id lama (dari cadangan)
+     * @return array<int, array{id: int, label: string, status: string, sekarang: mixed, lama: int}>
+     */
+    private function daftarBalik(string $tabel, array $peta, array $ids, string $kolomLabel): array
+    {
+        $hasil = [];
+        foreach ($peta as $rowId => $lama) {
+            if (! in_array((int) $lama, $ids, true)) {
+                continue;
+            }
+            $baris = DB::table($tabel)->where('id', $rowId)->first();
+            if (! $baris) {
+                continue;
+            }
+            $status = $tabel === 'dokumen_kerjasama'
+                ? (($baris->dihapus_admin_pada || $baris->dihapus_user_pada) ? 'di Sampah' : 'aktif')
+                : (string) ($baris->status_pengajuan ?? '-');
+            $hasil[] = ['id' => (int) $rowId, 'label' => (string) $baris->{$kolomLabel}, 'status' => $status, 'sekarang' => $baris->mitra_id, 'lama' => (int) $lama];
+        }
+
+        return $hasil;
+    }
+
+    /**
+     * Mitra induk tiap mitra yang dihapus. Dipakai pemetaan di cadangan kalau berkunci id; cadangan lama
+     * menyimpannya sebagai daftar tanpa kunci (bug yang sudah diperbaiki), jadi induk diturunkan dari
+     * mitra_id dokumen/pengajuan yang tadinya milik mitra itu.
+     *
+     * @return array<int, int|null>
+     */
+    private function indukDariCadangan(array $data, array $ids): array
+    {
+        $peta = $data['pemetaan_ke_induk'] ?? [];
+        $hasil = [];
+        foreach ($ids as $id) {
+            if (is_array($peta) && ! array_is_list($peta) && array_key_exists($id, $peta)) {
+                $hasil[$id] = (int) $peta[$id];
+
+                continue;
+            }
+            $induk = null;
+            foreach ([['dokumen_kerjasama', 'dokumen_kerjasama_mitra_lama'], ['pengajuan_v2', 'pengajuan_v2_mitra_lama']] as [$tabel, $kunci]) {
+                $rowIds = array_keys(array_filter($data[$kunci] ?? [], fn ($v) => (int) $v === $id));
+                if ($rowIds === []) {
+                    continue;
+                }
+                $m = DB::table($tabel)->whereIn('id', $rowIds)->whereNotNull('mitra_id')->value('mitra_id');
+                if ($m) {
+                    $induk = (int) $m;
+                    break;
+                }
+            }
+            $hasil[$id] = $induk;
+        }
+
+        return $hasil;
     }
 
     private function kosong(mixed $v): bool
