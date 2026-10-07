@@ -14,6 +14,34 @@ class GabungMitraGandaTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** @var string[] berkas cadangan yang sudah ada sebelum tes (jangan dihapus). */
+    private array $cadanganAwal = [];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->cadanganAwal = glob(storage_path('app/cadangan-gabung-mitra-*.json')) ?: [];
+    }
+
+    protected function tearDown(): void
+    {
+        // Tes --apply menulis cadangan ke storage/app sungguhan; bersihkan yang dibuat tes ini.
+        foreach (glob(storage_path('app/cadangan-gabung-mitra-*.json')) ?: [] as $f) {
+            if (! in_array($f, $this->cadanganAwal, true)) {
+                @unlink($f);
+            }
+        }
+        parent::tearDown();
+    }
+
+    private function berkasCadangan(): string
+    {
+        $baru = array_values(array_diff(glob(storage_path('app/cadangan-gabung-mitra-*.json')) ?: [], $this->cadanganAwal));
+        $this->assertNotEmpty($baru, 'berkas cadangan tidak dibuat');
+
+        return end($baru);
+    }
+
     private function unitId(): int
     {
         return MasterUnitProdi::create([
@@ -166,5 +194,158 @@ class GabungMitraGandaTest extends TestCase
         );
         $this->assertDatabaseHas('kontak_mitra', ['mitra_id' => $induk->id, 'nama' => 'Budi', 'jabatan' => 'HRD', 'telepon' => '0811']);
         $this->assertSame(2, KontakMitra::count());
+    }
+
+    // ------------------------------------------------------------------
+    // Mode --pasangan=hapus:tujuan dan --rollback
+    // ------------------------------------------------------------------
+
+    public function test_pratinjau_pasangan_tidak_mengubah_apa_pun(): void
+    {
+        $tujuan = $this->mitra(['nama_mitra' => 'PT Archasindo Marine Automation']);
+        $hapus = $this->mitra(['nama_mitra' => 'PT Archasindo', 'kode_mitra' => 'PTA09']);
+        $this->dokumenUntukMitra($hapus->id, 'D-1');
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => "{$hapus->id}:{$tujuan->id}"])->assertSuccessful();
+
+        $this->assertSame(2, MasterMitra::count());
+        $this->assertSame([], array_diff(glob(storage_path('app/cadangan-gabung-mitra-*.json')) ?: [], $this->cadanganAwal));
+    }
+
+    public function test_pasangan_menggabung_nama_yang_tidak_cocok_otomatis_dan_membawa_kode_dok_pengajuan_dan_pic(): void
+    {
+        // Nama sengaja berbeda jauh: pencocokan nama otomatis tidak akan menganggapnya sama.
+        $tujuan = $this->mitra(['nama_mitra' => 'POBO SOCCER (PT POBOS PRADI JAYA)']);
+        $hapus = $this->mitra([
+            'nama_mitra' => 'POBI SPORTSWEAR', 'kode_mitra' => 'PB01',
+            'nama_kontak_utama' => 'Andi', 'email_kontak_utama' => 'andi@pobi.id',
+        ]);
+        $dok = $this->dokumenUntukMitra($hapus->id, 'D-1');
+        $peng = $this->pengajuanUntukMitra($hapus->id, 'P-1');
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => "{$hapus->id}:{$tujuan->id}", '--apply' => true])->assertSuccessful();
+
+        $this->assertDatabaseMissing('master_mitra', ['id' => $hapus->id]);
+        $this->assertSame($tujuan->id, $dok->fresh()->mitra_id);
+        $this->assertSame($tujuan->id, $peng->fresh()->mitra_id);
+        $tujuan = $tujuan->fresh();
+        $this->assertSame('PB01', $tujuan->kode_mitra, 'kolom kosong di tujuan diisi dari yang dihapus');
+        $this->assertSame('Andi', $tujuan->nama_kontak_utama, 'PIC ikut pindah');
+        $this->assertSame('POBO SOCCER (PT POBOS PRADI JAYA)', $tujuan->nama_mitra, 'nama tujuan tidak berubah');
+    }
+
+    public function test_pasangan_tidak_menimpa_kolom_tujuan_yang_sudah_terisi(): void
+    {
+        $tujuan = $this->mitra(['nama_mitra' => 'Universitas Internasional Batam', 'kode_mitra' => 'UN11', 'kategori_mitra' => 'Perguruan Tinggi']);
+        $hapus = $this->mitra(['nama_mitra' => 'Perpustakaan UIB', 'kode_mitra' => 'P10', 'kategori_mitra' => 'Lain']);
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => "{$hapus->id}:{$tujuan->id}", '--apply' => true])->assertSuccessful();
+
+        $tujuan = $tujuan->fresh();
+        $this->assertSame('UN11', $tujuan->kode_mitra);
+        $this->assertSame('Perguruan Tinggi', $tujuan->kategori_mitra);
+    }
+
+    public function test_dua_mitra_dihapus_ke_satu_tujuan_dan_dokumen_di_sampah_ikut_pindah(): void
+    {
+        $tujuan = $this->mitra(['nama_mitra' => 'ITAEWON KBOBA & TERAWATER']);
+        $a = $this->mitra(['nama_mitra' => 'Itaewon K-Boba']);
+        $b = $this->mitra(['nama_mitra' => 'ITAEWON-K']);
+        $dokA = $this->dokumenUntukMitra($a->id, 'D-1');
+        $dokB = $this->dokumenUntukMitra($b->id, 'D-2');
+        $dokB->forceFill(['dihapus_admin_pada' => now()])->save(); // salinan yang sudah di Sampah
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => "{$a->id}:{$tujuan->id},{$b->id}:{$tujuan->id}", '--apply' => true])->assertSuccessful();
+
+        $this->assertSame(1, MasterMitra::count());
+        $this->assertSame($tujuan->id, $dokA->fresh()->mitra_id);
+        $this->assertSame($tujuan->id, $dokB->fresh()->mitra_id);
+    }
+
+    public function test_pasangan_yang_tidak_valid_ditolak_seluruhnya_tanpa_mengubah_data(): void
+    {
+        $a = $this->mitra(['nama_mitra' => 'Alfa']);
+        $b = $this->mitra(['nama_mitra' => 'Bravo']);
+        $c = $this->mitra(['nama_mitra' => 'Charlie']);
+
+        foreach ([
+            "{$a->id}:{$a->id}",                      // ke dirinya sendiri
+            "{$a->id}:{$b->id},{$b->id}:{$c->id}",    // berantai (b jadi hapus sekaligus tujuan)
+            "{$a->id}:{$b->id},{$a->id}:{$c->id}",    // a dihapus dua kali
+            "{$a->id}:999999",                        // tujuan tidak ada
+            "{$a->id}-{$b->id}",                      // format salah
+        ] as $opsi) {
+            $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => $opsi, '--apply' => true])->assertFailed();
+        }
+
+        $this->assertSame(3, MasterMitra::count());
+    }
+
+    public function test_rollback_menghidupkan_lagi_mitra_dan_mengembalikan_semuanya(): void
+    {
+        $tujuan = $this->mitra(['nama_mitra' => 'PT Cicor Panatec', 'kode_mitra' => 'PTC04']);
+        $hapus = $this->mitra([
+            'nama_mitra' => 'PT. Cicor', 'kode_mitra' => 'ZZ',
+            'nama_kontak_utama' => 'Dewi', 'email_kontak_utama' => 'dewi@cicor.id',
+        ]);
+        $hapus->kontak()->create(['nama' => 'Eko', 'email' => 'eko@cicor.id']);
+        $kontakLama = KontakMitra::where('mitra_id', $hapus->id)->first();
+        $dok = $this->dokumenUntukMitra($hapus->id, 'D-1');
+        $peng = $this->pengajuanUntukMitra($hapus->id, 'P-1');
+        $tujuanAwal = $tujuan->fresh()->only(['nama_kontak_utama', 'email_kontak_utama', 'kode_mitra']);
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => "{$hapus->id}:{$tujuan->id}", '--apply' => true])->assertSuccessful();
+        $this->assertDatabaseMissing('master_mitra', ['id' => $hapus->id]);
+        $this->assertSame($tujuan->id, $dok->fresh()->mitra_id);
+        $this->assertTrue(KontakMitra::where('mitra_id', $tujuan->id)->exists());
+
+        // Pemetaan di berkas cadangan harus berkunci id mitra yang dihapus (bukan daftar tanpa kunci).
+        $cadangan = json_decode((string) file_get_contents($this->berkasCadangan()), true);
+        $this->assertSame([$hapus->id => $tujuan->id], $cadangan['pemetaan_ke_induk']);
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--rollback' => $this->berkasCadangan()])->assertSuccessful();
+
+        $hidup = MasterMitra::find($hapus->id);
+        $this->assertNotNull($hidup, 'mitra dihidupkan lagi dengan id aslinya');
+        $this->assertSame('PT. Cicor', $hidup->nama_mitra);
+        $this->assertSame('ZZ', $hidup->kode_mitra);
+        $this->assertSame($hapus->id, $dok->fresh()->mitra_id);
+        $this->assertSame($hapus->id, $peng->fresh()->mitra_id);
+        $this->assertSame($tujuanAwal, $tujuan->fresh()->only(['nama_kontak_utama', 'email_kontak_utama', 'kode_mitra']), 'kolom tujuan yang di-backfill kembali seperti semula');
+        $this->assertSame(0, KontakMitra::where('mitra_id', $tujuan->id)->count(), 'kontak tambahan di tujuan dibuang');
+        $this->assertSame($hapus->id, (int) KontakMitra::find($kontakLama->id)->mitra_id, 'kontak lama kembali ke mitra asalnya');
+    }
+
+    public function test_kode_mitra_unik_disalin_ke_tujuan_tanpa_bentrok_dan_rollback_mengembalikannya(): void
+    {
+        // kode_mitra unik: tujuan kosong, yang dihapus berkode -> kode pindah ke tujuan (apply),
+        // lalu kembali ke baris asalnya (rollback), tanpa melanggar unique di kedua arah.
+        $tujuan = $this->mitra(['nama_mitra' => 'Itaewon K-Boba Utama']);
+        $hapus = $this->mitra(['nama_mitra' => 'Itaewon K-Boba', 'kode_mitra' => 'UM03']);
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => "{$hapus->id}:{$tujuan->id}", '--apply' => true])->assertSuccessful();
+        $this->assertSame('UM03', $tujuan->fresh()->kode_mitra);
+        $this->assertDatabaseMissing('master_mitra', ['id' => $hapus->id]);
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--rollback' => $this->berkasCadangan()])->assertSuccessful();
+        $this->assertNull($tujuan->fresh()->kode_mitra);
+        $this->assertSame('UM03', MasterMitra::find($hapus->id)->kode_mitra);
+    }
+
+    public function test_rollback_menolak_berkas_yang_bukan_cadangan_atau_versi_lama(): void
+    {
+        $asing = storage_path('app/cadangan-gabung-mitra-asing.json');
+        $lama = storage_path('app/cadangan-gabung-mitra-versi-lama.json');
+        file_put_contents($asing, json_encode(['perintah' => 'lain']));
+        file_put_contents($lama, json_encode(['perintah' => 'sikerma:gabung-mitra-ganda', 'mitra_dihapus' => []]));
+
+        try {
+            $this->artisan('sikerma:gabung-mitra-ganda', ['--rollback' => $asing])->assertFailed();
+            $this->artisan('sikerma:gabung-mitra-ganda', ['--rollback' => $lama])->assertFailed();
+            $this->artisan('sikerma:gabung-mitra-ganda', ['--rollback' => storage_path('app/tidak-ada.json')])->assertFailed();
+        } finally {
+            @unlink($asing);
+            @unlink($lama);
+        }
     }
 }
