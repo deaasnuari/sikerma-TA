@@ -80,6 +80,42 @@ class KoreksiArsipDokumen extends Command
             'hitung_status' => false,
             'catatan' => 'Garis miring sebelum tahun hilang ("VIII2025"). nama_dokumen memuat typo yang sama, ikut diperbaiki. Catatan: tanggal_mulai 2024-08-26 tidak diubah (berkas "MOA-ADD" = addendum, jadi periode awalnya bisa memang 2024).',
         ],
+        484 => [
+            'nomor' => '76/MOA.PL29/XII.2021',
+            'harapan' => ['status_siklus' => 'archived', 'tanggal_mulai' => '2021-12-15', 'tanggal_berakhir' => '2025-12-14'],
+            'set' => [
+                'nomor_dokumen' => '76/MOA.PL29/XII/2021',
+                'nama_dokumen' => 'Dokumen 76/MOA.PL29/XII/2021',
+            ],
+            'hitung_status' => false,
+            'catatan' => 'Pemisah bulan/tahun salah ketik (titik, seharusnya garis miring); sejajar dengan tetangga 75/77/78/79 XII/2021. nama_dokumen memuat typo yang sama, ikut diperbaiki.',
+        ],
+        // Politeknik Negeri Medan (PL19): menurut daftar Humas nomor yang benar 35/MOU.PL29/VIII/2023 dengan periode
+        // #972 (s/d 2028-08-01, aktif). #800 sudah di-soft delete sebagai duplikat (sikerma:gabung-dokumen-ganda
+        // --pasangan='972:800!') tetapi masih memegang nomor itu (nomor_dokumen unik, termasuk baris di Sampah), jadi
+        // nomornya dilepas dulu dengan sufiks -DUP800. Urutan array penting: #800 diproses SEBELUM #972.
+        800 => [
+            'nomor' => '35/MOU.PL29/VIII/2023',
+            'harapan' => ['status_siklus' => 'archived', 'tanggal_mulai' => '2023-08-28', 'tanggal_berakhir' => '2024-08-28'],
+            'set' => [
+                'nomor_dokumen' => '35/MOU.PL29/VIII/2023-DUP800',
+                'nama_dokumen' => 'Dokumen 35/MOU.PL29/VIII/2023-DUP800',
+            ],
+            'wajib_terhapus' => true,
+            'hitung_status' => false,
+            'catatan' => 'Duplikat yang sudah di-soft delete melepas nomor 35/MOU.PL29/VIII/2023 (nomor unik) dengan sufiks -DUP800 supaya #972 bisa memakainya. Barisnya, berkas, dan datanya tidak dihapus.',
+        ],
+        972 => [
+            'nomor' => '35/MOU.PL29/VII/2023',
+            'harapan' => ['status_siklus' => 'active', 'tanggal_mulai' => '2023-08-01', 'tanggal_berakhir' => '2028-08-01', 'ruang_lingkup_ids' => '[]'],
+            'set' => [
+                'nomor_dokumen' => '35/MOU.PL29/VIII/2023',
+                'nama_dokumen' => 'Dokumen 35/MOU.PL29/VIII/2023',
+                'ruang_lingkup_ids' => '[3]',
+            ],
+            'hitung_status' => false,
+            'catatan' => 'Menurut daftar Humas nomor yang benar 35/MOU.PL29/VIII/2023 (bukan VII), periode s/d 2028-08-01, aktif. nama_dokumen memuat nomor lama yang sama, ikut diperbaiki. Ruang lingkup Magang (id 3) disalin dari #800 karena PDF-nya identik (satu MoU yang sama); unit tetap Teknik Mesin.',
+        ],
     ];
 
     public function handle(): int
@@ -102,6 +138,12 @@ class KoreksiArsipDokumen extends Command
             }
             if (trim((string) $d->nomor_dokumen) !== $k['nomor']) {
                 $baris[] = [$id, $k['nomor'], 'DILEWATI', "nomor di database '{$d->nomor_dokumen}'"];
+
+                continue;
+            }
+
+            if (($k['wajib_terhapus'] ?? false) && ! ($d->dihapus_admin_pada || $d->dihapus_user_pada)) {
+                $baris[] = [$id, $k['nomor'], 'DILEWATI', 'dokumen belum di-soft delete (jalankan sikerma:gabung-dokumen-ganda dulu)'];
 
                 continue;
             }
@@ -139,7 +181,11 @@ class KoreksiArsipDokumen extends Command
                     ->where('id', '!=', $id)
                     ->whereRaw('lower(trim(nomor_dokumen)) = ?', [mb_strtolower(trim($perubahan['nomor_dokumen']))])
                     ->value('id');
-                if ($bentrok) {
+                // Pemegang nomor yang SENDIRI sedang melepasnya di proses yang sama (mis. #800 -> sufiks -DUP800
+                // sebelum #972 memakainya) bukan bentrokan; urutan penerapan mengikuti urutan KOREKSI.
+                $dilepas = $bentrok && isset($rencana[$bentrok]['sesudah']['nomor_dokumen'])
+                    && mb_strtolower(trim($rencana[$bentrok]['sesudah']['nomor_dokumen'])) !== mb_strtolower(trim($perubahan['nomor_dokumen']));
+                if ($bentrok && ! $dilepas) {
                     $baris[] = [$id, $k['nomor'], 'DILEWATI', "nomor baru '{$perubahan['nomor_dokumen']}' sudah dipakai dokumen #{$bentrok}"];
 
                     continue;
@@ -243,7 +289,9 @@ class KoreksiArsipDokumen extends Command
         }
 
         DB::transaction(function () use ($data) {
-            foreach ($data['koreksi'] as $k) {
+            // Urutan TERBALIK dari penerapan: nomor yang tadinya dilepas satu dokumen lalu dipakai dokumen lain
+            // (mis. #800 -> #972) harus dilepas dokumen yang memakainya dulu, baru dikembalikan ke pemilik asal.
+            foreach (array_reverse($data['koreksi']) as $k) {
                 DB::table('dokumen_kerjasama')->where('id', $k['id'])->update($k['sebelum']);
             }
         });

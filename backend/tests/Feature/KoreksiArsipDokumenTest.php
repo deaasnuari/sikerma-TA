@@ -258,6 +258,67 @@ class KoreksiArsipDokumenTest extends TestCase
         $this->assertSame('2024-08-26', $d->tanggal_mulai->toDateString(), 'tanggal tidak diubah');
     }
 
+    private function dokMedan(int $id, string $nomor, string $mulai, string $berakhir, string $status, ?string $dihapus = null): DokumenKerjasama
+    {
+        $d = new DokumenKerjasama();
+        $d->forceFill([
+            'id' => $id, 'no_permohonan' => "PMH-{$id}", 'nomor_dokumen' => $nomor, 'nama_dokumen' => "Dokumen {$nomor}",
+            'jenis_dokumen' => 'MOU', 'file' => "{$id}.pdf", 'status_siklus' => $status,
+            'tanggal_mulai' => $mulai, 'tanggal_berakhir' => $berakhir, 'dihapus_admin_pada' => $dihapus,
+        ])->save();
+        \Illuminate\Support\Facades\DB::table('dokumen_kerjasama')->where('id', $id)->update(['ruang_lingkup_ids' => $id === 800 ? '[3]' : '[]']);
+
+        return $d->fresh();
+    }
+
+    public function test_koreksi_484_mengganti_titik_jadi_garis_miring_di_nomor_dan_nama_dokumen(): void
+    {
+        $d = $this->dokMedan(484, '76/MOA.PL29/XII.2021', '2021-12-15', '2025-12-14', 'archived');
+
+        $this->artisan('sikerma:koreksi-arsip-dokumen')->assertSuccessful();
+        $this->assertSame('76/MOA.PL29/XII.2021', $d->fresh()->nomor_dokumen, 'pratinjau tidak mengubah');
+
+        $this->artisan('sikerma:koreksi-arsip-dokumen --apply')->assertSuccessful();
+        $this->assertSame('76/MOA.PL29/XII/2021', $d->fresh()->nomor_dokumen);
+        $this->assertSame('Dokumen 76/MOA.PL29/XII/2021', $d->fresh()->nama_dokumen);
+        $this->assertSame('archived', $d->fresh()->status_siklus);
+
+        $this->artisan('sikerma:koreksi-arsip-dokumen', ['--rollback' => $this->berkas(), '--apply' => true])->assertSuccessful();
+        $this->assertSame('76/MOA.PL29/XII.2021', $d->fresh()->nomor_dokumen);
+    }
+
+    public function test_nomor_972_dan_800_polimedan_dilepas_lalu_dipakai_urut_dan_bisa_dirollback(): void
+    {
+        $d800 = $this->dokMedan(800, '35/MOU.PL29/VIII/2023', '2023-08-28', '2024-08-28', 'archived', now()->toDateTimeString());
+        $d972 = $this->dokMedan(972, '35/MOU.PL29/VII/2023', '2023-08-01', '2028-08-01', 'active');
+
+        $this->artisan('sikerma:koreksi-arsip-dokumen --apply')->assertSuccessful();
+
+        $this->assertSame('35/MOU.PL29/VIII/2023', $d972->fresh()->nomor_dokumen);
+        $this->assertSame('Dokumen 35/MOU.PL29/VIII/2023', $d972->fresh()->nama_dokumen);
+        $this->assertSame('35/MOU.PL29/VIII/2023-DUP800', $d800->fresh()->nomor_dokumen);
+        $this->assertNotNull($d800->fresh()->dihapus_admin_pada, '#800 tetap soft delete, tidak dihapus permanen');
+        $this->assertSame('2028-08-01', $d972->fresh()->tanggal_berakhir->toDateString(), 'periode #972 tidak berubah');
+        $this->assertSame([3], json_decode((string) \Illuminate\Support\Facades\DB::table('dokumen_kerjasama')->where('id', 972)->value('ruang_lingkup_ids'), true), 'Magang disalin ke #972');
+
+        // Rollback berurutan terbalik: tidak boleh melanggar unique nomor_dokumen.
+        $this->artisan('sikerma:koreksi-arsip-dokumen', ['--rollback' => $this->berkas(), '--apply' => true])->assertSuccessful();
+        $this->assertSame('35/MOU.PL29/VII/2023', $d972->fresh()->nomor_dokumen);
+        $this->assertSame('35/MOU.PL29/VIII/2023', $d800->fresh()->nomor_dokumen);
+        $this->assertSame([], json_decode((string) \Illuminate\Support\Facades\DB::table('dokumen_kerjasama')->where('id', 972)->value('ruang_lingkup_ids'), true), 'rollback mengembalikan ruang lingkup #972');
+    }
+
+    public function test_nomor_972_tidak_diubah_selama_800_belum_di_soft_delete(): void
+    {
+        $d800 = $this->dokMedan(800, '35/MOU.PL29/VIII/2023', '2023-08-28', '2024-08-28', 'archived');   // masih aktif
+        $d972 = $this->dokMedan(972, '35/MOU.PL29/VII/2023', '2023-08-01', '2028-08-01', 'active');
+
+        $this->artisan('sikerma:koreksi-arsip-dokumen --apply')->assertSuccessful();
+
+        $this->assertSame('35/MOU.PL29/VIII/2023', $d800->fresh()->nomor_dokumen, '#800 aktif tidak boleh dilepas nomornya');
+        $this->assertSame('35/MOU.PL29/VII/2023', $d972->fresh()->nomor_dokumen, '#972 menunggu #800 di-soft delete');
+    }
+
     public function test_idempotent_dijalankan_dua_kali(): void
     {
         $d = $this->dok851();
