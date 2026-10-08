@@ -243,6 +243,55 @@ class GabungMitraGandaTest extends TestCase
         $this->assertSame('POBO SOCCER (PT POBOS PRADI JAYA)', $tujuan->nama_mitra, 'nama tujuan tidak berubah');
     }
 
+    public function test_tanpa_backfill_kontak_tidak_menyalin_kontak_utama_tapi_kolom_lain_dan_dokumen_tetap_pindah(): void
+    {
+        $tujuan = $this->mitra(['nama_mitra' => 'Institut Teknologi Batam', 'kode_mitra' => 'IN05']);
+        $hapus = $this->mitra([
+            'nama_mitra' => 'Perpustakaan Institute Teknologi Batam', 'website' => 'perpus.example.id',
+            'nama_kontak_utama' => 'Andi', 'jabatan_kontak_utama' => 'Pustakawan',
+            'email_kontak_utama' => 'andi@perpus.id', 'telepon_kontak_utama' => '0778',
+        ]);
+        $dok = $this->dokumenUntukMitra($hapus->id, 'D-1');
+        $peng = $this->pengajuanUntukMitra($hapus->id, 'P-1');
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => "{$hapus->id}:{$tujuan->id}", '--tanpa-backfill-kontak' => true])->assertSuccessful();
+        $this->assertDatabaseHas('master_mitra', ['id' => $hapus->id]);
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => "{$hapus->id}:{$tujuan->id}", '--tanpa-backfill-kontak' => true, '--apply' => true])->assertSuccessful();
+
+        $this->assertDatabaseMissing('master_mitra', ['id' => $hapus->id]);
+        $this->assertSame($tujuan->id, $dok->fresh()->mitra_id);
+        $this->assertSame($tujuan->id, $peng->fresh()->mitra_id);
+        $tujuan = $tujuan->fresh();
+        $this->assertNull($tujuan->nama_kontak_utama);
+        $this->assertNull($tujuan->jabatan_kontak_utama);
+        $this->assertNull($tujuan->email_kontak_utama);
+        $this->assertNull($tujuan->telepon_kontak_utama);
+        $this->assertSame(0, \App\Models\KontakMitra::where('mitra_id', $tujuan->id)->count(), 'PIC utama tidak dijadikan kontak tambahan');
+        $this->assertSame('perpus.example.id', $tujuan->website, 'kolom non-kontak tetap di-backfill');
+    }
+
+    public function test_tanpa_backfill_mematikan_semua_backfill_termasuk_website_dan_kode_tapi_memindahkan_dokumen(): void
+    {
+        $tujuan = $this->mitra(['nama_mitra' => 'Universitas Diponegoro', 'kode_mitra' => 'UN09']);
+        $hapus = $this->mitra([
+            'nama_mitra' => 'Sekolah Vokasi Universitas Diponegoro', 'website' => 'vokasi.example.ac.id', 'alamat' => 'Semarang',
+            'nama_kontak_utama' => 'Budi', 'email_kontak_utama' => 'budi@vokasi.id',
+        ]);
+        $dok = $this->dokumenUntukMitra($hapus->id, 'D-1');
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => "{$hapus->id}:{$tujuan->id}", '--tanpa-backfill' => true, '--apply' => true])->assertSuccessful();
+
+        $this->assertDatabaseMissing('master_mitra', ['id' => $hapus->id]);
+        $this->assertSame($tujuan->id, $dok->fresh()->mitra_id);
+        $tujuan = $tujuan->fresh();
+        $this->assertNull($tujuan->website);
+        $this->assertNull($tujuan->alamat);
+        $this->assertNull($tujuan->nama_kontak_utama);
+        $this->assertSame('UN09', $tujuan->kode_mitra);
+        $this->assertSame(0, \App\Models\KontakMitra::where('mitra_id', $tujuan->id)->count());
+    }
+
     public function test_pasangan_tidak_menimpa_kolom_tujuan_yang_sudah_terisi(): void
     {
         $tujuan = $this->mitra(['nama_mitra' => 'Universitas Internasional Batam', 'kode_mitra' => 'UN11', 'kategori_mitra' => 'Perguruan Tinggi']);

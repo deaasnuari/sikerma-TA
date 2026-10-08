@@ -51,9 +51,18 @@ class GabungMitraGanda extends Command
         {--apply : Terapkan perubahan (tanpa flag ini hanya pratinjau)}
         {--pasangan= : Gabungkan pasangan yang ditentukan sendiri, format hapus:tujuan,hapus:tujuan (mis. 1504:372,791:372)}
         {--rollback= : Pulihkan dari berkas cadangan JSON di storage/app/ (pratinjau dulu; tambahkan --apply untuk memulihkan)}
+        {--tanpa-backfill-kontak : Jangan salin kolom kontak utama duplikat ke INDUK dan jangan jadikan PIC utama duplikat kontak tambahan INDUK (untuk unit/fakultas yang kontaknya bukan kontak institusi induk)}
+        {--tanpa-backfill : Matikan SEMUA backfill: tidak ada kolom INDUK yang diisi dari duplikat (termasuk website, kode_mitra) dan PIC utama duplikat tidak dijadikan kontak tambahan; hanya dokumen/pengajuan/kontak_mitra yang dipindah}
         {--hanya= : Dengan --rollback: pulihkan hanya mitra dengan id ini (pisah koma), pasangan lain di berkas yang sama tidak disentuh}';
 
     protected $description = 'Gabungkan mitra ganda di master_mitra berdasarkan kesamaan nama (induk = yang punya kode_mitra), atau pasangan hapus:tujuan yang ditentukan sendiri';
+
+    /** Kolom kontak utama; tidak di-backfill bila --tanpa-backfill-kontak. */
+    private const FIELD_KONTAK_UTAMA = ['nama_kontak_utama', 'jabatan_kontak_utama', 'email_kontak_utama', 'telepon_kontak_utama'];
+
+    private bool $tanpaBackfillKontak = false;
+
+    private bool $tanpaBackfill = false;
 
     /** Field yang boleh di-backfill ke INDUK dari baris duplikat. */
     private const FIELD_BACKFILL = [
@@ -65,6 +74,8 @@ class GabungMitraGanda extends Command
     public function handle(): int
     {
         $apply = (bool) $this->option('apply');
+        $this->tanpaBackfill = (bool) $this->option('tanpa-backfill');
+        $this->tanpaBackfillKontak = $this->tanpaBackfill || (bool) $this->option('tanpa-backfill-kontak');
 
         if ($this->option('rollback')) {
             return $this->rollback((string) $this->option('rollback'), $apply, (string) $this->option('hanya'));
@@ -300,7 +311,7 @@ class GabungMitraGanda extends Command
                     '#'.$k['induk']->id.' '.mb_strimwidth((string) $k['induk']->nama_mitra, 0, 34, '…').(trim((string) $k['induk']->kode_mitra) !== '' ? ' ['.$k['induk']->kode_mitra.']' : ''),
                     $total.' ('.$aktif.' aktif + '.($total - $aktif).' di Sampah)',
                     (int) ($pakaiPeng[$d->id] ?? 0),
-                    DB::table('kontak_mitra')->where('mitra_id', $d->id)->count().(trim((string) $d->nama_kontak_utama) !== '' ? ' + PIC utama' : ''),
+                    DB::table('kontak_mitra')->where('mitra_id', $d->id)->count().(trim((string) $d->nama_kontak_utama) !== '' ? ($this->tanpaBackfillKontak ? ' + PIC utama (tidak dipindah)' : ' + PIC utama') : ''),
                 ];
             }
         }
@@ -337,6 +348,9 @@ class GabungMitraGanda extends Command
         }
 
         foreach ($duplikat as $d) {
+            if ($this->tanpaBackfillKontak) {
+                break;
+            }
             $nama = trim((string) $d->nama_kontak_utama);
             $email = strtolower(trim((string) $d->email_kontak_utama));
             if ($this->kosong($nama)) {
@@ -821,10 +835,17 @@ class GabungMitraGanda extends Command
      */
     private function hitungBackfill(MasterMitra $induk, $duplikat, $pakaiDok, $pakaiPeng): array
     {
+        if ($this->tanpaBackfill) {
+            return [];
+        }
+
         $urut = $duplikat->sortByDesc(fn (MasterMitra $m) => (int) ($pakaiDok[$m->id] ?? 0) + (int) ($pakaiPeng[$m->id] ?? 0));
 
         $isi = [];
         foreach (self::FIELD_BACKFILL as $f) {
+            if ($this->tanpaBackfillKontak && in_array($f, self::FIELD_KONTAK_UTAMA, true)) {
+                continue;
+            }
             if (! $this->kosong($induk->{$f})) {
                 continue;
             }
