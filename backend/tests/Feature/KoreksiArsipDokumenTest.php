@@ -287,6 +287,34 @@ class KoreksiArsipDokumenTest extends TestCase
         $this->assertSame('76/MOA.PL29/XII.2021', $d->fresh()->nomor_dokumen);
     }
 
+    public function test_koreksi_67_776_839_1005_dan_1126_melepas_nomor_lalu_memakainya_dan_bisa_dirollback(): void
+    {
+        $d776 = $this->dokMedan(776, '18/MOA.PL29/II/2024', '2024-01-15', '2025-01-15', 'archived', now()->toDateTimeString());
+        $d67 = $this->dokMedan(67, '18/MOA.PL29/III/2024', '2024-01-15', '2027-01-15', 'active');
+        $d1005 = $this->dokMedan(1005, '42/MOU.PL29/V/2024', '2024-05-06', '2027-05-05', 'active', now()->toDateTimeString());
+        $d839 = $this->dokMedan(839, '42/MOA.PL29/V/2024', '2024-05-06', '2027-05-05', 'active');
+        $d1126 = $this->dokMedan(1126, '122/MOA.PL29/VIII/2024', '2024-08-06', '2025-08-05', 'archived');
+
+        $this->artisan('sikerma:koreksi-arsip-dokumen --apply')->assertSuccessful();
+
+        $this->assertSame('18/MOA.PL29/II/2024', $d67->fresh()->nomor_dokumen);
+        $this->assertSame('18/MOA.PL29/II/2024-DUP776', $d776->fresh()->nomor_dokumen);
+        $this->assertSame('42/MOU.PL29/V/2024', $d839->fresh()->nomor_dokumen);
+        $this->assertSame('Dokumen 42/MOU.PL29/V/2024', $d839->fresh()->nama_dokumen);
+        $this->assertSame('42/MOU.PL29/V/2024-DUP1005', $d1005->fresh()->nomor_dokumen);
+        $this->assertNotNull($d776->fresh()->dihapus_admin_pada);
+        $this->assertSame('2024-08-23', $d1126->fresh()->tanggal_mulai->toDateString());
+        $this->assertSame('2025-08-22', $d1126->fresh()->tanggal_berakhir->toDateString());
+        $this->assertSame('archived', $d1126->fresh()->status_siklus);
+
+        $this->artisan('sikerma:koreksi-arsip-dokumen', ['--rollback' => $this->berkas(), '--apply' => true])->assertSuccessful();
+        $this->assertSame('18/MOA.PL29/III/2024', $d67->fresh()->nomor_dokumen);
+        $this->assertSame('18/MOA.PL29/II/2024', $d776->fresh()->nomor_dokumen);
+        $this->assertSame('42/MOA.PL29/V/2024', $d839->fresh()->nomor_dokumen);
+        $this->assertSame('42/MOU.PL29/V/2024', $d1005->fresh()->nomor_dokumen);
+        $this->assertSame('2024-08-06', $d1126->fresh()->tanggal_mulai->toDateString());
+    }
+
     public function test_nomor_972_dan_800_polimedan_dilepas_lalu_dipakai_urut_dan_bisa_dirollback(): void
     {
         $d800 = $this->dokMedan(800, '35/MOU.PL29/VIII/2023', '2023-08-28', '2024-08-28', 'archived', now()->toDateTimeString());

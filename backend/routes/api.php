@@ -35,6 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::post('/master/mitra/upsert-by-name', [MasterMitraController::class, 'upsertByName']);
 	Route::get('/master/mitra/cek-nama', [MasterMitraController::class, 'cekNama']);
 	Route::get('/master/mitra/cari', [MasterMitraController::class, 'cari']);
+	Route::get('/master/mitra/{mitra}/pemakaian', [MasterMitraController::class, 'pemakaian'])->whereNumber('mitra');
 	Route::apiResource('/master/mitra', MasterMitraController::class);
 	Route::apiResource('/master/negara', MasterNegaraController::class)
 		->parameters(['negara' => 'negara']);

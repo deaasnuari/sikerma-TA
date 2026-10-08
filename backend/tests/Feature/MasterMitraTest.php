@@ -242,6 +242,52 @@ class MasterMitraTest extends TestCase
         $this->assertDatabaseMissing('master_mitra', ['id' => $mitra->id]);
     }
 
+    private function dokumenUntukMitraHapus(int $mitraId, string $nomor, array $o = []): \App\Models\DokumenKerjasama
+    {
+        $d = new \App\Models\DokumenKerjasama();
+        $d->forceFill(array_merge([
+            'no_permohonan' => 'PMH-'.$nomor, 'nomor_dokumen' => $nomor, 'nama_dokumen' => 'Dok', 'file' => $nomor.'.pdf',
+            'status_siklus' => 'active', 'mitra_id' => $mitraId,
+        ], $o))->save();
+
+        return $d->fresh();
+    }
+
+    public function test_pemakaian_menghitung_dokumen_aktif_sampah_dan_pengajuan(): void
+    {
+        $admin = $this->admin();
+        $mitra = $this->buatMitra(['nama_mitra' => 'PT Dipakai']);
+        $this->dokumenUntukMitraHapus($mitra->id, 'A1');
+        $this->dokumenUntukMitraHapus($mitra->id, 'A2', ['dihapus_admin_pada' => now()]);
+
+        $this->actingAs($admin)->getJson("/api/master/mitra/{$mitra->id}/pemakaian")
+            ->assertOk()
+            ->assertJsonPath('data.dokumen_aktif', 1)
+            ->assertJsonPath('data.dokumen_sampah', 1)
+            ->assertJsonPath('data.pengajuan', 0)
+            ->assertJsonCount(2, 'data.daftar_dokumen')
+            ->assertJsonPath('data.daftar_dokumen.0.nomor_dokumen', 'A1')
+            ->assertJsonPath('data.daftar_dokumen.0.di_sampah', false)
+            ->assertJsonPath('data.daftar_dokumen.1.di_sampah', true);
+
+        $this->actingAs($this->internal())->getJson("/api/master/mitra/{$mitra->id}/pemakaian")->assertForbidden();
+    }
+
+    public function test_hapus_mitra_mengisi_snap_nama_dokumen_yang_kosong_dan_tidak_menimpa_yang_terisi(): void
+    {
+        $admin = $this->admin();
+        $mitra = $this->buatMitra(['nama_mitra' => 'PT Hapus Berdokumen']);
+        $kosong = $this->dokumenUntukMitraHapus($mitra->id, 'B1');
+        $terisi = $this->dokumenUntukMitraHapus($mitra->id, 'B2', ['snap_nama_mitra' => 'Nama Asli di Dokumen']);
+
+        $this->actingAs($admin)->deleteJson("/api/master/mitra/{$mitra->id}")->assertOk();
+
+        $this->assertDatabaseMissing('master_mitra', ['id' => $mitra->id]);
+        $this->assertNull($kosong->fresh()->mitra_id, 'dokumen tetap ada, tautan mitra dilepas');
+        $this->assertSame('PT Hapus Berdokumen', $kosong->fresh()->snap_nama_mitra);
+        $this->assertSame('Nama Asli di Dokumen', $terisi->fresh()->snap_nama_mitra);
+    }
+
     public function test_hapus_mitra_ditolak_bukan_admin(): void
     {
         $user  = $this->internal();

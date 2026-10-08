@@ -116,6 +116,56 @@ class KoreksiArsipDokumen extends Command
             'hitung_status' => false,
             'catatan' => 'Menurut daftar Humas nomor yang benar 35/MOU.PL29/VIII/2023 (bukan VII), periode s/d 2028-08-01, aktif. nama_dokumen memuat nomor lama yang sama, ikut diperbaiki. Ruang lingkup Magang (id 3) disalin dari #800 karena PDF-nya identik (satu MoU yang sama); unit tetap Teknik Mesin.',
         ],
+        // SMK Dirgantara Riau: PDF bernomor 18/MOA.PL29/II/2024 (15-01-2024). #776 (duplikat, di Sampah) memegang nomor itu,
+        // jadi dilepas dulu dengan sufiks -DUP776 supaya #67 yang dipertahankan bisa memakainya. Urutan: #776 sebelum #67.
+        776 => [
+            'nomor' => '18/MOA.PL29/II/2024',
+            'harapan' => ['status_siklus' => 'archived', 'tanggal_mulai' => '2024-01-15', 'tanggal_berakhir' => '2025-01-15'],
+            'set' => [
+                'nomor_dokumen' => '18/MOA.PL29/II/2024-DUP776',
+                'nama_dokumen' => 'Dokumen 18/MOA.PL29/II/2024-DUP776',
+            ],
+            'wajib_terhapus' => true,
+            'hitung_status' => false,
+            'catatan' => 'Duplikat di Sampah melepas nomor 18/MOA.PL29/II/2024 (unik) dengan sufiks -DUP776 supaya #67 bisa memakainya.',
+        ],
+        67 => [
+            'nomor' => '18/MOA.PL29/III/2024',
+            'harapan' => ['status_siklus' => 'active', 'tanggal_mulai' => '2024-01-15', 'tanggal_berakhir' => '2027-01-15'],
+            'set' => ['nomor_dokumen' => '18/MOA.PL29/II/2024'],
+            'hitung_status' => false,
+            'catatan' => 'PDF bernomor 18/MOA.PL29/II/2024 (SMK Dirgantara Riau, 15-01-2024); /III/ salah bulan. Periode tidak diubah.',
+        ],
+        // SMK Negeri 9 Batam: PDF = MoU 42/MOU.PL29/V/2024. #1005 (duplikat, di Sampah) melepas nomor itu (-DUP1005) untuk #839.
+        1005 => [
+            'nomor' => '42/MOU.PL29/V/2024',
+            'harapan' => ['status_siklus' => 'active', 'tanggal_mulai' => '2024-05-06', 'tanggal_berakhir' => '2027-05-05'],
+            'set' => [
+                'nomor_dokumen' => '42/MOU.PL29/V/2024-DUP1005',
+                'nama_dokumen' => 'Dokumen 42/MOU.PL29/V/2024-DUP1005',
+            ],
+            'wajib_terhapus' => true,
+            'hitung_status' => false,
+            'catatan' => 'Duplikat di Sampah melepas nomor 42/MOU.PL29/V/2024 (unik) dengan sufiks -DUP1005 supaya #839 bisa memakainya.',
+        ],
+        839 => [
+            'nomor' => '42/MOA.PL29/V/2024',
+            'harapan' => ['status_siklus' => 'active', 'tanggal_mulai' => '2024-05-06', 'tanggal_berakhir' => '2027-05-05'],
+            'set' => [
+                'nomor_dokumen' => '42/MOU.PL29/V/2024',
+                'nama_dokumen' => 'Dokumen 42/MOU.PL29/V/2024',
+            ],
+            'hitung_status' => false,
+            'catatan' => 'PDF = Nota Kesepahaman (MoU) nomor 42/MOU.PL29/V/2024 dengan SMK Negeri 9 Batam; jenisnya sudah MOU, nomornya salah ketik MOA.',
+        ],
+        // Politeknik Negeri Ketapang: PKS 122/MOA.PL29/VIII/2024 ditandatangani 23-08-2024 (cocok dengan tanggal #1037 yang digabung).
+        1126 => [
+            'nomor' => '122/MOA.PL29/VIII/2024',
+            'harapan' => ['status_siklus' => 'archived', 'tanggal_mulai' => '2024-08-06', 'tanggal_berakhir' => '2025-08-05'],
+            'set' => ['tanggal_mulai' => '2024-08-23', 'tanggal_berakhir' => '2025-08-22'],
+            'hitung_status' => false,
+            'catatan' => 'PDF ditandatangani 23-08-2024; periode disesuaikan dengan salinan #1037 (2024-08-23 s/d 2025-08-22). Status tetap archived.',
+        ],
     ];
 
     public function handle(): int

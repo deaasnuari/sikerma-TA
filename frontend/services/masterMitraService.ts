@@ -137,6 +137,23 @@ export async function upsertMasterMitraByName(
   return response.data;
 }
 
+export interface PemakaianMitra {
+  dokumen_aktif: number;
+  dokumen_sampah: number;
+  pengajuan: number;
+  daftar_dokumen: { id: number; nomor_dokumen: string; jenis_dokumen: string | null; status_siklus: string | null; di_sampah: boolean }[];
+  daftar_pengajuan: { id: number; nomor_pengajuan: string | null; judul_pengajuan: string | null; status_pengajuan: string | null }[];
+}
+
+/** Jumlah dokumen/pengajuan yang memakai mitra ini (untuk peringatan sebelum hapus). */
+export async function getPemakaianMitra(id: number): Promise<PemakaianMitra> {
+  const response = await apiRequest<ApiResponse<PemakaianMitra>>(`/master/mitra/${id}/pemakaian`);
+  if (!response.data) {
+    throw new Error('Gagal memeriksa pemakaian mitra');
+  }
+  return response.data;
+}
+
 export async function deleteMasterMitra(id: number): Promise<boolean> {
   const response = await apiRequest<ApiResponse<null>>(`/master/mitra/${id}`, {
     method: 'DELETE',

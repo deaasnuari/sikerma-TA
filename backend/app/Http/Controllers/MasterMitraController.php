@@ -462,13 +462,61 @@ class MasterMitraController extends Controller
         $mitra->unsetRelation('kontak');
     }
 
+    /** Jumlah dokumen/pengajuan yang memakai mitra ini, untuk peringatan di modal hapus. */
+    public function pemakaian(Request $request, MasterMitra $mitra): Response
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        $dok = DB::table('dokumen_kerjasama')->where('mitra_id', $mitra->id);
+
+        return response([
+            'success' => true,
+            'data' => [
+                'dokumen_aktif' => (clone $dok)->whereNull('dihapus_admin_pada')->whereNull('dihapus_user_pada')->count(),
+                'dokumen_sampah' => (clone $dok)->where(fn ($q) => $q->whereNotNull('dihapus_admin_pada')->orWhereNotNull('dihapus_user_pada'))->count(),
+                'pengajuan' => DB::table('pengajuan_v2')->where('mitra_id', $mitra->id)->count(),
+                // Rincian untuk modal hapus (dibatasi 10 teratas; jumlah penuh ada di angka di atas).
+                'daftar_dokumen' => (clone $dok)->orderByRaw('(dihapus_admin_pada is not null or dihapus_user_pada is not null)')->orderBy('id')->limit(10)
+                    ->get(['id', 'nomor_dokumen', 'jenis_dokumen', 'status_siklus', 'dihapus_admin_pada', 'dihapus_user_pada'])
+                    ->map(fn ($d) => [
+                        'id' => $d->id,
+                        'nomor_dokumen' => $d->nomor_dokumen,
+                        'jenis_dokumen' => $d->jenis_dokumen,
+                        'status_siklus' => $d->status_siklus,
+                        'di_sampah' => (bool) ($d->dihapus_admin_pada || $d->dihapus_user_pada),
+                    ])->values(),
+                'daftar_pengajuan' => DB::table('pengajuan_v2')->where('mitra_id', $mitra->id)->orderBy('id')->limit(10)
+                    ->get(['id', 'nomor_pengajuan', 'judul_pengajuan', 'status_pengajuan'])
+                    ->map(fn ($p) => [
+                        'id' => $p->id,
+                        'nomor_pengajuan' => $p->nomor_pengajuan,
+                        'judul_pengajuan' => $p->judul_pengajuan,
+                        'status_pengajuan' => $p->status_pengajuan,
+                    ])->values(),
+            ],
+        ]);
+    }
+
     public function destroy(Request $request, MasterMitra $mitra): Response
     {
         if ($response = $this->ensureAdmin($request)) {
             return $response;
         }
 
-        $mitra->delete();
+        DB::transaction(function () use ($mitra) {
+            // Dokumen yang menunjuk mitra ini akan kehilangan tautan (nullOnDelete). Supaya nama yang tertulis
+            // di dokumen tidak hilang, snap_nama_mitra yang masih kosong diisi dengan nama mitra ini dulu.
+            DB::table('dokumen_kerjasama')->where('mitra_id', $mitra->id)
+                ->where(fn ($q) => $q->whereNull('snap_nama_mitra')->orWhere('snap_nama_mitra', ''))
+                ->update(['snap_nama_mitra' => $mitra->nama_mitra]);
+            // Sama dengan nullOnDelete di PostgreSQL, dibuat eksplisit supaya perilakunya tidak bergantung pada FK.
+            DB::table('dokumen_kerjasama')->where('mitra_id', $mitra->id)->update(['mitra_id' => null]);
+            DB::table('pengajuan_v2')->where('mitra_id', $mitra->id)->update(['mitra_id' => null]);
+
+            $mitra->delete();
+        });
 
         return response([
             'success' => true,

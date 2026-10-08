@@ -9,12 +9,14 @@ import {
   cekNamaMitra,
   createMasterMitra,
   deleteMasterMitra,
+  getPemakaianMitra,
   updateMasterMitra,
   type MasterMitra,
   type MitraSerupa,
   type NamaMitraBentrok,
+  type PemakaianMitra,
 } from '@/services/masterMitraService';
-import { refreshPengajuanDataFromApi, type PengajuanItem } from '@/services/adminPengajuanService';
+import { refreshPengajuanDataFromApi, updatePengajuanItemApi, type PengajuanItem } from '@/services/adminPengajuanService';
 import { useMasterMitra } from '@/hooks/useMasterData';
 
 type FormState = {
@@ -127,6 +129,14 @@ const bidangUsahaOptions = [
 
 const DISMISSED_MITRA_ALERTS_KEY = 'admin-mitra-alerts-dismissed';
 
+type MitraAlert = {
+  nama: string;
+  masterMitra: MasterMitra | null;
+  tipe: 'tanpa_kode' | 'belum_tertaut' | 'belum_terdaftar';
+  // Pengajuan yang belum tertaut dengan nama ini (kosong untuk tipe 'tanpa_kode').
+  pengajuan: { id: number; updatedAt?: string }[];
+};
+
 function normalizeMitraName(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -157,6 +167,11 @@ export default function MasterMitraPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingRow, setEditingRow] = useState<MasterMitra | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MasterMitra | null>(null);
+  // Berapa dokumen/pengajuan yang masih memakai mitra yang akan dihapus (null = sedang dicek / gagal dicek).
+  const [pemakaianHapus, setPemakaianHapus] = useState<PemakaianMitra | null>(null);
+  const [memeriksaPemakaian, setMemeriksaPemakaian] = useState(false);
+  // Nama pada banner yang belum terdaftar: X hanya menyembunyikan (tidak ada mitra yang dihapus), tetap dikonfirmasi dulu.
+  const [abaikanTarget, setAbaikanTarget] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -253,6 +268,29 @@ export default function MasterMitraPage() {
     };
   }, [form.nama_mitra, showModal, editingRow]);
 
+  useEffect(() => {
+    setPemakaianHapus(null);
+    setMemeriksaPemakaian(false);
+    if (!deleteTarget) return;
+
+    let aktif = true;
+    setMemeriksaPemakaian(true);
+    getPemakaianMitra(deleteTarget.id)
+      .then((hasil) => {
+        if (aktif) setPemakaianHapus(hasil);
+      })
+      .catch(() => {
+        if (aktif) setPemakaianHapus(null);
+      })
+      .finally(() => {
+        if (aktif) setMemeriksaPemakaian(false);
+      });
+
+    return () => {
+      aktif = false;
+    };
+  }, [deleteTarget]);
+
   const dismissMitraAlert = (nama: string) => {
     const normalized = normalizeMitraName(nama);
     setDismissedMitraAlerts((prev) => {
@@ -314,16 +352,20 @@ export default function MasterMitraPage() {
     }
   }, [searchParams]);
 
-  // Nama mitra dari pengajuan yang perlu ditindaklanjuti: belum terdaftar sama sekali,
-  // atau sudah terdaftar tapi belum diberi kode. Nama yang sudah di-dismiss (mis. sudah
-  // dihapus dari Data Kemitraan secara sengaja) tidak dimunculkan lagi di sini.
+  // Aturan: setiap mitra di pengajuan harus tertaut (mitra_id) ke Data Kemitraan. Yang masuk daftar ini:
+  //  - 'tanpa_kode'     : pengajuan tertaut ke mitra, tapi mitranya belum diberi kode;
+  //  - 'belum_tertaut'  : pengajuan belum tertaut (mitra_id kosong), walau nama persis sama sudah ada di master;
+  //  - 'belum_terdaftar': pengajuan belum tertaut dan namanya belum ada di Data Kemitraan.
+  // Nama yang sudah di-dismiss tidak dimunculkan lagi.
   const mitraAlerts = useMemo(() => {
     const masterByName = new Map<string, MasterMitra>();
     rows.forEach((row) => masterByName.set(normalizeMitraName(row.nama_mitra), row));
+    const masterById = new Map<number, MasterMitra>();
+    rows.forEach((row) => masterById.set(row.id, row));
 
     const dismissedSet = new Set(dismissedMitraAlerts);
     const seen = new Set<string>();
-    const alerts: { nama: string; masterMitra: MasterMitra | null }[] = [];
+    const alerts: MitraAlert[] = [];
 
     pengajuanItems.forEach((item) => {
       const nama = (item.namaMitra || '').trim();
@@ -332,17 +374,53 @@ export default function MasterMitraPage() {
       }
 
       const norm = normalizeMitraName(nama);
-      if (seen.has(norm) || dismissedSet.has(norm)) {
+      if (dismissedSet.has(norm)) {
         return;
       }
-      seen.add(norm);
 
+      const tertaut = item.mitraId ? masterById.get(item.mitraId) : undefined;
+      if (tertaut) {
+        if (tertaut.kode_mitra) {
+          return;
+        }
+        const key = `t|${tertaut.id}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        alerts.push({ nama: tertaut.nama_mitra, masterMitra: tertaut, tipe: 'tanpa_kode', pengajuan: [] });
+        return;
+      }
+
+      const key = `u|${norm}`;
       const master = masterByName.get(norm) ?? null;
-      if (master && master.kode_mitra) {
+      const existing = alerts.find((a) => a.tipe !== 'tanpa_kode' && normalizeMitraName(a.nama) === norm);
+      if (seen.has(key) && existing) {
+        existing.pengajuan.push({ id: item.id, updatedAt: item.updatedAt });
         return;
       }
+      seen.add(key);
+      alerts.push({
+        nama,
+        masterMitra: master,
+        tipe: master ? 'belum_tertaut' : 'belum_terdaftar',
+        pengajuan: [{ id: item.id, updatedAt: item.updatedAt }],
+      });
+    });
 
-      alerts.push({ nama, masterMitra: master });
+    // Semua mitra di Data Kemitraan yang belum berkode ikut ditampilkan, walau tidak sedang dipakai pengajuan
+    // (mis. mitra yang hanya dipakai dokumen di Rekap Data, atau belum dipakai sama sekali).
+    rows.forEach((row) => {
+      if (row.kode_mitra && String(row.kode_mitra).trim() !== '') {
+        return;
+      }
+      if (dismissedSet.has(normalizeMitraName(row.nama_mitra))) {
+        return;
+      }
+      const key = `t|${row.id}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      alerts.push({ nama: row.nama_mitra, masterMitra: row, tipe: 'tanpa_kode', pengajuan: [] });
     });
 
     return alerts;
@@ -353,6 +431,24 @@ export default function MasterMitraPage() {
     setForm(emptyForm);
     setKontakRows([]);
     setShowModal(true);
+  };
+
+  // Tautkan pengajuan yang namanya persis sama dengan mitra di Data Kemitraan (mengisi mitra_id saja).
+  const tautkanPengajuan = async (alert: MitraAlert) => {
+    if (!alert.masterMitra || alert.pengajuan.length === 0) return;
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      for (const p of alert.pengajuan) {
+        await updatePengajuanItemApi(p.id, { mitraId: alert.masterMitra.id, updatedAt: p.updatedAt });
+      }
+      setPengajuanItems(await refreshPengajuanDataFromApi(true));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal menautkan pengajuan ke mitra.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const openCreateWithName = (nama: string) => {
@@ -698,10 +794,10 @@ export default function MasterMitraPage() {
             <AlertCircle size={16} className="mt-0.5 shrink-0 text-amber-600" />
             <div>
               <p className="text-[12px] font-semibold text-amber-800">
-                {mitraAlerts.length} nama mitra dari pengajuan perlu ditindaklanjuti
+                {mitraAlerts.length} nama mitra perlu ditindaklanjuti
               </p>
               <p className="mt-0.5 text-[10.5px] text-amber-700">
-                Nama-nama ini diketik manual saat pengajuan (belum terdaftar di Data Kemitraan, atau sudah terdaftar tapi belum ada kode).
+                Mitra yang belum punya kode di Data Kemitraan, ditambah nama dari pengajuan yang belum tertaut ke Data Kemitraan.
               </p>
             </div>
           </div>
@@ -715,21 +811,32 @@ export default function MasterMitraPage() {
                 <div className="min-w-0">
                   <p className="truncate text-[12px] font-semibold leading-tight text-gray-800">{alert.nama}</p>
                   <p className="mt-0.5 truncate text-[10.5px] leading-tight text-gray-500">
-                    {alert.masterMitra ? 'Sudah terdaftar, tapi belum ada kode' : 'Belum terdaftar di Data Kemitraan'}
+                    {alert.tipe === 'tanpa_kode'
+                      ? 'Sudah terdaftar, tapi belum ada kode'
+                      : alert.tipe === 'belum_tertaut'
+                        ? `Ada di Data Kemitraan, tapi ${alert.pengajuan.length} pengajuan belum tertaut`
+                        : 'Belum terdaftar di Data Kemitraan'}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => (alert.masterMitra ? openEdit(alert.masterMitra) : openCreateWithName(alert.nama))}
+                    onClick={() =>
+                      alert.tipe === 'belum_tertaut' && alert.masterMitra
+                        ? void tautkanPengajuan(alert)
+                        : alert.masterMitra
+                          ? openEdit(alert.masterMitra)
+                          : openCreateWithName(alert.nama)
+                    }
+                    disabled={submitting}
                     className="rounded-md bg-[#1E376C] px-3 py-1.5 text-[10.5px] font-semibold text-white hover:bg-[#2B4A93]"
                   >
-                    {alert.masterMitra ? 'Lengkapi Kode' : 'Tambah Mitra'}
+                    {alert.tipe === 'belum_tertaut' ? 'Tautkan' : alert.masterMitra ? 'Lengkapi Kode' : 'Tambah Mitra'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => dismissMitraAlert(alert.nama)}
-                    title="Abaikan, jangan tampilkan lagi"
+                    onClick={() => (alert.tipe === 'tanpa_kode' && alert.masterMitra ? setDeleteTarget(alert.masterMitra) : setAbaikanTarget(alert.nama))}
+                    title={alert.tipe === 'tanpa_kode' ? 'Hapus dari Data Kemitraan' : 'Abaikan, jangan tampilkan lagi'}
                     className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                   >
                     <X size={14} />
@@ -922,6 +1029,47 @@ export default function MasterMitraPage() {
         )}
       </div>
 
+      {abaikanTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-amber-100">
+              <AlertCircle size={20} className="text-amber-600" />
+            </div>
+            <h2 className="mb-1 text-[15px] font-bold text-gray-900">Abaikan Peringatan</h2>
+            <p className="mb-1 text-[12px] text-gray-500">Nama ini belum ada di Data Kemitraan, jadi tidak ada data mitra yang dihapus. Peringatan untuk nama berikut hanya disembunyikan dari banner.</p>
+            <p className="mb-3 text-[13px] font-semibold text-gray-800">{abaikanTarget}</p>
+            {(() => {
+              const norm = normalizeMitraName(abaikanTarget);
+              const jumlah = pengajuanItems.filter((item) => normalizeMitraName(item.namaMitra || '') === norm).length;
+              return (
+                <p className={`mb-4 rounded-lg border px-3 py-2.5 text-[11px] leading-relaxed ${jumlah > 0 ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                  {jumlah > 0
+                    ? `Nama ini tertulis di ${jumlah} pengajuan. Pengajuan tidak berubah, hanya peringatannya yang disembunyikan.`
+                    : 'Tidak ada pengajuan yang memakai nama ini.'}
+                </p>
+              );
+            })()}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setAbaikanTarget(null)}
+                className="flex-1 rounded-lg border border-gray-200 py-2.5 text-[12px] font-medium text-gray-700 transition hover:bg-gray-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => {
+                  dismissMitraAlert(abaikanTarget);
+                  setAbaikanTarget(null);
+                }}
+                className="flex-1 rounded-lg bg-amber-600 py-2.5 text-[12px] font-semibold text-white transition hover:bg-amber-700"
+              >
+                Ya, Abaikan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
@@ -930,7 +1078,52 @@ export default function MasterMitraPage() {
             </div>
             <h2 className="mb-1 text-[15px] font-bold text-gray-900">Hapus Mitra</h2>
             <p className="mb-1 text-[12px] text-gray-500">Yakin ingin menghapus mitra berikut?</p>
-            <p className="mb-5 text-[13px] font-semibold text-gray-800">{deleteTarget.nama_mitra}</p>
+            <p className="mb-3 text-[13px] font-semibold text-gray-800">{deleteTarget.nama_mitra}</p>
+            {pemakaianHapus && (pemakaianHapus.dokumen_aktif + pemakaianHapus.dokumen_sampah + pemakaianHapus.pengajuan) > 0 && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-relaxed text-amber-800">
+                <p className="font-semibold">Mitra ini masih dipakai:</p>
+                <ul className="mt-1 list-disc pl-4">
+                  {pemakaianHapus.dokumen_aktif > 0 && <li>{pemakaianHapus.dokumen_aktif} dokumen kerja sama aktif</li>}
+                  {pemakaianHapus.dokumen_sampah > 0 && <li>{pemakaianHapus.dokumen_sampah} dokumen di Sampah</li>}
+                  {pemakaianHapus.pengajuan > 0 && <li>{pemakaianHapus.pengajuan} pengajuan</li>}
+                </ul>
+                {pemakaianHapus.daftar_dokumen.length > 0 && (
+                  <div className="mt-2">
+                    <p className="font-semibold">Dokumen:</p>
+                    <ul className="mt-0.5 max-h-28 space-y-0.5 overflow-y-auto pr-1">
+                      {pemakaianHapus.daftar_dokumen.map((d) => (
+                        <li key={d.id} className="truncate">
+                          {d.nomor_dokumen}
+                          {d.jenis_dokumen ? ` (${d.jenis_dokumen.toUpperCase()})` : ''}
+                          {d.di_sampah ? ' - di Sampah' : d.status_siklus ? ` - ${d.status_siklus}` : ''}
+                        </li>
+                      ))}
+                      {pemakaianHapus.dokumen_aktif + pemakaianHapus.dokumen_sampah > pemakaianHapus.daftar_dokumen.length && (
+                        <li className="italic">dan {pemakaianHapus.dokumen_aktif + pemakaianHapus.dokumen_sampah - pemakaianHapus.daftar_dokumen.length} dokumen lainnya</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+                {pemakaianHapus.daftar_pengajuan.length > 0 && (
+                  <div className="mt-2">
+                    <p className="font-semibold">Pengajuan:</p>
+                    <ul className="mt-0.5 max-h-20 space-y-0.5 overflow-y-auto pr-1">
+                      {pemakaianHapus.daftar_pengajuan.map((p) => (
+                        <li key={p.id} className="truncate">
+                          {p.nomor_pengajuan || `#${p.id}`}
+                          {p.judul_pengajuan ? ` - ${p.judul_pengajuan}` : ''}
+                          {p.status_pengajuan ? ` (${p.status_pengajuan})` : ''}
+                        </li>
+                      ))}
+                      {pemakaianHapus.pengajuan > pemakaianHapus.daftar_pengajuan.length && (
+                        <li className="italic">dan {pemakaianHapus.pengajuan - pemakaianHapus.daftar_pengajuan.length} pengajuan lainnya</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+                <p className="mt-2">Dokumen dan pengajuan tetap ada, tetapi tidak lagi tertaut ke mitra. Nama mitra ini disimpan di dokumennya.</p>
+              </div>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setDeleteTarget(null)}
@@ -941,7 +1134,7 @@ export default function MasterMitraPage() {
               </button>
               <button
                 onClick={confirmDelete}
-                disabled={submitting}
+                disabled={submitting || memeriksaPemakaian}
                 className="flex-1 rounded-lg bg-red-600 py-2.5 text-[12px] font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {submitting ? 'Menghapus...' : 'Ya, Hapus'}
