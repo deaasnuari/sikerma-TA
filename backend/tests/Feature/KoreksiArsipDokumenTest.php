@@ -190,6 +190,74 @@ class KoreksiArsipDokumenTest extends TestCase
         $this->assertSame('active', $d->status_siklus);
     }
 
+    private function dok1080(array $o = []): DokumenKerjasama
+    {
+        $d = new DokumenKerjasama();
+        $d->forceFill(array_merge([
+            'id' => 1080, 'no_permohonan' => 'PMH-1080', 'nomor_dokumen' => '82/MOA.PL29/VIII/202',
+            'nama_dokumen' => 'Dokumen 82/MOA.PL29/VIII/202', 'jenis_dokumen' => 'MOA', 'file' => 'x.pdf',
+            'status_siklus' => 'active', 'tanggal_mulai' => '2025-08-11', 'tanggal_berakhir' => '2030-08-11',
+        ], $o))->save();
+
+        return $d->fresh();
+    }
+
+    public function test_koreksi_1080_melengkapi_tahun_di_nomor_dan_nama_dokumen_tanpa_menyentuh_lainnya(): void
+    {
+        $d = $this->dok1080();
+
+        $this->artisan('sikerma:koreksi-arsip-dokumen --apply')->assertSuccessful();
+
+        $d = $d->fresh();
+        $this->assertSame('82/MOA.PL29/VIII/2025', $d->nomor_dokumen);
+        $this->assertSame('Dokumen 82/MOA.PL29/VIII/2025', $d->nama_dokumen);
+        $this->assertSame('active', $d->status_siklus);
+        $this->assertSame('2025-08-11', $d->tanggal_mulai->toDateString());
+    }
+
+    public function test_koreksi_1080_dilewati_bila_nomor_baru_sudah_dipakai_atau_tanggal_tidak_cocok(): void
+    {
+        $lain = new DokumenKerjasama();
+        $lain->forceFill(['no_permohonan' => 'PMH-LAIN', 'nomor_dokumen' => '82/MOA.PL29/VIII/2025', 'nama_dokumen' => 'Dok', 'file' => 'y.pdf', 'status_siklus' => 'active'])->save();
+        $d = $this->dok1080();
+        $this->artisan('sikerma:koreksi-arsip-dokumen --apply')->assertSuccessful();
+        $this->assertSame('82/MOA.PL29/VIII/202', $d->fresh()->nomor_dokumen, 'nomor baru sudah dipakai dokumen lain');
+
+        $lain->delete();
+        $d->forceFill(['tanggal_mulai' => '2024-01-01'])->save();
+        $this->artisan('sikerma:koreksi-arsip-dokumen --apply')->assertSuccessful();
+        $this->assertSame('82/MOA.PL29/VIII/202', $d->fresh()->nomor_dokumen, 'tanggal tidak cocok keputusan');
+    }
+
+    public function test_rollback_mengembalikan_nomor_dan_nama_dokumen_1080(): void
+    {
+        $d = $this->dok1080();
+        $this->artisan('sikerma:koreksi-arsip-dokumen --apply')->assertSuccessful();
+
+        $this->artisan('sikerma:koreksi-arsip-dokumen', ['--rollback' => $this->berkas()])->assertSuccessful();
+
+        $d = $d->fresh();
+        $this->assertSame('82/MOA.PL29/VIII/202', $d->nomor_dokumen);
+        $this->assertSame('Dokumen 82/MOA.PL29/VIII/202', $d->nama_dokumen);
+    }
+
+    public function test_koreksi_1153_memperbaiki_garis_miring_di_nomor_dan_nama_dokumen(): void
+    {
+        $d = new DokumenKerjasama();
+        $d->forceFill([
+            'id' => 1153, 'no_permohonan' => 'PMH-1153', 'nomor_dokumen' => '86/MOA.PL29/VIII2025',
+            'nama_dokumen' => 'Dokumen 86/MOA.PL29/VIII2025', 'jenis_dokumen' => 'MOA', 'file' => 'x.pdf',
+            'status_siklus' => 'archived', 'tanggal_mulai' => '2024-08-26', 'tanggal_berakhir' => '2025-08-25',
+        ])->save();
+
+        $this->artisan('sikerma:koreksi-arsip-dokumen --apply')->assertSuccessful();
+
+        $d = $d->fresh();
+        $this->assertSame('86/MOA.PL29/VIII/2025', $d->nomor_dokumen);
+        $this->assertSame('Dokumen 86/MOA.PL29/VIII/2025', $d->nama_dokumen);
+        $this->assertSame('2024-08-26', $d->tanggal_mulai->toDateString(), 'tanggal tidak diubah');
+    }
+
     public function test_idempotent_dijalankan_dua_kali(): void
     {
         $d = $this->dok851();

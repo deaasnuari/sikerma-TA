@@ -60,6 +60,26 @@ class KoreksiArsipDokumen extends Command
             'hitung_status' => true,
             'catatan' => 'Sesuai PDF: Nomor 114/MOA.PL29/XI/2025, jangka waktu 2 Nov s/d 14 Des 2025, ditandatangani 3 Nov 2025. Status dihitung ulang; diarsipkan_pada/alasan_arsip dibiarkan terisi (jenis_dokumen tidak diubah).',
         ],
+        1080 => [
+            'nomor' => '82/MOA.PL29/VIII/202',
+            'harapan' => ['status_siklus' => 'active', 'tanggal_mulai' => '2025-08-11', 'tanggal_berakhir' => '2030-08-11'],
+            'set' => [
+                'nomor_dokumen' => '82/MOA.PL29/VIII/2025',
+                'nama_dokumen' => 'Dokumen 82/MOA.PL29/VIII/2025',
+            ],
+            'hitung_status' => false,
+            'catatan' => 'Nomor terpotong (tahun kurang satu digit). Tahun 2025 didukung tanggal_mulai 2025-08-11 dan tetangga nomor 81/84/85 VIII/2025; PDF-nya scan tanpa teks. nama_dokumen memuat typo yang sama, ikut diperbaiki.',
+        ],
+        1153 => [
+            'nomor' => '86/MOA.PL29/VIII2025',
+            'harapan' => ['status_siklus' => 'archived', 'tanggal_mulai' => '2024-08-26', 'tanggal_berakhir' => '2025-08-25'],
+            'set' => [
+                'nomor_dokumen' => '86/MOA.PL29/VIII/2025',
+                'nama_dokumen' => 'Dokumen 86/MOA.PL29/VIII/2025',
+            ],
+            'hitung_status' => false,
+            'catatan' => 'Garis miring sebelum tahun hilang ("VIII2025"). nama_dokumen memuat typo yang sama, ikut diperbaiki. Catatan: tanggal_mulai 2024-08-26 tidak diubah (berkas "MOA-ADD" = addendum, jadi periode awalnya bisa memang 2024).',
+        ],
     ];
 
     public function handle(): int
