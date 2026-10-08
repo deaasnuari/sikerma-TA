@@ -18,6 +18,15 @@ use Illuminate\Support\Facades\DB;
  *   php artisan sikerma:gabung-dokumen-ganda --apply --termasuk-mitra-beda # ikut pasangan yang mitra_id-nya beda
  *   php artisan sikerma:gabung-dokumen-ganda --rollback=<berkas cadangan>  # batalkan satu kali --apply
  *
+ * Penanda "!" (mis. --pasangan=864:995!): bila tanggal/status kedua dokumen BERTENTANGAN, nilai dokumen yang
+ * dipertahankan dipakai dan pasangan tetap diproses; konfliknya (nilai yang dipakai dan yang dibuang) ditampilkan
+ * di pratinjau. Tanpa "!", pasangan bertentangan ditahan sebagai "perlu keputusan".
+ *
+ * Mode --pasangan=dipertahankan:dihapus,... dipakai untuk duplikat yang BUKAN hasil pola "-L" (mis. dua dokumen
+ * yang sama dengan nomor beda bulan/huruf). Aturan penggabungannya sama persis (dokumen pertama = ASLI/dipertahankan,
+ * kedua = SALINAN/di-soft delete); keduanya harus dokumen aktif, dan pasangan yang tanggal/statusnya bertentangan
+ * tetap masuk "perlu keputusan". Pilihan dokumen mana yang dipertahankan ada pada Anda.
+ *
  * Pasangan ganda = nomor_dokumen salinan = nomor asli + "-L<angka>", file SAMA, dan (jenis A) mitra_id
  * sama/salah satunya NULL. Jenis B = file sama tapi mitra_id beda (tahap 2 membuat baris master_mitra
  * baru untuk nama yang sedikit berbeda) — hanya diproses dengan --termasuk-mitra-beda. Dokumen "-L"
@@ -40,6 +49,7 @@ class GabungDokumenGanda extends Command
     protected $signature = 'sikerma:gabung-dokumen-ganda
         {--apply : Terapkan perubahan (tanpa flag ini hanya pratinjau)}
         {--termasuk-mitra-beda : Ikut proses pasangan yang file-nya sama tapi mitra_id-nya beda}
+        {--pasangan= : Tentukan pasangan sendiri (tanpa deteksi nomor "-L"), format dipertahankan:dihapus,dipertahankan:dihapus — mis. 408:330}
         {--rollback= : Batalkan satu kali --apply memakai berkas cadangan JSON di storage/app/}
         {--hari-akan-berakhir=90 : Ambang hari untuk status "expiring"}';
 
@@ -106,10 +116,18 @@ class GabungDokumenGanda extends Command
             ->keyBy('id');
         $aktifSebelum = $docs->count();
 
-        [$pasangan, $ambigu] = $this->cariPasangan($docs);
+        if (trim((string) $this->option('pasangan')) !== '') {
+            $manual = $this->pasanganManual((string) $this->option('pasangan'), $docs);
+            if ($manual === null) {
+                return self::FAILURE;
+            }
+            [$pasangan, $ambigu] = [$manual, []];
+        } else {
+            [$pasangan, $ambigu] = $this->cariPasangan($docs);
+        }
         $rencana = [];
         foreach ($pasangan as $p) {
-            $rencana[] = $this->evaluasi($p['asli'], $p['salinan'], $p['jenis'], $hariIni, $batas);
+            $rencana[] = $this->evaluasi($p['asli'], $p['salinan'], $p['jenis'], $hariIni, $batas, (bool) ($p['keeperMenang'] ?? false));
         }
 
         $unitNama = DB::table('master_unit_prodi')->pluck('nama', 'id');
@@ -140,6 +158,51 @@ class GabungDokumenGanda extends Command
         $this->line('Batalkan dengan: php artisan sikerma:gabung-dokumen-ganda --rollback='.basename($berkas));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Parse --pasangan=dipertahankan:dihapus,... dan validasi: format, id berbeda, keduanya dokumen AKTIF,
+     * satu dokumen tidak muncul dua kali. Salah satu gagal -> tidak ada yang diproses.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $docs  dokumen aktif, kunci = id
+     * @return array<int, array{asli: object, salinan: object, jenis: string}>|null
+     */
+    private function pasanganManual(string $opsi, $docs): ?array
+    {
+        $pasang = [];
+        $dipakai = [];
+        foreach (preg_split('/[\s,;]+/', trim($opsi), -1, PREG_SPLIT_NO_EMPTY) as $p) {
+            if (! preg_match('/^(\d+):(\d+)(!)?$/', $p, $m)) {
+                $this->error("Format pasangan tidak valid: '{$p}' — pakai dipertahankan:dihapus, mis. 408:330 (tambahkan ! di akhir, mis. 864:995!, agar tanggal/status dokumen yang dipertahankan menang bila bertentangan).");
+
+                return null;
+            }
+            [$a, $s] = [(int) $m[1], (int) $m[2]];
+            if ($a === $s) {
+                $this->error("Pasangan {$a}:{$s} — dokumen tidak bisa digabung dengan dirinya sendiri.");
+
+                return null;
+            }
+            foreach ([$a, $s] as $id) {
+                if (isset($dipakai[$id])) {
+                    $this->error("Dokumen #{$id} muncul lebih dari sekali di --pasangan.");
+
+                    return null;
+                }
+                $dipakai[$id] = true;
+                if (! $docs->has($id)) {
+                    $this->error("Dokumen #{$id} tidak ditemukan atau sudah dihapus (hanya dokumen aktif yang bisa digabung).");
+
+                    return null;
+                }
+            }
+            $asli = $docs[$a];
+            $salinan = $docs[$s];
+            $mitraBeda = $asli->mitra_id !== null && $salinan->mitra_id !== null && (int) $asli->mitra_id !== (int) $salinan->mitra_id;
+            $pasang[] = ['asli' => $asli, 'salinan' => $salinan, 'jenis' => $mitraBeda ? 'B' : 'A', 'keeperMenang' => isset($m[3]) && $m[3] === '!'];
+        }
+
+        return $pasang === [] ? null : $pasang;
     }
 
     /**
@@ -200,10 +263,16 @@ class GabungDokumenGanda extends Command
         return [$pasangan, $ambigu];
     }
 
-    private function evaluasi(object $asli, object $salinan, string $jenis, string $hariIni, string $batas): array
+    /**
+     * @param  bool  $keeperMenang  pasangan bertanda "!" di --pasangan: bila tanggal/status keduanya bertentangan,
+     *                              nilai dokumen yang dipertahankan DIPAKAI (bukan ditahan sebagai "perlu keputusan");
+     *                              nilai yang dibuang dicatat di 'konflikDipakai' dan ditampilkan di pratinjau.
+     */
+    private function evaluasi(object $asli, object $salinan, string $jenis, string $hariIni, string $batas, bool $keeperMenang = false): array
     {
         $set = [];
         $keputusan = [];
+        $konflikDipakai = [];
         $cekTanggal = [];
         $override = [];
         foreach (self::KEPUTUSAN_TANGGAL as [$a, $s, $kolom]) {
@@ -249,7 +318,11 @@ class GabungDokumenGanda extends Command
             }
 
             if ($nilaiAsli !== null && $nilaiSalinan !== null && $nilaiAsli !== $nilaiSalinan) {
-                $keputusan[] = "{$kolom} beda ({$nilaiAsli} vs {$nilaiSalinan}) dan belum ada keputusan";
+                if ($keeperMenang) {
+                    $konflikDipakai[] = "{$kolom}: dipakai {$nilaiAsli} (dokumen dipertahankan), dibuang {$nilaiSalinan} (salinan)";
+                } else {
+                    $keputusan[] = "{$kolom} beda ({$nilaiAsli} vs {$nilaiSalinan}) dan belum ada keputusan";
+                }
             }
         }
 
@@ -269,6 +342,16 @@ class GabungDokumenGanda extends Command
         // Lengkapi kolom kosong (tidak menimpa). mitra_id jenis B sudah ditangani di atas.
         foreach (self::FIELD_LENGKAPI as $kolom) {
             if (array_key_exists($kolom, $set) || ($jenis === 'B' && $kolom === 'mitra_id')) {
+                continue;
+            }
+            // Ruang lingkup tidak disalin dari salinan yang judul/ruang lingkup tertulisnya BEDA dari dokumen
+            // asli — itu menaruh cakupan yang bertentangan dengan judul dokumen yang dipertahankan.
+            if ($kolom === 'ruang_lingkup_ids' && $this->judulBeda($asli, $salinan)) {
+                if ($this->kosong($asli->{$kolom}) && ! $this->kosong($salinan->{$kolom})) {
+                    $konflikDipakai[] = 'ruang_lingkup_ids: TIDAK diisi dari salinan karena ruang lingkup tertulisnya beda ("'
+                        .trim((string) $asli->judul_dokumen).'" vs "'.trim((string) $salinan->judul_dokumen).'")';
+                }
+
                 continue;
             }
             if ($this->kosong($asli->{$kolom}) && ! $this->kosong($salinan->{$kolom})) {
@@ -291,7 +374,11 @@ class GabungDokumenGanda extends Command
         // Status salinan hanya dibandingkan kalau salinan punya tanggal_berakhir sendiri; tanpa tanggal,
         // 'active' di salinan cuma nilai bawaan dan tidak membawa informasi.
         if ($this->tanggal($salinan->tanggal_berakhir) !== null && $statusAkhir !== $statusSalinan) {
-            $keputusan[] = "status_siklus masih beda setelah penyelarasan (asli {$statusAkhir} vs salinan {$statusSalinan})";
+            if ($keeperMenang) {
+                $konflikDipakai[] = "status_siklus: dipakai {$statusAkhir} (dokumen dipertahankan), dibuang {$statusSalinan} (salinan)";
+            } else {
+                $keputusan[] = "status_siklus masih beda setelah penyelarasan (asli {$statusAkhir} vs salinan {$statusSalinan})";
+            }
         }
 
         // diarsipkan_pada / alasan_arsip hanya boleh diisi dari salinan kalau status_siklus AKHIR
@@ -309,6 +396,7 @@ class GabungDokumenGanda extends Command
             'jenis' => $jenis,
             'set' => $set,
             'keputusan' => $keputusan,
+            'konflikDipakai' => $konflikDipakai,
             'cekTanggal' => $cekTanggal,
             'statusBerubah' => $statusBerubah,
             'unitBeda' => $unitBeda,
@@ -326,11 +414,16 @@ class GabungDokumenGanda extends Command
     {
         $hasil = [];
 
-        $pathAsli = DB::table('dokumen_file')->where('dokumen_id', $asliId)->pluck('path_file')->all();
+        // Berkas dianggap sudah ada di ASLI kalau path_file-nya sama ATAU nama berkasnya sama setelah awalan
+        // acak unggahan ("66974bb2b298e_") dibuang — supaya PDF yang sama tidak muncul dua kali di dokumen asli.
+        $namaBersih = fn (?string $n) => mb_strtolower(trim((string) preg_replace('/^[0-9a-f]{13}_/', '', trim((string) $n))));
+        $fileAsli = DB::table('dokumen_file')->where('dokumen_id', $asliId)->get(['path_file', 'nama_file']);
+        $pathAsli = $fileAsli->pluck('path_file')->flip()->all();
+        $namaAsli = $fileAsli->map(fn ($f) => $namaBersih($f->nama_file))->filter()->flip()->all();
         $hasil['dokumen_file'] = ['kolom' => 'dokumen_id', 'ids' => DB::table('dokumen_file')
-            ->where('dokumen_id', $salinanId)
-            ->whereNotIn('path_file', $pathAsli === [] ? [''] : $pathAsli)
-            ->pluck('id')->map(fn ($v) => (int) $v)->all()];
+            ->where('dokumen_id', $salinanId)->get(['id', 'path_file', 'nama_file'])
+            ->filter(fn ($f) => ! isset($pathAsli[$f->path_file]) && ! isset($namaAsli[$namaBersih($f->nama_file)]))
+            ->pluck('id')->map(fn ($v) => (int) $v)->values()->all()];
 
         $hasil['dokumen_log'] = ['kolom' => 'dokumen_id', 'ids' => DB::table('dokumen_log')
             ->where('dokumen_id', $salinanId)->pluck('id')->map(fn ($v) => (int) $v)->all()];
@@ -462,6 +555,19 @@ class GabungDokumenGanda extends Command
         $this->line('Dokumen non-archived yang punya diarsipkan_pada setelah penggabungan: '.count($pelanggaran));
         foreach (array_slice($pelanggaran, 0, 20) as $p) {
             $this->line('  - '.$p);
+        }
+
+        // Konflik yang dimenangkan dokumen yang dipertahankan (pasangan bertanda "!").
+        $dipakai = array_filter($rencana, fn ($r) => ($r['konflikDipakai'] ?? []) !== []);
+        if ($dipakai !== []) {
+            $this->newLine();
+            $this->info('=== NILAI BERTENTANGAN — dipakai milik dokumen yang dipertahankan (penanda "!") ===');
+            foreach ($dipakai as $r) {
+                $this->line(sprintf('  asli #%d %s ← salinan #%d %s', $r['asli']->id, $r['asli']->nomor_dokumen, $r['salinan']->id, $r['salinan']->nomor_dokumen));
+                foreach ($r['konflikDipakai'] as $k) {
+                    $this->line('       - '.$k);
+                }
+            }
         }
 
         // Perlu keputusan.
@@ -637,6 +743,15 @@ class GabungDokumenGanda extends Command
     private function adalahSalinan(?string $nomor): bool
     {
         return (bool) preg_match('/-L\d+\s*$/i', trim((string) $nomor));
+    }
+
+    /** Kedua dokumen punya judul_dokumen (ruang lingkup tertulis) terisi dan isinya berbeda. */
+    private function judulBeda(object $asli, object $salinan): bool
+    {
+        $a = mb_strtolower(trim((string) ($asli->judul_dokumen ?? '')));
+        $s = mb_strtolower(trim((string) ($salinan->judul_dokumen ?? '')));
+
+        return $a !== '' && $s !== '' && $a !== $s;
     }
 
     private function kosong(mixed $v): bool

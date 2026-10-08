@@ -391,6 +391,145 @@ class GabungDokumenGandaTest extends TestCase
         }
     }
 
+    // ------------------------------------------------------------------
+    // Mode --pasangan=dipertahankan:dihapus (duplikat yang bukan pola "-L")
+    // ------------------------------------------------------------------
+
+    public function test_pasangan_manual_menggabung_duplikat_tanpa_pola_L(): void
+    {
+        $mitra = $this->mitra();
+        $a = $this->dok(['nomor_dokumen' => '19/MOU.PL29/III/2021', 'file' => 'f.pdf', 'mitra_id' => $mitra->id, 'tanggal_berakhir' => '2026-03-10', 'status_siklus' => 'archived']);
+        $s = $this->dok(['nomor_dokumen' => '19/MoU.PL29/III/2021', 'file' => 'f.pdf', 'mitra_id' => $mitra->id, 'tanggal_berakhir' => '2026-03-10', 'status_siklus' => 'archived']);
+
+        // Pratinjau tidak mengubah apa pun.
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$a->id}:{$s->id}"])->assertSuccessful();
+        $this->assertNull($s->fresh()->dihapus_admin_pada);
+
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$a->id}:{$s->id}", '--apply' => true])->assertSuccessful();
+
+        $this->assertNull($a->fresh()->dihapus_admin_pada, 'yang dipertahankan tetap aktif');
+        $s = $s->fresh();
+        $this->assertNotNull($s->dihapus_admin_pada, 'yang dihapus di-soft delete, bukan dihapus permanen');
+        $this->assertStringContainsString('[Duplikat] digabung ke dokumen #'.$a->id, $s->keterangan);
+    }
+
+    public function test_pasangan_manual_menghormati_pilihan_pengguna_siapa_yang_dipertahankan(): void
+    {
+        [$x, $y] = [$this->dok(['file' => 'f.pdf', 'nomor_dokumen' => '31/MOU.PL29/VII/2023']), $this->dok(['file' => 'f.pdf', 'nomor_dokumen' => '31/MOU.PL29/VIII/2023'])];
+
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$y->id}:{$x->id}", '--apply' => true])->assertSuccessful();
+
+        $this->assertNull($y->fresh()->dihapus_admin_pada);
+        $this->assertNotNull($x->fresh()->dihapus_admin_pada);
+    }
+
+    public function test_pasangan_manual_tidak_memindahkan_berkas_yang_sama_walau_awalan_acak_beda(): void
+    {
+        [$a, $s] = [$this->dok(['file' => '31 MOU NU.pdf']), $this->dok(['file' => '66974bb2b298e_31 MOU NU.pdf'])];
+        DokumenFile::create(['dokumen_id' => $a->id, 'peran_berkas' => 'dokumen_final', 'nama_file' => '31 MOU NU.pdf', 'path_file' => 'dokumen/31 MOU NU.pdf']);
+        $sama = DokumenFile::create(['dokumen_id' => $s->id, 'peran_berkas' => 'dokumen_final', 'nama_file' => '66974bb2b298e_31 MOU NU.pdf', 'path_file' => 'dokumen/66974bb2b298e_31 MOU NU.pdf']);
+        $beda = DokumenFile::create(['dokumen_id' => $s->id, 'peran_berkas' => 'lampiran', 'nama_file' => 'lampiran-lain.pdf', 'path_file' => 'dokumen/lampiran-lain.pdf']);
+
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$a->id}:{$s->id}", '--apply' => true])->assertSuccessful();
+
+        $this->assertSame($s->id, (int) $sama->fresh()->dokumen_id, 'PDF yang sama tidak dipindah (tidak dobel di dokumen asli)');
+        $this->assertSame($a->id, (int) $beda->fresh()->dokumen_id, 'berkas yang memang berbeda ikut pindah');
+    }
+
+    public function test_pasangan_manual_ditolak_seluruhnya_bila_ada_yang_tidak_valid(): void
+    {
+        $a = $this->dok(['file' => 'f.pdf']);
+        $b = $this->dok(['file' => 'f.pdf']);
+        $terhapus = $this->dok(['file' => 'f.pdf', 'dihapus_admin_pada' => now()]);
+
+        foreach ([
+            "{$a->id}-{$b->id}",                       // format salah
+            "{$a->id}:{$a->id}",                       // diri sendiri
+            "{$a->id}:{$b->id},{$b->id}:{$a->id}",     // dokumen muncul dua kali
+            "{$a->id}:999999",                         // tidak ada
+            "{$a->id}:{$terhapus->id}",                // sudah dihapus
+        ] as $opsi) {
+            $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => $opsi, '--apply' => true])->assertFailed();
+        }
+
+        $this->assertNull($a->fresh()->dihapus_admin_pada);
+        $this->assertNull($b->fresh()->dihapus_admin_pada);
+    }
+
+    public function test_pasangan_manual_dengan_tanggal_bertentangan_tetap_masuk_perlu_keputusan(): void
+    {
+        $a = $this->dok(['file' => 'f.pdf', 'tanggal_berakhir' => '2027-01-01']);
+        $s = $this->dok(['file' => 'f.pdf', 'tanggal_berakhir' => '2028-01-01']);
+
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$a->id}:{$s->id}", '--apply' => true])->assertSuccessful();
+
+        $this->assertNull($s->fresh()->dihapus_admin_pada);
+    }
+
+    public function test_penanda_seru_memakai_tanggal_dan_status_dokumen_yang_dipertahankan_bila_bertentangan(): void
+    {
+        $a = $this->dok(['file' => 'f.pdf', 'nomor_dokumen' => '105/MOA.PL29/VII/2024', 'tanggal_mulai' => '2024-07-23', 'tanggal_berakhir' => '2028-07-22', 'status_siklus' => 'active']);
+        $s = $this->dok(['file' => 'f.pdf', 'nomor_dokumen' => '105/MOA.PL29/VIII/2024', 'tanggal_mulai' => '2024-07-23', 'tanggal_berakhir' => '2024-07-23', 'status_siklus' => 'archived']);
+
+        // Tanpa "!" pasangan ditahan sebagai perlu keputusan.
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$a->id}:{$s->id}", '--apply' => true])->assertSuccessful();
+        $this->assertNull($s->fresh()->dihapus_admin_pada);
+
+        // Dengan "!" diproses, dan nilai dokumen yang dipertahankan TIDAK berubah.
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$a->id}:{$s->id}!", '--apply' => true])->assertSuccessful();
+
+        $this->assertNotNull($s->fresh()->dihapus_admin_pada);
+        $a = $a->fresh();
+        $this->assertSame('2028-07-22', $a->tanggal_berakhir->toDateString());
+        $this->assertSame('active', $a->status_siklus);
+    }
+
+    public function test_ruang_lingkup_tidak_disalin_dari_salinan_yang_judulnya_beda_tetapi_disalin_bila_judul_sama(): void
+    {
+        // Judul/ruang lingkup tertulis BEDA -> ruang_lingkup_ids salinan tidak boleh masuk ke dokumen yang dipertahankan.
+        $a = $this->dok(['file' => 'f1.pdf', 'judul_dokumen' => 'pendidikan, pengembangan kelembagaan']);
+        $s = $this->dok(['file' => 'f1.pdf', 'judul_dokumen' => 'magang, rekruitmen', 'ruang_lingkup_ids' => [3]]);
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$a->id}:{$s->id}", '--apply' => true])->assertSuccessful();
+        $this->assertNotNull($s->fresh()->dihapus_admin_pada);
+        $this->assertEmpty($a->fresh()->ruang_lingkup_ids);
+
+        // Judul SAMA -> perilaku lama: kolom kosong diisi dari salinan.
+        $a2 = $this->dok(['file' => 'f2.pdf', 'judul_dokumen' => 'magang']);
+        $s2 = $this->dok(['file' => 'f2.pdf', 'judul_dokumen' => 'Magang', 'ruang_lingkup_ids' => [3]]);
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$a2->id}:{$s2->id}", '--apply' => true])->assertSuccessful();
+        $this->assertSame([3], $a2->fresh()->ruang_lingkup_ids);
+    }
+
+    public function test_penanda_seru_hanya_berlaku_untuk_pasangan_yang_ditandai(): void
+    {
+        $a1 = $this->dok(['file' => 'f1.pdf', 'tanggal_berakhir' => '2028-01-01']);
+        $s1 = $this->dok(['file' => 'f1.pdf', 'tanggal_berakhir' => '2024-01-01', 'status_siklus' => 'archived']);
+        $a2 = $this->dok(['file' => 'f2.pdf', 'tanggal_berakhir' => '2029-01-01']);
+        $s2 = $this->dok(['file' => 'f2.pdf', 'tanggal_berakhir' => '2025-01-01', 'status_siklus' => 'archived']);
+
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$a1->id}:{$s1->id}!,{$a2->id}:{$s2->id}", '--apply' => true])->assertSuccessful();
+
+        $this->assertNotNull($s1->fresh()->dihapus_admin_pada, 'pasangan bertanda ! diproses');
+        $this->assertNull($s2->fresh()->dihapus_admin_pada, 'pasangan tanpa ! tetap ditahan');
+    }
+
+    public function test_pasangan_manual_dengan_mitra_beda_butuh_flag_dan_bisa_di_rollback(): void
+    {
+        $m1 = $this->mitra('PT A');
+        $m2 = $this->mitra('PT B');
+        $a = $this->dok(['file' => 'f.pdf', 'mitra_id' => $m1->id]);
+        $s = $this->dok(['file' => 'f.pdf', 'mitra_id' => $m2->id]);
+
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$a->id}:{$s->id}", '--apply' => true])->assertSuccessful();
+        $this->assertNull($s->fresh()->dihapus_admin_pada, 'mitra beda ditahan tanpa --termasuk-mitra-beda');
+
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--pasangan' => "{$a->id}:{$s->id}", '--apply' => true, '--termasuk-mitra-beda' => true])->assertSuccessful();
+        $this->assertNotNull($s->fresh()->dihapus_admin_pada);
+
+        $this->artisan('sikerma:gabung-dokumen-ganda', ['--rollback' => $this->berkasCadangan()])->assertSuccessful();
+        $this->assertNull($s->fresh()->dihapus_admin_pada, 'rollback memulihkan dokumen yang di-soft delete');
+    }
+
     public function test_idempotent_dijalankan_dua_kali_tidak_mengubah_lagi(): void
     {
         [$a, $s] = $this->pasangan([], ['snap_nama_mitra' => 'PT Contoh']);
