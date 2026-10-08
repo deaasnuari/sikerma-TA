@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\DB;
  *   php artisan sikerma:ubah-kode-mitra --rollback=<berkas> [--apply]   # pulihkan nilai lama (pratinjau dulu)
  *
  * Format --set: id:kode,id:kode. Kode kosong sesudah titik dua (mis. 394:) berarti MENGOSONGKAN kode.
+ * Pengaman opsional "id:kode@kode_lama" (mis. 1059:A03@A06): kode mitra SEKARANG harus persis kode_lama
+ * (kosong setelah @ = harus belum berkode); kalau tidak, seluruh perintah ditolak — melindungi dari daftar basi.
  * kode_mitra bersifat unik, jadi kode yang sudah dipakai mitra LAIN membuat seluruh perubahan ditolak
  * (tidak ada yang diterapkan sebagian). Mitra yang saling bertukar kode dalam satu --set diperbolehkan.
  * Kode di luar pola umum (huruf besar 1–3 + angka 1–3, mis. PTP15) hanya diberi peringatan.
@@ -28,6 +30,9 @@ class UbahKodeMitra extends Command
     protected $description = 'Ubah atau kosongkan kode_mitra di master_mitra dengan pratinjau, pengecekan bentrok unik, cadangan, dan rollback';
 
     private const POLA = '/^[A-Z]{1,3}[0-9]{1,3}$/';
+
+    /** @var array<int, ?string> pengaman id => kode_lama yang diharapkan (dari "id:kode@kode_lama") */
+    private array $guard = [];
 
     public function handle(): int
     {
@@ -118,13 +123,18 @@ class UbahKodeMitra extends Command
         $set = [];
         $kodeDipakai = [];
         foreach (preg_split('/[\s,;]+/', trim($opsi), -1, PREG_SPLIT_NO_EMPTY) as $p) {
-            if (! preg_match('/^(\d+):(.*)$/', $p, $m)) {
-                $this->error("Format tidak valid: '{$p}' — pakai id:kode, mis. 451:PTP15 atau 394: (mengosongkan).");
+            if (! preg_match('/^(\d+):([^@]*)(?:@(.*))?$/', $p, $m)) {
+                $this->error("Format tidak valid: '{$p}' — pakai id:kode, mis. 451:PTP15, 394: (mengosongkan), atau id:kode@kode_lama (pengaman).");
 
                 return null;
             }
             $id = (int) $m[1];
             $kode = trim($m[2]);
+            if (isset($m[3])) {
+                // Pengaman "@kode_lama": kode mitra SEKARANG harus persis ini (kosong = harus belum punya kode),
+                // kalau tidak seluruh perintah ditolak. Mencegah memakai daftar yang sudah basi.
+                $this->guard[$id] = trim($m[3]) === '' ? null : trim($m[3]);
+            }
             if (array_key_exists($id, $set)) {
                 $this->error("Mitra #{$id} muncul lebih dari sekali di --set.");
 
@@ -163,6 +173,11 @@ class UbahKodeMitra extends Command
             $m = $mitra[$id];
             $lama = trim((string) $m->kode_mitra) === '' ? null : (string) $m->kode_mitra;
             $ket = [];
+
+            if (array_key_exists($id, $this->guard) && $this->guard[$id] !== $lama) {
+                $ket[] = "BENTROK: kode sekarang '".($lama ?? '(kosong)')."' ≠ yang diharapkan '".($this->guard[$id] ?? '(kosong)')."'";
+                $bentrok[] = "mitra #{$id} {$m->nama_mitra}: kode sekarang '".($lama ?? '(kosong)')."', daftar mengharapkan '".($this->guard[$id] ?? '(kosong)')."' (daftar basi?)";
+            }
 
             if ($lama === $baru) {
                 $ket[] = 'sudah sama — dilewati';

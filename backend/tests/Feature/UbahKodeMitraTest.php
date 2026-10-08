@@ -108,6 +108,31 @@ class UbahKodeMitraTest extends TestCase
         $this->assertNull($b->fresh()->kode_mitra);
     }
 
+    public function test_pengaman_kode_lama_menolak_seluruh_perubahan_bila_ada_yang_tidak_cocok(): void
+    {
+        $a = $this->mitra('A', 'AA1');
+        $b = $this->mitra('B');
+
+        // b diharapkan berkode 'ZZ9' padahal kosong -> daftar basi, semuanya ditolak (a pun tidak berubah).
+        $this->artisan('sikerma:ubah-kode-mitra', ['--set' => "{$a->id}:AA2@AA1,{$b->id}:BB1@ZZ9", '--apply' => true])->assertFailed();
+
+        $this->assertSame('AA1', $a->fresh()->kode_mitra);
+        $this->assertNull($b->fresh()->kode_mitra);
+    }
+
+    public function test_pengaman_kode_lama_lolos_bila_cocok_termasuk_kosong_dan_pertukaran(): void
+    {
+        $a = $this->mitra('A', 'AA1');
+        $b = $this->mitra('B', 'BB2');
+        $c = $this->mitra('C');
+
+        $this->artisan('sikerma:ubah-kode-mitra', ['--set' => "{$a->id}:BB2@AA1,{$b->id}:AA1@BB2,{$c->id}:CC3@", '--apply' => true])->assertSuccessful();
+
+        $this->assertSame('BB2', $a->fresh()->kode_mitra);
+        $this->assertSame('AA1', $b->fresh()->kode_mitra);
+        $this->assertSame('CC3', $c->fresh()->kode_mitra);
+    }
+
     public function test_kode_di_luar_pola_hanya_peringatan_bukan_penolakan(): void
     {
         $a = $this->mitra('A');
