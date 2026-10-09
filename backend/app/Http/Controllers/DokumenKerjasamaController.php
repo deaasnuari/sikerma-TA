@@ -180,7 +180,9 @@ class DokumenKerjasamaController extends Controller
             'unitProdi.parent:id,nama,jenis_node,kategori_unit',
             'mitra:id,nama_mitra,kode_mitra,kategori_mitra,bidang_usaha,tingkat_perusahaan,negara,email_mitra,email_kontak_utama,alamat,nama_kontak_utama,jabatan_kontak_utama,telepon_kontak_utama,whatsapp_mitra,no_telepon_mitra',
             'dokumenFiles' => function ($q) {
-                $q->whereIn('peran_berkas', ['dokumen_final', 'dokumen_perpanjangan', 'dokumen_pendukung', 'bukti_tidak_diperpanjang']);
+                // pengajuan_awal = berkas yang diunggah pengusul saat mengajukan; ditampilkan terpisah
+                // (diberi label) dari dokumen final dan dokumen perpanjangan di tab Dokumen.
+                $q->whereIn('peran_berkas', ['pengajuan_awal', 'dokumen_final', 'dokumen_perpanjangan', 'dokumen_pendukung', 'bukti_tidak_diperpanjang']);
             },
             // Dipakai untuk kolom "Hasil Monitoring Triwulan 1-4" & "Laporan Kegiatan" di Rekap Data.
             'laporanPelaksanaan:id,dokumen_kerjasama_id,tahun,triwulan,file_path,file_nama',
@@ -1412,7 +1414,18 @@ class DokumenKerjasamaController extends Controller
                 $payload = $dokumen_log->payload_json ?? [];
                 $ruangLingkupBaru = $payload['ruang_lingkup'] ?? null;
                 if (!empty($ruangLingkupBaru)) {
-                    $dokumen->ruang_lingkup_ids = $ruangLingkupBaru;
+                    // Form perpanjangan mengirim NAMA ruang lingkup; kolom dokumen menyimpan ID master.
+                    $peta = DB::table('master_ruang_lingkup')->pluck('id', 'nama_ruang_lingkup')
+                        ->mapWithKeys(fn ($id, $nama) => [mb_strtolower(trim((string) $nama)) => (int) $id]);
+                    $ids = collect($ruangLingkupBaru)
+                        ->map(fn ($v) => is_numeric($v) ? (int) $v : ($peta[mb_strtolower(trim((string) $v))] ?? null))
+                        ->filter()
+                        ->unique()
+                        ->values()
+                        ->all();
+                    if ($ids !== []) {
+                        $dokumen->ruang_lingkup_ids = $ids;
+                    }
                 }
 
                 $dokumen->save();
@@ -1486,6 +1499,34 @@ class DokumenKerjasamaController extends Controller
      * penyimpanan di disk) — dipakai admin untuk memeriksa dokumen sebelum menyetujui/menolak
      * permintaan perpanjangan di halaman Status dan Progres Kerja Sama.
      */
+    /**
+     * Hapus satu permintaan perpanjangan (baris dokumen_log bertipe perpanjangan) dari antrian admin.
+     * Yang dihapus hanya catatan permintaannya: berkas bukti TIDAK dihapus dari disk (perpanjangan yang
+     * sudah disetujui menyalinnya ke dokumen_file), dan perubahan tanggal dokumen akibat persetujuan
+     * tidak dikembalikan.
+     */
+    public function destroyRenewalRequest(Request $request, DokumenLog $dokumen_log): Response
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        if ($dokumen_log->tipe_log !== 'perpanjangan') {
+            return response([
+                'success' => false,
+                'message' => 'Log yang dipilih bukan log perpanjangan.',
+            ], 422);
+        }
+
+        $dokumen_log->delete();
+
+        return response([
+            'success' => true,
+            'data' => null,
+            'message' => 'Permintaan perpanjangan dihapus.',
+        ]);
+    }
+
     public function downloadRenewalDocument(Request $request, DokumenLog $dokumen_log): Response|\Illuminate\Http\RedirectResponse|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         if ($response = $this->ensureAdmin($request)) {

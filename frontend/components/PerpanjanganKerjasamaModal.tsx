@@ -11,6 +11,8 @@ export interface PerpanjanganTarget {
   namaMitra: string;
   noDokumen: string;
   berlakuHingga: string;
+  /** Ruang lingkup kerja sama saat ini (nama), dipakai sebagai pilihan awal. */
+  ruangLingkup?: string[];
 }
 
 type Props = {
@@ -34,12 +36,12 @@ export default function PerpanjanganKerjasamaModal({ target, onClose, onSubmitte
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/40 p-4"
+      className="fixed inset-x-0 bottom-0 top-16 z-[80] overflow-y-auto bg-slate-900/40 p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget && !submitting) onClose();
       }}
     >
-      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+      <div className="relative mx-auto w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
           <div>
             <h2 className="text-[15px] font-bold text-[#1E376C]">Ajukan Perpanjangan Kerja Sama</h2>
@@ -60,8 +62,10 @@ export default function PerpanjanganKerjasamaModal({ target, onClose, onSubmitte
         <div className="p-5">
           <RenewalUploadForm
             singleFile
+            withRuangLingkup
+            initialRuangLingkup={target.ruangLingkup ?? []}
             submitting={submitting}
-            onSubmit={async ({ tanggalMulaiBaru, tanggalBerakhirBaru, catatan, dokumen }) => {
+            onSubmit={async ({ tanggalMulaiBaru, tanggalBerakhirBaru, catatan, dokumen, ruangLingkup }) => {
               setSubmitting(true);
               try {
                 const file = dokumen[0];
@@ -74,6 +78,7 @@ export default function PerpanjanganKerjasamaModal({ target, onClose, onSubmitte
                   catatan,
                   buktiPerpanjangan: await fileToDataUrl(file),
                   buktiPerpanjanganNama: file.name,
+                  ruangLingkup,
                 });
               } finally {
                 setSubmitting(false);

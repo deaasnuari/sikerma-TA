@@ -442,8 +442,8 @@ export default function TahapanPengajuanPage() {
                       {item.nomorPengajuan}
                     </td>
                     <td className="px-3 py-2.5">
-                      <p className="font-medium text-gray-800 max-w-[220px] truncate">{item.judulPengajuan}</p>
-                      <p className="text-[10px] text-gray-400 truncate max-w-[220px]">{item.namaMitra}</p>
+                      <p className="min-w-[240px] max-w-[420px] whitespace-normal break-words font-medium leading-snug text-gray-800">{item.judulPengajuan}</p>
+                      <p className="mt-0.5 max-w-[420px] whitespace-normal break-words text-[10px] leading-snug text-gray-400">{item.namaMitra}</p>
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <StatusBadge tahapan={tahapan} onUpdate={handleUpdate} />

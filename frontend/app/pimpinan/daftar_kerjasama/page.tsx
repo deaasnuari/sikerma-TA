@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Download, Eye, Search } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Download, Eye, FileText, Search } from 'lucide-react';
 import { exportToExcel } from '@/lib/exportExcel';
 import {
   fetchMonitoringDataFromApi,
@@ -9,7 +9,10 @@ import {
   type Kerjasama,
   type StatusKerjasama,
 } from '@/services/adminMonitoringService';
-import { rekapJenisMitraOptions } from '@/services/adminRekapDataService';
+import { rekapJenisMitraOptions, type DokumenTerkait } from '@/services/adminRekapDataService';
+import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
+import { downloadFileWithAuth } from '@/lib/api';
+import JenisBerkasBadge from '@/components/JenisBerkasBadge';
 import { useMasterUnitProdi } from '@/hooks/useMasterData';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 
@@ -29,6 +32,25 @@ function getTahun(item: Kerjasama): string {
   return isNaN(parsed.getTime()) ? '-' : String(parsed.getFullYear());
 }
 
+async function unduhDokumen(doc: DokumenTerkait) {
+  if (doc.downloadUrl) {
+    try {
+      await downloadFileWithAuth(doc.downloadUrl, doc.nama);
+      return;
+    } catch {
+      // lanjut ke cadangan di bawah bila gagal (mis. sesi habis)
+    }
+  }
+  const anchor = document.createElement('a');
+  anchor.href = doc.url;
+  anchor.download = doc.nama;
+  anchor.target = '_blank';
+  anchor.rel = 'noopener noreferrer';
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+}
+
 export default function PimpinanDaftarKerjasamaPage() {
   const [kerjasamaList, setKerjasamaList] = useState<Kerjasama[]>(() => getMonitoringData());
   const [isLoading, setIsLoading] = useState(true);
@@ -40,10 +62,29 @@ export default function PimpinanDaftarKerjasamaPage() {
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<Kerjasama | null>(null);
+  // Berkas tiap dokumen kerja sama (id dokumen -> daftar berkas), diambil dari data Rekap Data.
+  const [dokumenByDokumenId, setDokumenByDokumenId] = useState<Map<number, DokumenTerkait[]>>(new Map());
   const [currentPage, setCurrentPage] = useState(1);
   const currentYear = new Date().getFullYear();
   const [yearRangeStart, setYearRangeStart] = useState(currentYear - 4);
   const yearGrid = Array.from({ length: 12 }, (_, index) => yearRangeStart + index);
+
+  useEffect(() => {
+    let aktif = true;
+    fetchRekapDokumenFromApi()
+      .then((rows) => {
+        if (!aktif) return;
+        const peta = new Map<number, DokumenTerkait[]>();
+        for (const row of rows) {
+          if (typeof row.id === 'number' && row.dokumenTerkait?.length) peta.set(row.id, row.dokumenTerkait);
+        }
+        setDokumenByDokumenId(peta);
+      })
+      .catch(() => {});
+    return () => {
+      aktif = false;
+    };
+  }, []);
 
   const kategoriOptions = useMemo(
     () => [
@@ -436,6 +477,54 @@ export default function PimpinanDaftarKerjasamaPage() {
                 {detailItem.emailMitra && (
                   <DetailItem label="Email Mitra" value={detailItem.emailMitra} />
                 )}
+              </div>
+
+              <div className="px-6 pb-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Dokumen</p>
+                {(() => {
+                  const daftar = dokumenByDokumenId.get(detailItem.id) ?? [];
+                  if (daftar.length === 0) {
+                    return <p className="rounded-xl border border-dashed border-slate-200 px-4 py-3 text-xs text-slate-400">Belum ada dokumen terlampir.</p>;
+                  }
+                  return (
+                    <div className="space-y-2">
+                      {daftar.map((doc, idx) => (
+                        <div key={`${doc.nama}-${idx}`} className="flex flex-col gap-2 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-100">
+                              <FileText size={16} className="text-red-500" />
+                            </span>
+                            <div className="min-w-0">
+                              <div className="mb-1">
+                                <JenisBerkasBadge jenis={doc.jenisBerkas} />
+                              </div>
+                              <p className="break-words text-sm font-semibold text-slate-800">{doc.nama}</p>
+                              <p className="text-[11px] text-slate-400">{doc.ukuran} &middot; {doc.tanggal}</p>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <a
+                              href={doc.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                            >
+                              Lihat
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => { void unduhDokumen(doc); }}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-[#173B82] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0f2c61]"
+                            >
+                              <Download size={13} />
+                              Unduh
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
 
               {detailItem.ruangLingkup.length > 0 && (

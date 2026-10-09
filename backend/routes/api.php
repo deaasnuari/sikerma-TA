@@ -80,6 +80,8 @@ Route::middleware('auth:sanctum')->group(function () {
 		->whereNumber('dokumen_kerjasama');
 	Route::patch('/dokumen-kerjasama/perpanjangan/{dokumen_log}/status', [DokumenKerjasamaController::class, 'decideRenewalRequest'])
 		->whereNumber('dokumen_log');
+	Route::delete('/dokumen-kerjasama/perpanjangan/{dokumen_log}', [DokumenKerjasamaController::class, 'destroyRenewalRequest'])
+		->whereNumber('dokumen_log');
 	Route::get('/dokumen-kerjasama/perpanjangan/{dokumen_log}/download', [DokumenKerjasamaController::class, 'downloadRenewalDocument'])
 		->whereNumber('dokumen_log')
 		->name('dokumen-kerjasama.perpanjangan.download');

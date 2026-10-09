@@ -15,6 +15,14 @@ export const templateFilesByJenis: Record<string, TemplateFile[]> = {
   ],
 };
 
+// Petunjuk memilih template sesuai jenis instansi mitra (ditampilkan di form pengajuan bila ada lebih dari satu template).
+export const templateHintByLabel: Record<string, string> = {
+  'MoU Industri': 'Pilih ini bila mitra berupa perusahaan / dunia usaha dan industri (DUDI).',
+  'MoU Lembaga': 'Pilih ini bila mitra berupa lembaga atau instansi (bukan perusahaan), misalnya sekolah, kampus, organisasi, atau instansi pemerintah.',
+  'MoA Magang Industri': 'Pilih ini bila mitra berupa perusahaan / dunia usaha dan industri (DUDI).',
+  'MoA Magang Pemerintah': 'Pilih ini bila mitra berupa instansi pemerintah (dinas, kementerian, badan, atau pemerintah daerah).',
+};
+
 export function templateUrl(fileName: string): string {
   return `/templates/${encodeURIComponent(fileName)}`;
 }

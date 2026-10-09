@@ -1,23 +1,56 @@
 
-import { useState } from 'react';
-import { Plus, Upload, X, AlertCircle, Download } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, ChevronDown, Plus, Upload, X, AlertCircle, Download } from 'lucide-react';
+import { getMasterRuangLingkup, getCachedMasterRuangLingkup, type MasterRuangLingkup } from '@/services/masterRuangLingkupService';
 import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploadUtils';
 import { templateFilesByJenis, templateUrl } from '@/lib/templateDokumen';
 
 interface RenewalUploadFormProps {
-  onSubmit: (data: { tanggalMulaiBaru: string; tanggalBerakhirBaru: string; catatan: string; dokumen: File[] }) => void | Promise<void>;
+  onSubmit: (data: { tanggalMulaiBaru: string; tanggalBerakhirBaru: string; catatan: string; dokumen: File[]; ruangLingkup: string[] }) => void | Promise<void>;
+  // Tampilkan pilihan Ruang Lingkup (seperti di form perpanjangan admin). Bawaan: tidak tampil.
+  withRuangLingkup?: boolean;
+  // Ruang lingkup kerja sama saat ini, dipakai sebagai pilihan awal.
+  initialRuangLingkup?: string[];
   // Backend perpanjangan menyimpan satu berkas per permintaan — dipakai form pengusul
   // (internal/eksternal) supaya tidak ada file kedua yang diam-diam terbuang.
   singleFile?: boolean;
   submitting?: boolean;
 }
 
-export default function RenewalUploadForm({ onSubmit, singleFile = false, submitting = false }: RenewalUploadFormProps) {
+export default function RenewalUploadForm({ onSubmit, singleFile = false, submitting = false, withRuangLingkup = false, initialRuangLingkup = [] }: RenewalUploadFormProps) {
   const [tanggalMulaiBaru, setTanggalMulaiBaru] = useState('');
   const [tanggalBerakhirBaru, setTanggalBerakhirBaru] = useState('');
   const [catatan, setCatatan] = useState('');
   const [dokumen, setDokumen] = useState<File[]>([]);
   const [error, setError] = useState('');
+
+  const [masterRuangLingkupList, setMasterRuangLingkupList] = useState<MasterRuangLingkup[]>(() => getCachedMasterRuangLingkup());
+  const [loadingRuangLingkup, setLoadingRuangLingkup] = useState(withRuangLingkup && masterRuangLingkupList.length === 0);
+  const [selectedRuangLingkup, setSelectedRuangLingkup] = useState<string[]>(initialRuangLingkup);
+  const [ruangLingkupOpen, setRuangLingkupOpen] = useState(false);
+  const ruangLingkupRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!withRuangLingkup) return;
+    getMasterRuangLingkup({ aktif: true })
+      .then((list) => setMasterRuangLingkupList(list))
+      .catch(() => {})
+      .finally(() => setLoadingRuangLingkup(false));
+  }, [withRuangLingkup]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ruangLingkupRef.current && !ruangLingkupRef.current.contains(e.target as Node)) {
+        setRuangLingkupOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleRuangLingkup = (nama: string) => {
+    setSelectedRuangLingkup((prev) => (prev.includes(nama) ? prev.filter((n) => n !== nama) : [...prev, nama]));
+  };
 
   const handleAddDokumen = () => {
     const input = document.createElement('input');
@@ -64,7 +97,7 @@ export default function RenewalUploadForm({ onSubmit, singleFile = false, submit
       return;
     }
     try {
-      await onSubmit({ tanggalMulaiBaru, tanggalBerakhirBaru, catatan, dokumen });
+      await onSubmit({ tanggalMulaiBaru, tanggalBerakhirBaru, catatan, dokumen, ruangLingkup: withRuangLingkup ? selectedRuangLingkup : [] });
     } catch (err) {
       // Form tetap terisi supaya pengguna tidak perlu mengunggah ulang.
       setError(err instanceof Error ? err.message : 'Gagal mengajukan perpanjangan.');
@@ -119,6 +152,65 @@ export default function RenewalUploadForm({ onSubmit, singleFile = false, submit
           />
         </div>
       </div>
+      {withRuangLingkup && (
+        <div ref={ruangLingkupRef} className="relative mt-3">
+          <label className="mb-1 block text-xs font-semibold text-gray-700">Ruang Lingkup Kerjasama</label>
+          <button
+            type="button"
+            onClick={() => setRuangLingkupOpen((o) => !o)}
+            className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition-colors hover:border-blue-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+          >
+            <span className={selectedRuangLingkup.length === 0 ? 'text-gray-400' : 'font-medium'}>
+              {selectedRuangLingkup.length === 0
+                ? 'Pilih ruang lingkup...'
+                : selectedRuangLingkup.length === 1
+                  ? selectedRuangLingkup[0]
+                  : `${selectedRuangLingkup.length} ruang lingkup dipilih`}
+            </span>
+            <ChevronDown size={16} className={`text-blue-600 transition-transform ${ruangLingkupOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {selectedRuangLingkup.length > 1 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {selectedRuangLingkup.map((nama) => (
+                <span key={nama} className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+                  {nama}
+                  <button type="button" onClick={() => toggleRuangLingkup(nama)} className="hover:text-blue-600">
+                    <X size={11} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {ruangLingkupOpen && (
+            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-blue-200 bg-white shadow-lg">
+              {loadingRuangLingkup ? (
+                <p className="px-3 py-2 text-xs text-gray-500">Memuat opsi...</p>
+              ) : masterRuangLingkupList.length === 0 ? (
+                <p className="px-3 py-2 text-xs italic text-gray-500">Tidak ada data tersedia.</p>
+              ) : (
+                <ul className="max-h-52 overflow-y-auto py-1">
+                  {masterRuangLingkupList.map((item) => {
+                    const checked = selectedRuangLingkup.includes(item.nama_ruang_lingkup);
+                    return (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          onClick={() => toggleRuangLingkup(item.nama_ruang_lingkup)}
+                          className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-blue-50 ${checked ? 'font-semibold text-blue-800' : 'text-gray-700'}`}
+                        >
+                          {item.nama_ruang_lingkup}
+                          {checked && <Check size={14} className="shrink-0 text-blue-600" />}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+          <p className="mt-1 text-[11px] text-gray-500">Kosongkan bila ruang lingkup tidak berubah dari kerja sama sebelumnya.</p>
+        </div>
+      )}
       <textarea
         value={catatan}
         onChange={(e) => setCatatan(e.target.value)}

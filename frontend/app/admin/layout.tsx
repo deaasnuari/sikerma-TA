@@ -59,16 +59,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <main className="flex-2 flex flex-col overflow-hidden">
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto bg-white rounded-lg shadow-sm p-3">
-              {children}
+              {/* Isi pendek: footer tetap di dasar area konten. Isi panjang: footer ikut tergulir di ujung konten. */}
+              <div className="flex h-full flex-col">
+                <div className="flex-1">{children}</div>
+                <div className="mt-6 shrink-0">
+                  <AdminFooter />
+                </div>
+              </div>
             </div>
           </main>
-        </div>
-
-        {/* Footer - Full Width at Bottom */}
-        <div className="flex-shrink-0 px-1 pb-1">
-          <div style={fixedChromeStyle}>
-            <AdminFooter />
-          </div>
         </div>
       </div>
     </ProtectedRoute>

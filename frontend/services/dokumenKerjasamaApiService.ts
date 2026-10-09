@@ -226,6 +226,7 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       .filter((f) => f.peran_berkas === 'dokumen_pendukung')
       .map((f) => ({
         nama: f.nama_file,
+        jenisBerkas: 'pendukung' as const,
         url: buildLegacyFileUrl(f.path_file || ''),
         // Dipakai untuk mengunduh dengan nama ASLI berkasnya (lewat downloadFileWithAuth) —
         // bukan nama acak hasil penyimpanan di server.
@@ -248,21 +249,25 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
         const fileUrl = buildLegacyFileUrl(rawPath);
         const sizeLabel = f.ukuran_file_bytes
           ? `${Math.round(f.ukuran_file_bytes / 1024)} KB`
-          : 'Dokumen Final';
+          : 'Ukuran tidak tersedia';
         return {
           nama: f.nama_file,
+          jenisBerkas: jenisBerkasDariPeran(f.peran_berkas),
           url: fileUrl,
           downloadUrl: `/dokumen-kerjasama/${row.id}/documents/${f.id}/download`,
           tipe: f.mime_type || (f.nama_file.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'),
           ukuran: sizeLabel,
           tanggal: toDisplayDate(tanggalMulaiRaw),
         };
-      });
+      })
+        // Dokumen final dulu (tautan utama di tabel mengambil berkas pertama), lalu perpanjangan, lalu berkas pengajuan.
+        .sort((a, b) => URUTAN_JENIS_BERKAS[a.jenisBerkas] - URUTAN_JENIS_BERKAS[b.jenisBerkas]);
     } else if (row.file) {
       // Legacy: record lama yang hanya punya kolom 'file' (bukan dokumen_files) — endpoint
       // download/view backend sudah mendukung penanda khusus 'legacy' untuk kasus ini.
       dokumenTerkait.push({
         nama: row.file.split('/').pop() || row.file,
+        jenisBerkas: 'final',
         url: buildLegacyFileUrl(row.file),
         downloadUrl: `/dokumen-kerjasama/${row.id}/documents/legacy/download`,
         tipe: row.file.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
@@ -564,6 +569,15 @@ type ApiTrashRow = ApiDokumenRow & {
   dihapus_admin_pada?: string | null;
   dihapus_user_pada?: string | null;
 };
+
+function jenisBerkasDariPeran(peran?: string | null): 'final' | 'pengajuan' | 'perpanjangan' | 'pendukung' {
+  if (peran === 'pengajuan_awal') return 'pengajuan';
+  if (peran === 'dokumen_perpanjangan') return 'perpanjangan';
+  if (peran === 'dokumen_pendukung') return 'pendukung';
+  return 'final';
+}
+
+const URUTAN_JENIS_BERKAS = { final: 0, perpanjangan: 1, pengajuan: 2, pendukung: 3 } as const;
 
 export async function fetchTrashDokumenFromApi(): Promise<TrashDokumenApiItem[]> {
   const response = await apiRequest<ApiPaginatedResponse<ApiTrashRow>>('/dokumen-kerjasama/trash/list?per_page=200');

@@ -1,5 +1,6 @@
 'use client';
 
+import DokumenPerpanjanganSection from '@/components/DokumenPerpanjanganSection';
 import { X, FileText, User, Building2, CalendarDays, Tag, CheckCircle2, Clock3, XCircle, MessageSquareText, ExternalLink, Paperclip, GitBranch, ShieldCheck, Download, Phone } from 'lucide-react';
 import type { PengajuanItem, PengajuanStatus } from '@/services/adminPengajuanService';
 import { pengajuanDokumenBadge } from '@/services/adminPengajuanService';
@@ -177,7 +178,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
           {fileEntries.filter((f) => !f.isAcc).length > 0 && (
             <section>
               <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
-                Dokumen Pendukung
+                Dokumen Pengajuan
               </h3>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold text-slate-600">
@@ -255,6 +256,22 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
           </section>
 
 
+
+          <DokumenPerpanjanganSection files={item.perpanjanganFiles} />
+
+          {item.statusPengajuan === 'Ditolak' && (
+            <section className="rounded-xl border border-red-200 bg-red-50 p-4">
+              <p className="flex items-center gap-2 text-[12px] font-semibold text-red-800">
+                <XCircle size={15} />
+                Pengajuan ditolak oleh admin
+              </p>
+              <p className="mt-1 whitespace-pre-line text-[12px] text-red-900">
+                <span className="font-semibold">Alasan:</span>{' '}
+                {item.reviewComment || 'Tidak ada alasan yang dicantumkan. Silakan hubungi admin untuk keterangan lebih lanjut.'}
+              </p>
+              <p className="mt-2 text-[11px] text-red-800">Pengajuan yang ditolak tidak bisa diperbaiki. Silakan buat pengajuan baru bila ingin mengajukan kembali.</p>
+            </section>
+          )}
 
           {/* Hasil Review Admin */}
           <section

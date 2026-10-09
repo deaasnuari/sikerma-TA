@@ -402,12 +402,6 @@ export default function ArsipDokumenPage() {
                           Perpanjang
                         </button>
                         <button
-                          className="w-7 h-7 rounded-lg bg-blue-50 hover:bg-blue-100 flex items-center justify-center transition"
-                          title="Download"
-                        >
-                          <Download size={13} className="text-blue-600" />
-                        </button>
-                        <button
                           onClick={() => handleDelete(item.id)}
                           className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition"
                           title="Hapus Arsip"

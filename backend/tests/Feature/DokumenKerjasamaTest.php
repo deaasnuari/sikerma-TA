@@ -555,6 +555,80 @@ class DokumenKerjasamaTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_daftar_dokumen_menyertakan_berkas_pengajuan_final_dan_perpanjangan_tapi_tidak_lampiran_lain(): void
+    {
+        $dokumen = $this->dokumenMilik($this->internal());
+        foreach (['pengajuan_awal', 'dokumen_final', 'dokumen_perpanjangan', 'lampiran'] as $peran) {
+            \App\Models\DokumenFile::create([
+                'dokumen_id' => $dokumen->id,
+                'peran_berkas' => $peran,
+                'nama_file' => "{$peran}.pdf",
+                'path_file' => "{$peran}.pdf",
+            ]);
+        }
+
+        $baris = collect($this->actingAs($this->admin())->getJson('/api/dokumen-kerjasama?per_page=200')->assertOk()->json('data.data'))
+            ->firstWhere('id', $dokumen->id);
+
+        $peran = collect($baris['dokumen_files'])->pluck('peran_berkas')->sort()->values()->all();
+        $this->assertSame(['dokumen_final', 'dokumen_perpanjangan', 'pengajuan_awal'], $peran);
+    }
+
+    public function test_perpanjangan_disetujui_mengubah_ruang_lingkup_dokumen_dari_nama_ke_id(): void
+    {
+        Storage::fake('public');
+        $pemilik = $this->internal();
+        $dokumen = $this->dokumenMilik($pemilik);
+        $idPenelitian = \Illuminate\Support\Facades\DB::table('master_ruang_lingkup')->insertGetId(['nama_ruang_lingkup' => 'Penelitian']);
+        $idMagang = \Illuminate\Support\Facades\DB::table('master_ruang_lingkup')->insertGetId(['nama_ruang_lingkup' => 'Magang']);
+
+        $this->actingAs($pemilik)->postJson(
+            "/api/dokumen-kerjasama/{$dokumen->id}/perpanjangan",
+            $this->payloadPerpanjangan(['ruang_lingkup' => ['penelitian', 'Magang', 'Nama Tidak Ada']])
+        )->assertCreated();
+        $logId = DokumenLog::where('dokumen_id', $dokumen->id)->value('id');
+
+        $this->actingAs($this->admin())->patchJson("/api/dokumen-kerjasama/perpanjangan/{$logId}/status", ['status' => 'disetujui'])
+            ->assertOk();
+
+        $ids = $dokumen->fresh()->ruang_lingkup_ids;
+        $this->assertEqualsCanonicalizing([$idPenelitian, $idMagang], $ids, 'nama jadi ID master; nama yang tidak dikenal dibuang');
+    }
+
+    public function test_admin_dapat_hapus_permintaan_perpanjangan_dan_non_admin_ditolak(): void
+    {
+        Storage::fake('public');
+        $pemilik = $this->internal();
+        $dokumen = $this->dokumenMilik($pemilik);
+
+        $this->actingAs($pemilik)->postJson("/api/dokumen-kerjasama/{$dokumen->id}/perpanjangan", $this->payloadPerpanjangan())
+            ->assertCreated();
+        $logId = DokumenLog::where('dokumen_id', $dokumen->id)->value('id');
+
+        // Pemilik dokumen bukan admin: tidak boleh menghapus.
+        $this->actingAs($pemilik)->deleteJson("/api/dokumen-kerjasama/perpanjangan/{$logId}")->assertForbidden();
+        $this->assertDatabaseHas('dokumen_log', ['id' => $logId]);
+
+        $this->actingAs($this->admin())->deleteJson("/api/dokumen-kerjasama/perpanjangan/{$logId}")
+            ->assertOk()->assertJsonPath('success', true);
+        $this->assertDatabaseMissing('dokumen_log', ['id' => $logId]);
+        $this->assertDatabaseHas('dokumen_kerjasama', ['id' => $dokumen->id]);
+    }
+
+    public function test_hapus_perpanjangan_menolak_log_yang_bukan_perpanjangan(): void
+    {
+        $dokumen = $this->dokumenMilik($this->internal());
+        $log = DokumenLog::create([
+            'dokumen_id' => $dokumen->id,
+            'tipe_log' => 'catatan',
+            'judul_log' => 'bukan perpanjangan',
+            'dibuat_pada' => now(),
+        ]);
+
+        $this->actingAs($this->admin())->deleteJson("/api/dokumen-kerjasama/perpanjangan/{$log->id}")->assertStatus(422);
+        $this->assertDatabaseHas('dokumen_log', ['id' => $log->id]);
+    }
+
     public function test_perpanjangan_disetujui_mengubah_tanggal_rekap_dan_masuk_story_aktivitas(): void
     {
         Storage::fake('public');

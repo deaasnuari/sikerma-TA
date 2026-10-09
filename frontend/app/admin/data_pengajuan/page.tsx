@@ -2,13 +2,14 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { FileText, Clock, CheckCircle, XCircle, Search, Filter, Plus, Eye, MessageSquare, X, ThumbsUp, ThumbsDown, CalendarDays, ChevronLeft, ChevronRight, Pencil, Trash2, ExternalLink, Paperclip, Download, Upload, Bell, CheckSquare, Square } from 'lucide-react';
+import { FileText, Clock, CheckCircle, XCircle, Search, Filter, Plus, Eye, MessageSquare, X, ThumbsUp, FilePenLine, CalendarDays, ChevronLeft, ChevronRight, Pencil, Trash2, ExternalLink, Paperclip, Download, Upload, Bell, CheckSquare, Square } from 'lucide-react';
 import { addAdminNotification, markNotificationsByHrefPrefixAsRead } from '@/services/adminService';
 import AdminAjukanKerjasamaForm from './AjukanKerjasamaForm';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import InternalAjukanKerjasamaForm from '@/app/internal/data_pengajuan/AjukanKerjasamaForm';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
+import { getPageNumbers } from '@/lib/pagination';
 import { downloadTemplate, templateFilesByJenis } from '@/lib/templateDokumen';
 import {
   createMasterUnitProdi,
@@ -381,7 +382,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   }
 
   function toggleSelectAllPengajuan() {
-    const visibleIds = filtered.map((item) => item.id);
+    const visibleIds = paginatedFiltered.map((item) => item.id);
     const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedPengajuanIds.has(id));
     setSelectedPengajuanIds(allSelected ? new Set() : new Set(visibleIds));
   }
@@ -823,6 +824,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const currentYear = new Date().getFullYear();
   const defaultYearRangeStart = Math.min(currentYear - 4, Number(tahunOptions[tahunOptions.length - 1] ?? currentYear));
   const [yearRangeStart, setYearRangeStart] = useState(defaultYearRangeStart);
+  const [currentPage, setCurrentPage] = useState(1);
   const yearGrid = Array.from({ length: 12 }, (_, index) => yearRangeStart + index);
 
   // Opsi Jurusan/Unit/Prodi untuk filter — dipisah per kategori supaya dropdown bisa
@@ -860,6 +862,19 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
     filtered.push(item);
     seen.add(item.id);
   }
+
+  // Daftar ditampilkan 10 per halaman, seperti di Rekap Data.
+  const ITEMS_PER_PAGE = 10;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safePage - 1) * ITEMS_PER_PAGE;
+  const paginatedFiltered = filtered.slice(pageStartIndex, pageStartIndex + ITEMS_PER_PAGE);
+  const pageNumbers = getPageNumbers(safePage, totalPages);
+
+  // Kembali ke halaman 1 setiap kali filter atau pencarian berubah.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterJurusan, filterUnitProdi, filterStatus, filterTahun, search]);
 
 
   const detailFileEntries = detailItem
@@ -994,7 +1009,7 @@ async function saveReview() {
         setPengajuanData((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
         addAdminNotification({
           title: 'Pengajuan Diminta Revisi',
-          message: `Pengajuan "${judulShort}" diminta revisi. Catatan: ${reviewComment}`,
+          message: `Pengajuan "${judulShort}" diminta revisi. Perbarui data/dokumen pada pengajuan yang sama, tidak perlu membuat pengajuan baru. Catatan: ${reviewComment}`,
           from: 'Admin',
           href: '/internal/data_pengajuan',
           category: 'comment',
@@ -1002,16 +1017,58 @@ async function saveReview() {
         });
         addAdminNotification({
           title: 'Pengajuan Diminta Revisi',
-          message: `Pengajuan "${judulShort}" diminta revisi oleh admin.`,
+          message: `Pengajuan "${judulShort}" diminta revisi oleh admin. Cukup perbarui data/dokumen pada pengajuan ini, tidak perlu membuat pengajuan baru. Catatan: ${reviewComment}`,
           from: 'Admin',
           href: '/eksternal/daftar_kerjasama',
           category: 'comment',
           targetRole: 'external',
         });
+        addAdminNotification({
+          title: 'Revisi Pengajuan Dikirim',
+          message: `Anda meminta revisi pengajuan "${judulShort}". Pengusul cukup memperbarui data/dokumen pada pengajuan yang sama dan tidak perlu membuat pengajuan baru.`,
+          from: 'Sistem',
+          href: '/admin/data_pengajuan',
+          category: 'comment',
+          targetRole: 'admin',
+        });
         setInfoModalMessage('Revisi pengajuan berhasil disimpan dan notifikasi dikirim.');
         void refreshPengajuanData(true);
       } catch (err) {
         setInfoModalMessage('Gagal menyimpan revisi ke server: ' + (err instanceof Error ? err.message : 'Terjadi kesalahan.'));
+        return;
+      }
+    } else if (reviewDecision === 'Ditolak') {
+      try {
+        const updated = await savePengajuanReviewApi(reviewItem.id, 'Ditolak', reviewComment, undefined, reviewItem.updatedAt);
+        setPengajuanData((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
+        addAdminNotification({
+          title: 'Pengajuan Ditolak',
+          message: `Pengajuan "${judulShort}" ditolak oleh admin. Alasan: ${reviewComment.trim()}. Pengajuan yang ditolak tidak bisa diperbaiki, silakan buat pengajuan baru bila ingin mengajukan kembali.`,
+          from: 'Admin',
+          href: '/internal/data_pengajuan',
+          category: 'approval',
+          targetRole: 'internal',
+        });
+        addAdminNotification({
+          title: 'Pengajuan Ditolak',
+          message: `Pengajuan "${judulShort}" ditolak. Alasan: ${reviewComment.trim()}. Pengajuan yang ditolak tidak bisa diperbaiki, silakan buat pengajuan baru bila ingin mengajukan kembali.`,
+          from: 'Admin',
+          href: '/eksternal/daftar_kerjasama',
+          category: 'approval',
+          targetRole: 'external',
+        });
+        addAdminNotification({
+          title: 'Pengajuan Ditolak',
+          message: `Anda menolak pengajuan "${judulShort}". Pengusul harus membuat pengajuan baru bila ingin mengajukan kembali.`,
+          from: 'Sistem',
+          href: '/admin/data_pengajuan',
+          category: 'approval',
+          targetRole: 'admin',
+        });
+        setInfoModalMessage('Pengajuan ditolak dan notifikasi dikirim ke pengusul.');
+        void refreshPengajuanData(true);
+      } catch (err) {
+        setInfoModalMessage('Gagal menyimpan penolakan ke server: ' + (err instanceof Error ? err.message : 'Terjadi kesalahan.'));
         return;
       }
     } else {
@@ -1942,7 +1999,7 @@ function addEditJurusanUnitOption() {
             onClick={toggleSelectAllPengajuan}
             className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 hover:text-[#1E376C]"
           >
-            {filtered.length > 0 && filtered.every((item) => selectedPengajuanIds.has(item.id))
+            {paginatedFiltered.length > 0 && paginatedFiltered.every((item) => selectedPengajuanIds.has(item.id))
               ? <CheckSquare size={15} className="text-[#1E376C]" />
               : <Square size={15} />}
             Pilih Semua yang Tampil
@@ -1962,7 +2019,7 @@ function addEditJurusanUnitOption() {
 
       {/* Cards List */}
       <div className="space-y-4">
-        {filtered.map((item) => {
+        {paginatedFiltered.map((item) => {
           const sc = statusConfig[item.statusPengajuan] || statusConfig['Menunggu'];
           const isSelected = selectedPengajuanIds.has(item.id);
           return (
@@ -2005,6 +2062,38 @@ function addEditJurusanUnitOption() {
                   )}
                 </div>
               </div>
+
+              {item.statusPengajuan === 'Revisi' && (
+                <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2.5">
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-orange-800">
+                    <FilePenLine size={13} />
+                    Menunggu pengusul memperbarui pengajuan
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-[11px] text-orange-900">
+                    <span className="font-semibold">Catatan revisi:</span>{' '}
+                    {item.catatanRevisi || item.reviewComment || item.catatan || '-'}
+                  </p>
+                  <p className="mt-1 text-[10px] text-orange-800">
+                    Pengusul cukup memperbarui data/dokumen pada pengajuan ini, tidak perlu membuat pengajuan baru. Setelah dikirim ulang, status kembali ke Menunggu dengan penanda &quot;Sudah Direvisi&quot;.
+                  </p>
+                </div>
+              )}
+
+              {item.statusPengajuan === 'Ditolak' && (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-red-800">
+                    <XCircle size={13} />
+                    Pengajuan ditolak
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-[11px] text-red-900">
+                    <span className="font-semibold">Alasan:</span>{' '}
+                    {item.reviewComment || item.catatan || 'Tidak ada alasan yang dicantumkan.'}
+                  </p>
+                  <p className="mt-1 text-[10px] text-red-800">
+                    Pengajuan yang ditolak tidak bisa diperbaiki. Pengusul harus membuat pengajuan baru bila ingin mengajukan kembali.
+                  </p>
+                </div>
+              )}
 
               {/* Info row + Action buttons */}
               <div className="flex flex-wrap items-start justify-between gap-3 mt-4">
@@ -2138,6 +2227,58 @@ function addEditJurusanUnitOption() {
           )
         )}
       </div>
+
+      {filtered.length > ITEMS_PER_PAGE && (
+        <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[12px] text-gray-500">
+            Menampilkan <span className="font-semibold text-gray-700">{pageStartIndex + 1}–{Math.min(pageStartIndex + ITEMS_PER_PAGE, filtered.length)}</span> dari{' '}
+            <span className="font-semibold text-gray-700">{filtered.length}</span> pengajuan
+          </p>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={safePage === 1}
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft size={14} />
+              Prev
+            </button>
+
+            {pageNumbers.map((page, idx) =>
+              page === '...' ? (
+                <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setCurrentPage(page)}
+                  className={`inline-flex h-8 min-w-[32px] items-center justify-center rounded-lg px-2 text-[12px] font-semibold transition-colors ${
+                    page === safePage
+                      ? 'bg-[#1E376C] text-white'
+                      : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {page}
+                </button>
+              )
+            )}
+
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={safePage === totalPages}
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
 
         {ajukanModalOpen && (
           <div
@@ -2443,15 +2584,24 @@ function addEditJurusanUnitOption() {
 
 <div>
                 <p className="text-[10px] font-semibold text-gray-700 mb-2">Keputusan *</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   {/* Revisi button - LEFT side */}
                   <button
                     type="button"
                     onClick={() => setReviewDecision('Revisi')}
                     className={`h-11 rounded-lg text-[10px] font-semibold inline-flex items-center justify-center gap-2 border ${reviewDecision === 'Revisi' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'}`}
                   >
-                    <ThumbsDown size={14} />
+                    <FilePenLine size={14} />
                     REVISI
+                  </button>
+                  {/* Tolak button - MIDDLE */}
+                  <button
+                    type="button"
+                    onClick={() => setReviewDecision('Ditolak')}
+                    className={`h-11 rounded-lg text-[10px] font-semibold inline-flex items-center justify-center gap-2 border ${reviewDecision === 'Ditolak' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-600 border-red-300 hover:bg-red-50'}`}
+                  >
+                    <XCircle size={14} />
+                    TOLAK
                   </button>
                   {/* ACC Final Berkas button - RIGHT side */}
                   <button
@@ -2475,6 +2625,20 @@ function addEditJurusanUnitOption() {
                     placeholder="Berikan catatan revisi untuk pengusul..."
                     className="mt-1 w-full rounded-lg border border-[#D2D7E5] bg-white px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-[#1E376C]"
                   />
+                </div>
+              )}
+
+              {reviewDecision === 'Ditolak' && (
+                <div>
+                  <label className="text-[10px] font-semibold text-gray-700">Alasan Penolakan *</label>
+                  <textarea
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    rows={3}
+                    placeholder="Jelaskan alasan pengajuan ini ditolak..."
+                    className="mt-1 w-full rounded-lg border border-[#D2D7E5] bg-white px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-red-500"
+                  />
+                  <p className="mt-1 text-[10px] text-gray-500">Status pengajuan akan menjadi Ditolak dan alasan ini dikirim ke pengusul. Pengusul harus membuat pengajuan baru (pengajuan yang ditolak tidak bisa diperbaiki).</p>
                 </div>
               )}
 
@@ -2717,6 +2881,12 @@ function addEditJurusanUnitOption() {
                     if (reviewDecision === 'Revisi') {
                       if (!reviewComment.trim()) {
                         setInfoModalMessage('Catatan Revisi wajib diisi.');
+                        return;
+                      }
+                      setUploadConfirmOpen(true);
+                    } else if (reviewDecision === 'Ditolak') {
+                      if (!reviewComment.trim()) {
+                        setInfoModalMessage('Alasan Penolakan wajib diisi.');
                         return;
                       }
                       setUploadConfirmOpen(true);
@@ -3641,13 +3811,17 @@ function addEditJurusanUnitOption() {
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="px-5 py-4 border-b border-slate-200">
               <h3 className="text-[15px] font-bold text-slate-900">
-                {reviewDecision === 'Revisi' ? 'Konfirmasi Kirim Revisi' : 'Konfirmasi Upload Dokumen Final'}
+                {reviewDecision === 'Revisi' ? 'Konfirmasi Kirim Revisi' : reviewDecision === 'Ditolak' ? 'Konfirmasi Tolak Pengajuan' : 'Konfirmasi Upload Dokumen Final'}
               </h3>
             </div>
             <div className="px-5 py-4 space-y-2">
-              {reviewDecision === 'Revisi' ? (
+              {reviewDecision === 'Ditolak' ? (
                 <p className="text-[12px] text-slate-700">
-                  Yakin ingin mengirim catatan revisi? Status pengajuan akan berubah menjadi <span className="font-semibold text-orange-600">Revisi</span> dan notifikasi akan dikirim ke Pengaju untuk melakukan perbaikan sesuai catatan.
+                  Yakin ingin menolak pengajuan ini? Status pengajuan akan berubah menjadi <span className="font-semibold text-red-600">Ditolak</span> dan alasan penolakan dikirim ke pengusul. Pengajuan yang ditolak <span className="font-semibold">tidak bisa diperbaiki</span>; pengusul harus membuat pengajuan baru.
+                </p>
+              ) : reviewDecision === 'Revisi' ? (
+                <p className="text-[12px] text-slate-700">
+                  Yakin ingin mengirim catatan revisi? Status pengajuan akan berubah menjadi <span className="font-semibold text-orange-600">Revisi</span> dan notifikasi akan dikirim ke Pengaju untuk melakukan perbaikan sesuai catatan. Pengaju cukup memperbarui data/dokumen pada pengajuan yang sama, <span className="font-semibold">tidak perlu membuat pengajuan baru</span>.
                 </p>
               ) : (
                 <>

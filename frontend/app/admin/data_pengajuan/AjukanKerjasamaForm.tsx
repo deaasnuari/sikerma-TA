@@ -19,7 +19,7 @@ import {
 import { getMasterNegara } from '@/services/masterNegaraService';
 import { getMasterMitra, type MasterMitra as MasterMitraRow } from '@/services/masterMitraService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
-import { downloadTemplate, templateFilesByJenis, type TemplateFile } from '@/lib/templateDokumen';
+import { downloadTemplate, templateFilesByJenis, templateHintByLabel, type TemplateFile } from '@/lib/templateDokumen';
 
 type TemplateDokumenConfig = {
   title: string;
@@ -1564,6 +1564,18 @@ export default function AdminAjukanKerjasamaForm({
           <h2 className="text-base font-bold text-slate-900">{appearanceSettings.sectionDokumenTitle}</h2>
           <p className="mb-4 text-xs text-slate-500">{appearanceSettings.sectionDokumenSubtitle}</p>
 
+          <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs text-slate-700">
+            <p className="font-semibold text-[#173B82]">Ada 2 bagian upload di bawah, pilih sesuai isi berkasnya:</p>
+            <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+              <li>
+                <span className="font-semibold">File Utama</span>: berkas <span className="font-semibold">MoU / MoA / IA</span> itu sendiri (dokumen perjanjiannya).
+              </li>
+              <li>
+                <span className="font-semibold">Dokumen Pendukung</span>: <span className="font-semibold">TOR, KAK, atau Proposal/Laporan Kegiatan</span>. Bagian ini muncul otomatis bila Anda memilih <span className="font-semibold">MoA</span> atau <span className="font-semibold">IA</span>.
+              </li>
+            </ol>
+          </div>
+
           <div className="mb-4 grid gap-3 sm:grid-cols-2 md:grid-cols-4">
             {JENIS_KERJASAMA_OPTIONS.map((key) => {
               const template = defaultTemplateDokumenMap[key as keyof typeof defaultTemplateDokumenMap];
@@ -1628,17 +1640,26 @@ export default function AdminAjukanKerjasamaForm({
                         <p className="text-sm text-slate-600">{template.subtitle}</p>
                       </div>
 
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-2 md:max-w-sm">
+                        {template.files.length > 1 && (
+                          <p className="text-xs font-semibold text-[#173B82]">
+                            Ada {template.files.length} template. Pilih yang sesuai jenis instansi mitra:
+                          </p>
+                        )}
                         {template.files.map((file) => (
-                          <button
-                            key={file.fileName}
-                            type="button"
-                            onClick={() => handleDownloadTemplate(file.fileName)}
-                            className="inline-flex items-center gap-2 rounded-lg bg-[#173B82] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0f2c61]"
-                          >
-                            <Download size={16} />
-                            Download {file.label}
-                          </button>
+                          <div key={file.fileName} className="space-y-1">
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadTemplate(file.fileName)}
+                              className="inline-flex w-full items-center gap-2 rounded-lg bg-[#173B82] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0f2c61]"
+                            >
+                              <Download size={16} />
+                              Download {file.label}
+                            </button>
+                            {template.files.length > 1 && templateHintByLabel[file.label] && (
+                              <p className="px-1 text-[11px] leading-snug text-slate-500">{templateHintByLabel[file.label]}</p>
+                            )}
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -1665,6 +1686,9 @@ export default function AdminAjukanKerjasamaForm({
               <p className="text-xs font-semibold text-slate-700">
                 File Utama
                 {requiresDokumenPendukung && <span className="ml-1 text-rose-500">*</span>}
+              </p>
+              <p className="-mt-2 text-[11px] text-slate-500">
+                Unggah berkas MoU/MoA/IA-nya di sini. TOR, KAK, atau proposal diunggah di bagian Dokumen Pendukung.
               </p>
 
               {existingFileAttachments.length > 0 && (
@@ -1823,7 +1847,7 @@ export default function AdminAjukanKerjasamaForm({
           </div>
         )}
 
-        <div className="sticky bottom-0 z-10 -mx-6 -mb-5 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 pb-5 pt-4">
+        <div className="-mx-6 -mb-5 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 pb-5 pt-4">
           <button
             type="button"
             onClick={() => {

@@ -90,7 +90,7 @@ class Pengajuan extends Model
 
         // New schema casts
         // 'ruang_lingkup_ids' => PgArrayCast::class,
-        'ruang_lingkup_ids' => 'array',
+        // 'ruang_lingkup_ids' => 'array',
         'tanggal_mulai' => 'date',
         'tanggal_berakhir' => 'date',
         'diajukan_pada' => 'datetime',

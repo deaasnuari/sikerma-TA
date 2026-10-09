@@ -70,6 +70,8 @@ export interface PengajuanItem {
   statusPengajuan: PengajuanStatus;
   fileName?: string;
   fileAttachments?: PengajuanFileAttachment[];
+  // Dokumen perpanjangan milik kerja sama dari pengajuan ini (peran_berkas 'dokumen_perpanjangan').
+  perpanjanganFiles?: { name: string; url: string }[];
   reviewComment?: string;
   reviewedAt?: string;
   reviewedBy?: string;
@@ -519,6 +521,16 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
     statusPengajuan: mapStatusFromApi(statusApi),
     fileName: resolvedFileName,
     fileAttachments: resolvedAttachments,
+    perpanjanganFiles: (() => {
+      const seen = new Set<string>();
+      const hasil: { name: string; url: string }[] = [];
+      for (const f of row.dokumen_kerjasama?.dokumen_files ?? []) {
+        if (f.peran_berkas !== 'dokumen_perpanjangan' || seen.has(f.path_file)) continue;
+        seen.add(f.path_file);
+        hasil.push({ name: f.nama_file, url: buildAttachmentUrl(f.path_file) });
+      }
+      return hasil.length > 0 ? hasil : undefined;
+    })(),
     reviewComment: row.catatan || row.catatan_revisi || undefined,
     catatan: row.catatan || undefined,
     keputusan: row.keputusan || undefined,

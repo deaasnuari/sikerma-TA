@@ -18,12 +18,6 @@ const jenisColor: Record<string, string> = {
   Lainnya: 'bg-gray-100 text-gray-700',
 };
 
-const statusColor: Record<string, string> = {
-  Aktif: 'bg-green-100 text-green-700',
-  'Akan Berakhir': 'bg-orange-100 text-orange-700',
-  Kadaluarsa: 'bg-red-100 text-red-700',
-};
-
 export default function SampahDokumenPage() {
   const [search, setSearch] = useState('');
   const [data, setData] = useState<TrashDokumenApiItem[]>([]);
@@ -221,7 +215,6 @@ export default function SampahDokumenPage() {
                 <th className="py-3 px-4">Nama Mitra</th>
                 <th className="py-3 px-4 whitespace-nowrap">Jenis</th>
                 <th className="py-3 px-4 whitespace-nowrap">Berlaku Hingga</th>
-                <th className="py-3 px-4 whitespace-nowrap">Status</th>
                 <th className="py-3 px-4 whitespace-nowrap">Dihapus Oleh</th>
                 <th className="py-3 px-4 whitespace-nowrap">Dihapus Pada</th>
                 <th className="py-3 px-4 whitespace-nowrap text-center">Dokumen</th>
@@ -231,14 +224,14 @@ export default function SampahDokumenPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={10} className="py-10 text-center text-gray-400">
+                  <td colSpan={9} className="py-10 text-center text-gray-400">
                     Memuat data...
                   </td>
                 </tr>
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-10 text-center text-gray-400">
+                  <td colSpan={9} className="py-10 text-center text-gray-400">
                     Sampah kosong
                   </td>
                 </tr>
@@ -268,11 +261,6 @@ export default function SampahDokumenPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-gray-600 whitespace-nowrap text-[10px]">{item.berlakuHingga}</td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusColor[item.status]}`}>
-                        {item.status}
-                      </span>
-                    </td>
                     <td className="py-3 px-4 text-[10px] text-gray-600 whitespace-nowrap">
                       {item.dihapusOlehAdmin ? 'Admin' : item.dihapusOlehPemilik ? 'Pemilik dokumen' : '-'}
                     </td>

@@ -16,6 +16,7 @@ import {
   MessageSquareText,
   Paperclip,
   Pencil,
+  Trash2,
   Search,
   Send,
   ShieldCheck,
@@ -27,11 +28,12 @@ import {
 import LaporanPelaksanaanModal, { type LaporanPelaksanaanData } from '@/components/LaporanPelaksanaanModal';
 import { exportToExcel } from '@/lib/exportExcel';
 import type { PengajuanItem } from '../../../services/adminPengajuanService';
-import { fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
+import { deletePengajuanItemApi, fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
 import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
 import PerbaikanPengajuanModal, { bolehDiubahPengusul } from '@/components/PerbaikanPengajuanModal';
 import PerpanjanganKerjasamaModal from '@/components/PerpanjanganKerjasamaModal';
+import DokumenPerpanjanganSection from '@/components/DokumenPerpanjanganSection';
 import { parseTanggal } from '@/lib/parseTanggal';
 import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
 import { getRenewalRequests } from '@/services/adminRenewalRequestService';
@@ -211,6 +213,8 @@ export default function DaftarKerjasamaEksternalPage() {
   const [editingItem, setEditingItem] = useState<PengajuanItem | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [perpanjangItem, setPerpanjangItem] = useState<KerjasamaItem | null>(null);
+  const [hapusTarget, setHapusTarget] = useState<KerjasamaItem | null>(null);
+  const [menghapus, setMenghapus] = useState(false);
   // Daftar ini berbasis pengajuan, sedangkan perpanjangan diikat ke dokumen kerja sama —
   // dipetakan lewat sumber_pengajuan_id dari data rekap.
   const [dokumenIdByPengajuan, setDokumenIdByPengajuan] = useState<Map<number, number>>(new Map());
@@ -309,6 +313,27 @@ export default function DaftarKerjasamaEksternalPage() {
   useEffect(() => {
     setDetailItem((current) => (current ? data.find((item) => item.id === current.id) ?? current : current));
   }, [data]);
+
+  // Mitra boleh menghapus (menyembunyikan dari daftarnya) pengajuan dengan status apa pun.
+  const sudahDisetujui = (item: KerjasamaItem) =>
+    ['Disetujui', 'Disetujui Internal', 'Disetujui Mitra', 'Final Approved'].includes(item.sumber.statusPengajuan);
+
+  const jalankanHapus = async () => {
+    if (!hapusTarget) return;
+    setMenghapus(true);
+    try {
+      await deletePengajuanItemApi(hapusTarget.sumber.id);
+      setData((prev) => prev.filter((item) => item.id !== hapusTarget.id));
+      setDetailItem((current) => (current && current.id === hapusTarget.id ? null : current));
+      setHapusTarget(null);
+      setInfoMessage('Pengajuan berhasil dihapus dari daftar Anda.');
+    } catch (err) {
+      setHapusTarget(null);
+      setInfoMessage(err instanceof Error ? err.message : 'Gagal menghapus pengajuan.');
+    } finally {
+      setMenghapus(false);
+    }
+  };
 
   const bukaPerbaikan = (item: KerjasamaItem) => {
     if (!bolehDiubahPengusul(item.sumber.statusPengajuan)) {
@@ -660,6 +685,16 @@ export default function DaftarKerjasamaEksternalPage() {
                         >
                           <FileText size={16} />
                         </button>
+                        {(
+                          <button
+                            type="button"
+                            title="Hapus pengajuan"
+                            onClick={() => setHapusTarget(item)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 hover:text-red-700"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -731,6 +766,7 @@ export default function DaftarKerjasamaEksternalPage() {
                   <p className="mt-1 whitespace-pre-line text-[12px] text-orange-900">
                     {detailItem.catatanRevisi || detailItem.reviewComment || 'Silakan perbaiki pengajuan sesuai arahan admin.'}
                   </p>
+                  <p className="mt-1 text-[11px] text-orange-800">Cukup perbarui data/dokumen pada pengajuan ini. Tidak perlu membuat pengajuan baru.</p>
                   <button
                     type="button"
                     onClick={() => bukaPerbaikan(detailItem)}
@@ -789,7 +825,7 @@ export default function DaftarKerjasamaEksternalPage() {
               {/* Dokumen Pengajuan Awal */}
               {detailItem.fileAttachments.filter((f) => !f.isAcc).length > 0 && (
                 <section>
-                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">Dokumen Pendukung</h3>
+                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">Dokumen Pengajuan</h3>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold text-slate-600">
                       <Paperclip size={13} />
@@ -878,6 +914,22 @@ export default function DaftarKerjasamaEksternalPage() {
                 </div>
               </section>
 
+              <DokumenPerpanjanganSection files={detailItem.sumber.perpanjanganFiles} />
+
+              {detailItem.status === 'Berakhir' && (
+                <section className="rounded-xl border border-red-200 bg-red-50 p-4">
+                  <p className="flex items-center gap-2 text-[12px] font-semibold text-red-800">
+                    <XCircle size={15} />
+                    Pengajuan ditolak oleh admin
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-[12px] text-red-900">
+                    <span className="font-semibold">Alasan:</span>{' '}
+                    {detailItem.reviewComment || 'Tidak ada alasan yang dicantumkan. Silakan hubungi admin untuk keterangan lebih lanjut.'}
+                  </p>
+                  <p className="mt-2 text-[11px] text-red-800">Pengajuan yang ditolak tidak bisa diperbaiki. Silakan buat pengajuan baru bila ingin mengajukan kembali.</p>
+                </section>
+              )}
+
               <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="inline-flex items-center gap-2 text-[12px] font-semibold text-[#173B82]">
@@ -950,6 +1002,7 @@ export default function DaftarKerjasamaEksternalPage() {
               namaMitra: perpanjangItem.namaMitra,
               noDokumen: perpanjangItem.noDokumen,
               berlakuHingga: perpanjangItem.berlakuHingga,
+              ruangLingkup: perpanjangItem.ruangLingkup,
             }}
             onClose={() => setPerpanjangItem(null)}
             onSubmitted={(message) => {
@@ -960,6 +1013,43 @@ export default function DaftarKerjasamaEksternalPage() {
           />
         );
       })()}
+
+      {hapusTarget && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-red-100">
+              <Trash2 size={20} className="text-red-600" />
+            </div>
+            <h2 className="mb-1 text-[15px] font-bold text-gray-900">Hapus Pengajuan</h2>
+            <p className="mb-1 text-[12px] text-gray-500">Yakin ingin menghapus pengajuan berikut dari daftar Anda?</p>
+            <p className="mb-1 text-[13px] font-semibold text-gray-800">{hapusTarget.judulPengajuan || hapusTarget.namaMitra}</p>
+            <p className="mb-3 text-[11px] text-gray-500">{hapusTarget.namaMitra}</p>
+            {sudahDisetujui(hapusTarget) && (
+              <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                Kerja sama ini sudah disetujui. Menghapusnya hanya menyembunyikannya dari daftar Anda; dokumen kerja sama tetap tersimpan di sistem dan masih dapat dilihat admin.
+              </p>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setHapusTarget(null)}
+                disabled={menghapus}
+                className="flex-1 rounded-lg border border-gray-200 py-2.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => { void jalankanHapus(); }}
+                disabled={menghapus}
+                className="flex-1 rounded-lg bg-red-600 py-2.5 text-[12px] font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {menghapus ? 'Menghapus...' : 'Ya, Hapus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {infoMessage && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40 px-4 backdrop-blur-[2px]">

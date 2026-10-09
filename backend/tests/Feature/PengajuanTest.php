@@ -755,13 +755,40 @@ class PengajuanTest extends TestCase
         $this->actingAs($internal)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk();
     }
 
-    public function test_mitra_eksternal_tidak_bisa_hapus_pengajuannya(): void
+    public function test_mitra_eksternal_hapus_pengajuannya_sendiri_hanya_menyembunyikan_dari_akunnya(): void
     {
         $mitra     = User::factory()->create(['role' => 'external']);
-        $pengajuan = $this->buatPengajuan(['user_pengusul_id' => $mitra->id, 'kategori_pengajuan' => 'eksternal']);
+        $pengajuan = $this->buatPengajuan(['user_pengusul_id' => $mitra->id, 'kategori_pengajuan' => 'eksternal', 'status_pengajuan' => 'ditolak']);
+
+        $this->actingAs($mitra)->deleteJson("/api/pengajuan/{$pengajuan->id}")
+            ->assertOk()->assertJsonPath('success', true);
+
+        // Barisnya tetap ada (untuk audit admin), hanya tersembunyi dari mitra.
+        $this->assertDatabaseHas('pengajuan_v2', ['id' => $pengajuan->id]);
+        $this->assertNotNull($pengajuan->fresh()->dihapus_user_pada);
+        $this->actingAs($mitra)->getJson("/api/pengajuan/{$pengajuan->id}")->assertNotFound();
+        $this->actingAs($this->admin())->getJson("/api/pengajuan/{$pengajuan->id}")->assertOk();
+    }
+
+    public function test_mitra_eksternal_boleh_menyembunyikan_pengajuan_yang_sudah_disetujui_tanpa_menghapus_barisnya(): void
+    {
+        $mitra     = User::factory()->create(['role' => 'external']);
+        $pengajuan = $this->buatPengajuan(['user_pengusul_id' => $mitra->id, 'kategori_pengajuan' => 'eksternal', 'status_pengajuan' => 'disetujui']);
+
+        $this->actingAs($mitra)->deleteJson("/api/pengajuan/{$pengajuan->id}")->assertOk();
+
+        $this->assertDatabaseHas('pengajuan_v2', ['id' => $pengajuan->id]);
+        $this->assertNotNull($pengajuan->fresh()->dihapus_user_pada);
+        $this->assertSame('disetujui', $pengajuan->fresh()->status_pengajuan, 'statusnya tidak berubah');
+    }
+
+    public function test_mitra_eksternal_tidak_bisa_hapus_pengajuan_milik_orang_lain(): void
+    {
+        $mitra     = User::factory()->create(['role' => 'external']);
+        $lain      = User::factory()->create(['role' => 'external']);
+        $pengajuan = $this->buatPengajuan(['user_pengusul_id' => $lain->id, 'kategori_pengajuan' => 'eksternal', 'status_pengajuan' => 'menunggu']);
 
         $this->actingAs($mitra)->deleteJson("/api/pengajuan/{$pengajuan->id}")->assertForbidden();
-
         $this->assertDatabaseHas('pengajuan_v2', ['id' => $pengajuan->id, 'dihapus_user_pada' => null]);
     }
 

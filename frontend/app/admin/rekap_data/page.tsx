@@ -34,6 +34,7 @@ import { updateMasterMitra, upsertMasterMitraByName } from '@/services/masterMit
 import { generateNoDokumen } from '@/services/adminMonitoringService';
 import { getRenewalRequests, type RenewalRequestItem } from '@/services/adminRenewalRequestService';
 import { getPageNumbers } from '@/lib/pagination';
+import JenisBerkasBadge from '@/components/JenisBerkasBadge';
 
 //ini helper untuk resolve unit/prodi ID dari nama unit/prodi yang diketik manual di modal Tambah/Edit Dokumen
 async function resolveUnitProdiId(unitName: string, prodiId?: number | null): Promise<number | null> {
@@ -1324,6 +1325,9 @@ export default function RekapDataPage() {
                             <FileText size={14} className="text-[#1E376C]" />
                           </div>
                           <div className="min-w-0">
+                            <div className="mb-0.5">
+                              <JenisBerkasBadge jenis={doc.jenisBerkas} />
+                            </div>
                             <p className="truncate text-[10px] font-semibold text-gray-800">{doc.nama}</p>
                             <p className="text-[10.5px] text-gray-400">{doc.ukuran} · {doc.tanggal}</p>
                           </div>

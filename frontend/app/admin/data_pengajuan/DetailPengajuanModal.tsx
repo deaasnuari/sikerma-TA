@@ -3,6 +3,7 @@
 import { X, FileText, CheckCircle2, Clock3, XCircle, ExternalLink, Paperclip, Download, ShieldCheck, Phone } from 'lucide-react';
 import type { PengajuanItem, PengajuanStatus } from '@/services/adminPengajuanService';
 import CatatanAdminPanel from '@/components/CatatanAdminPanel';
+import DokumenPerpanjanganSection from '@/components/DokumenPerpanjanganSection';
 
 interface Props {
   item: PengajuanItem;
@@ -145,6 +146,29 @@ export default function DetailPengajuanModal({ item, onClose }: Props) {
             </span>
           </div>
 
+          {item.statusPengajuan === 'Revisi' && (
+            <div className="mb-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
+              <p className="text-[11px] font-semibold text-orange-800">Menunggu pengusul memperbarui pengajuan</p>
+              <p className="mt-1 whitespace-pre-line text-[11px] text-orange-900">
+                <span className="font-semibold">Catatan revisi:</span> {item.catatanRevisi || item.reviewComment || '-'}
+              </p>
+              <p className="mt-1 text-[10px] text-orange-800">
+                Pengusul cukup memperbarui data/dokumen pada pengajuan ini, tidak perlu membuat pengajuan baru.
+              </p>
+            </div>
+          )}
+          {item.statusPengajuan === 'Ditolak' && (
+            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3">
+              <p className="text-[11px] font-semibold text-red-800">Pengajuan ditolak</p>
+              <p className="mt-1 whitespace-pre-line text-[11px] text-red-900">
+                <span className="font-semibold">Alasan:</span> {item.reviewComment || 'Tidak ada alasan yang dicantumkan.'}
+              </p>
+              <p className="mt-1 text-[10px] text-red-800">
+                Pengajuan yang ditolak tidak bisa diperbaiki. Pengusul harus membuat pengajuan baru bila ingin mengajukan kembali.
+              </p>
+            </div>
+          )}
+
           <div className="mb-2 text-[10px] text-slate-500">Pengusul: {item.namaPengusul}</div>
           <div className="mb-2 text-[10px] text-slate-500">Mitra: {item.namaMitra}</div>
           <div className="mb-2 text-[10px] text-slate-500">Jurusan/Unit: {item.namaUnitProdi}</div>
@@ -259,6 +283,8 @@ export default function DetailPengajuanModal({ item, onClose }: Props) {
               <p className="text-[10px] text-slate-500">Belum ada dokumen final yang diupload.</p>
             )}
           </div>
+
+          <DokumenPerpanjanganSection files={item.perpanjanganFiles} className="mt-4" />
 
           {/* Catatan Admin — hanya terlihat oleh Admin */}
           <CatatanAdminPanel pengajuanId={item.id} />

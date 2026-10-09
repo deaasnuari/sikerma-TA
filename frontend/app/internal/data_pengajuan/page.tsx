@@ -6,6 +6,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Eye,
   FileText,
@@ -30,6 +32,7 @@ import {
 } from '@/services/adminPengajuanService';
 import AjukanKerjasamaForm from './AjukanKerjasamaForm';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
+import { getPageNumbers } from '@/lib/pagination';
 import DetailPengajuanModal from './DetailPengajuanModal';
 import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
 import { reviewTextFromTahapan } from '@/services/tahapanPengajuanService';
@@ -92,6 +95,7 @@ export default function InternalDataPengajuanPage() {
   const searchParams = useSearchParams();
   const isAjukanView = searchParams.get('mode') === 'ajukan';
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterKategori, setFilterKategori] = useState<'Semua' | 'Jurusan' | 'Unit'>('Semua');
   const [filterJurusan, setFilterJurusan] = useState('Semua Jurusan/unit');
@@ -262,6 +266,19 @@ export default function InternalDataPengajuanPage() {
     }
     return unique;
   }, [pengajuanData, filterStatus, filterJurusan, search, filterKategori, unitNameSet]);
+
+  // Daftar ditampilkan 10 per halaman, seperti di Rekap Data.
+  const ITEMS_PER_PAGE = 10;
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safePage - 1) * ITEMS_PER_PAGE;
+  const paginatedItems = filteredItems.slice(pageStartIndex, pageStartIndex + ITEMS_PER_PAGE);
+  const pageNumbers = getPageNumbers(safePage, totalPages);
+
+  // Kembali ke halaman 1 setiap kali filter atau pencarian berubah.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterStatus, filterJurusan, filterKategori, search]);
 
   const stats = getPengajuanStats(pengajuanData);
 
@@ -447,7 +464,7 @@ export default function InternalDataPengajuanPage() {
             Belum ada pengajuan internal yang masuk.
           </div>
         ) : (
-          filteredItems.map((item) => {
+          paginatedItems.map((item) => {
             const sc = statusConfig[item.statusPengajuan];
 
             return (
@@ -496,6 +513,7 @@ export default function InternalDataPengajuanPage() {
                         <p className="whitespace-pre-line text-sm text-orange-900">
                           {item.catatanRevisi || item.reviewComment || 'Silakan perbaiki pengajuan sesuai arahan admin.'}
                         </p>
+                        <p className="text-xs text-orange-800">Cukup perbarui data/dokumen pada pengajuan ini. Tidak perlu membuat pengajuan baru.</p>
                       </div>
                       <button
                         type="button"
@@ -558,6 +576,20 @@ export default function InternalDataPengajuanPage() {
                   </div>
                 </div>
 
+                {item.statusPengajuan === 'Ditolak' && (
+                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-red-800">
+                      <XCircle size={15} />
+                      Pengajuan ditolak oleh admin
+                    </p>
+                    <p className="mt-1 whitespace-pre-line text-sm text-red-900">
+                      <span className="font-semibold">Alasan:</span>{' '}
+                      {item.reviewComment || 'Tidak ada alasan yang dicantumkan. Silakan hubungi admin untuk keterangan lebih lanjut.'}
+                    </p>
+                    <p className="mt-2 text-xs text-red-800">Pengajuan yang ditolak tidak bisa diperbaiki. Silakan buat pengajuan baru bila ingin mengajukan kembali.</p>
+                  </div>
+                )}
+
                 <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-[#173B82]">
                     <FileText size={15} />
@@ -581,6 +613,59 @@ export default function InternalDataPengajuanPage() {
           })
         )}
       </div>
+
+      {filteredItems.length > ITEMS_PER_PAGE && (
+        <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[12px] text-gray-500">
+            Menampilkan <span className="font-semibold text-gray-700">{pageStartIndex + 1}–{Math.min(pageStartIndex + ITEMS_PER_PAGE, filteredItems.length)}</span> dari{' '}
+            <span className="font-semibold text-gray-700">{filteredItems.length}</span> pengajuan
+          </p>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={safePage === 1}
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft size={14} />
+              Prev
+            </button>
+
+            {pageNumbers.map((page, idx) =>
+              page === '...' ? (
+                <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setCurrentPage(page)}
+                  className={`inline-flex h-8 min-w-[32px] items-center justify-center rounded-lg px-2 text-[12px] font-semibold transition-colors ${
+                    page === safePage
+                      ? 'bg-[#1E376C] text-white'
+                      : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {page}
+                </button>
+              )
+            )}
+
+            <button
+              type="button"
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={safePage === totalPages}
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {detailItem && (
         <DetailPengajuanModal item={detailItem} onClose={() => setDetailItem(null)} />
       )}

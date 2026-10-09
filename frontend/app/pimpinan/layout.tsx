@@ -83,15 +83,15 @@ export default function PimpinanLayout({ children }: { children: React.ReactNode
 
           <main className="flex flex-1 flex-col overflow-hidden pb-4">
             <div className="flex-1 overflow-y-auto rounded-lg bg-white p-3 shadow-sm">
-              {children}
+              {/* Isi pendek: footer tetap di dasar area konten. Isi panjang: footer ikut tergulir di ujung konten. */}
+              <div className="flex h-full flex-col">
+                <div className="flex-1">{children}</div>
+                <div className="mt-6 shrink-0">
+                  <AdminFooter />
+                </div>
+              </div>
             </div>
           </main>
-        </div>
-
-        <div className="flex-shrink-0 px-1 pb-1">
-          <div style={fixedChromeStyle}>
-            <AdminFooter />
-          </div>
         </div>
       </div>
     </ProtectedRoute>

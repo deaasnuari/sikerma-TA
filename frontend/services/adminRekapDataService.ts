@@ -5,8 +5,12 @@ export type RekapStatus = 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
 export type RekapJenis = 'MoA' | 'MoU' | 'IA' | 'Lainnya';
 
 // Tipe data utama untuk satu baris dokumen pada tabel rekap.
+export type JenisBerkas = 'final' | 'pengajuan' | 'perpanjangan' | 'pendukung';
+
 export interface DokumenTerkait {
   nama: string;
+  // Asal berkas: dokumen final (hasil ACC / dokumen utama), berkas pengajuan awal, atau dokumen perpanjangan.
+  jenisBerkas?: JenisBerkas;
   url: string;
   // Path API buat unduh dengan nama ASLI berkasnya (lewat downloadFileWithAuth) — kalau
   // kosong, berarti berkas ini tidak/belum bisa diunduh lewat jalur ini (fallback ke `url`).

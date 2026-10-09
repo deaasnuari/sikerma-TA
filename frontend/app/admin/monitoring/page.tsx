@@ -50,6 +50,7 @@ import { logPerpanjanganDiajukan, logNotifikasiDikirim } from '@/services/kerjas
 import { useMasterUnitProdi } from '@/hooks/useMasterData';
 import { updateDokumenKerjasamaById, uploadDokumenFile } from '@/services/dokumenKerjasamaApiService';
 import { getPageNumbers } from '@/lib/pagination';
+import { parseTanggal } from '@/lib/parseTanggal';
 
 
 export default function MonitoringdanstatusPage() {
@@ -213,6 +214,17 @@ export default function MonitoringdanstatusPage() {
   const { totalAktif, totalAkanBerakhir, totalKadaluarsa } = getMonitoringStats(monitoringData);
   const filteredByTab = getFilteredMonitoringData(monitoringData, activeTab);
 
+  // Dokumen yang akan berakhir dalam < 3 bulan, urut dari yang paling dekat berakhir. Ditampilkan di
+  // banner peringatan di atas halaman supaya admin langsung tahu dokumen mana yang perlu ditindaklanjuti.
+  const dokumenSegeraBerakhir = useMemo(
+    () =>
+      monitoringData
+        .filter((item) => item.status === 'Akan Berakhir')
+        .sort((a, b) => (parseTanggal(a.tanggalBerakhir)?.getTime() ?? Infinity) - (parseTanggal(b.tanggalBerakhir)?.getTime() ?? Infinity)),
+    [monitoringData],
+  );
+  const JUMLAH_PERINGATAN_DITAMPILKAN = 5;
+
   const jenisOptions = useMemo(() => getMonitoringJenisOptions(monitoringData), [monitoringData]);
   // Nama dari data monitoring yang ter-load tapi tidak cocok ke Jurusan/Prodi/Unit Kerja aktif
   // mana pun (unit lama/nonaktif) — ditampilkan di grup "Lainnya" biar tetap bisa difilter.
@@ -299,7 +311,7 @@ export default function MonitoringdanstatusPage() {
       {/* Header */}
       <div>
         <h1 className="text-[17px] font-bold text-gray-900">Status dan Progres Kerja Sama</h1>
-        <p className="mt-0.5 text-[10px] text-gray-500">Pantau masa berlaku dokumen kerjasama dan status aktivitas</p>
+        <p className="mt-0.5 text-[10px] text-gray-500">Pantau masa berlaku dokumen kerjasama</p>
       </div>
 
       {/* Alert Banner */}
@@ -312,6 +324,36 @@ export default function MonitoringdanstatusPage() {
             <li>• {totalKadaluarsa} dokumen sudah melewati masa berlaku</li>
           </ul>
           <p className="mt-1.5 text-[10px] text-gray-700">Segera lakukan perpanjangan atau hubungi mitra untuk tindak lanjut.</p>
+
+          {dokumenSegeraBerakhir.length > 0 && (
+            <div className="mt-3 rounded-md border border-red-100 bg-white/70 p-2.5">
+              <p className="mb-1.5 text-[10px] font-semibold text-red-700">Segera berakhir (paling dekat dulu):</p>
+              <ul className="space-y-1.5">
+                {dokumenSegeraBerakhir.slice(0, JUMLAH_PERINGATAN_DITAMPILKAN).map((item) => (
+                  <li key={item.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-gray-700">
+                    <span className="font-semibold text-gray-900">{item.namaMitra}</span>
+                    <span className="text-gray-400">&middot;</span>
+                    <span>{item.noDokumen}</span>
+                    <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${monitoringJenisBadgeMap[item.jenis] || 'bg-slate-100 text-slate-700'}`}>{item.jenis}</span>
+                    <span className="text-gray-400">&middot;</span>
+                    <span>berakhir {item.tanggalBerakhir}</span>
+                    {item.sisaMasaBerlaku && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-semibold text-amber-800">{item.sisaMasaBerlaku}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => setActiveTab('Akan Berakhir')}
+                className="mt-2 text-[10px] font-semibold text-red-700 underline hover:text-red-800"
+              >
+                {dokumenSegeraBerakhir.length > JUMLAH_PERINGATAN_DITAMPILKAN
+                  ? `Lihat semua ${dokumenSegeraBerakhir.length} dokumen yang akan berakhir`
+                  : 'Lihat di tabel'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -884,10 +926,10 @@ export default function MonitoringdanstatusPage() {
       )}
 
       {renewalModal.open && selectedRenewalItem && (
-        <div className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-900/40 px-2 pt-32 pb-4">
+        <div className="fixed inset-x-0 bottom-0 top-16 z-[70] overflow-y-auto bg-slate-900/40 px-2 pb-4 pt-4">
 
-          <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl p-0 flex flex-col" style={{ maxHeight: 'calc(100vh - 9rem)' }}>
-            <div className="overflow-auto p-4" style={{ maxHeight: 'calc(100vh - 11rem)' }}>
+          <div className="relative mx-auto w-full max-w-2xl rounded-2xl bg-white p-0 shadow-2xl">
+            <div className="p-4">
             <h2 className="text-[15px] font-bold text-[#1E376C] mb-2">Form Perpanjangan Kerjasama</h2>
             {/* Form lengkap selalu tampil di atas */}
             <RenewalFullForm

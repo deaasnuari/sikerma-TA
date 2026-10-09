@@ -1725,13 +1725,25 @@ class PengajuanController extends Controller
             ], 403);
         }
 
-        // Mitra eksternal hanya boleh mengedit/memperbaiki pengajuannya, tidak menghapus.
-        // (Role eksternal tersimpan sebagai 'external' di users.role.)
+        // Mitra eksternal boleh menghapus pengajuannya sendiri (semua status). Sifatnya hanya menyembunyikan dari
+        // akun mitra lewat dihapus_user_pada: dokumen kerja sama di Rekap Data dan data admin tidak ikut terhapus,
+        // admin tetap melihatnya untuk keperluan audit. (Role eksternal tersimpan sebagai 'external' di users.role.)
         if (!$isAdmin && in_array($normalizedRole, ['external', 'eksternal'], true)) {
+            if (! $this->hasPengajuanColumn('dihapus_user_pada')) {
+                return response([
+                    'success' => false,
+                    'message' => 'Penghapusan pengajuan belum tersedia.',
+                ], 422);
+            }
+
+            $pengajuan->dihapus_user_pada = now();
+            $pengajuan->save();
+
             return response([
-                'success' => false,
-                'message' => 'Mitra eksternal tidak dapat menghapus pengajuan.',
-            ], 403);
+                'success' => true,
+                'data' => null,
+                'message' => 'Pengajuan dihapus dari daftar Anda.',
+            ]);
         }
 
         // Hapus oleh admin (Data Pengajuan) hanya MENYEMBUNYIKAN dari admin & pengguna lain lewat

@@ -6,6 +6,8 @@ import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
+  Eye,
+  EyeOff,
   GraduationCap,
   KeyRound,
   Lock,
@@ -22,6 +24,8 @@ function LoginPageContent() {
   const [campusUsername, setCampusUsername] = useState('');
   const [campusPassword, setCampusPassword] = useState('');
   const [remember, setRemember] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showFpPassword, setShowFpPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [accountDeleted, setAccountDeleted] = useState(false);
@@ -313,25 +317,34 @@ function LoginPageContent() {
                     <Lock className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     {loginMode === 'campus' ? (
                       <input
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         value={campusPassword}
                         onChange={(e) => setCampusPassword(e.target.value)}
                         placeholder="Password Dokpol/Learning"
                         autoComplete="current-password"
-                        className="input-field h-10 w-full rounded-xl pl-10 pr-4 text-sm"
+                        className="input-field h-10 w-full rounded-xl pl-10 pr-10 text-sm"
                         required
                       />
                     ) : (
                       <input
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Masukkan password akun"
                         autoComplete="current-password"
-                        className="input-field h-10 w-full rounded-xl pl-10 pr-4 text-sm"
+                        className="input-field h-10 w-full rounded-xl pl-10 pr-10 text-sm"
                         required
                       />
                     )}
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                      title={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                   </div>
                 </div>
 
@@ -557,13 +570,22 @@ function LoginPageContent() {
                     <div className="relative">
                       <Lock className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
-                        type="password"
+                        type={showFpPassword ? 'text' : 'password'}
                         value={fpPassword}
                         onChange={(e) => setFpPassword(e.target.value)}
                         placeholder="Minimal 8 karakter"
-                        className="input-field h-10 w-full rounded-xl pl-9 pr-4 text-sm"
+                        className="input-field h-10 w-full rounded-xl pl-9 pr-10 text-sm"
                         autoFocus
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowFpPassword((v) => !v)}
+                        aria-label={showFpPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                        title={showFpPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                      >
+                        {showFpPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
                     </div>
                   </div>
                   <div>
@@ -571,7 +593,7 @@ function LoginPageContent() {
                     <div className="relative">
                       <Lock className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                       <input
-                        type="password"
+                        type={showFpPassword ? 'text' : 'password'}
                         value={fpConfirm}
                         onChange={(e) => setFpConfirm(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && void handleResetPassword()}

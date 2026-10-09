@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock3, XCircle, Paperclip, Eye, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Clock3, XCircle, Paperclip, Eye, AlertTriangle, Trash2 } from 'lucide-react';
 import FileDownloadLink from '@/components/FileDownloadLink';
 import { applyApprovedRenewalToMonitoring } from '@/services/adminMonitoringService';
 import { applyApprovedRenewalToRekap } from '@/services/adminRekapDataService';
 import { applyApprovedRenewalToPengajuan } from '@/services/adminPengajuanService';
 import {
+  deleteRenewalRequest,
   getRenewalRequests,
   updateRenewalRequestStatus,
   type RenewalRequestItem,
@@ -28,6 +29,8 @@ export default function MonitoringPerpanjanganPage() {
   const [items, setItems] = useState<RenewalRequestItem[]>([]);
   // Dokumen yang sudah dibuka admin — Setujui/Tolak baru aktif setelah dokumen dicek
   const [viewedDocIds, setViewedDocIds] = useState<Set<number>>(new Set());
+  const [hapusTarget, setHapusTarget] = useState<RenewalRequestItem | null>(null);
+  const [menghapus, setMenghapus] = useState(false);
 
   const markDocViewed = (id: number) => {
     setViewedDocIds((prev) => {
@@ -108,6 +111,21 @@ export default function MonitoringPerpanjanganPage() {
     }
   };
 
+const handleHapus = async () => {
+    if (!hapusTarget) return;
+    setMenghapus(true);
+    try {
+      const updated = await deleteRenewalRequest(hapusTarget.id);
+      setItems(updated);
+      setHapusTarget(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Gagal menghapus permintaan perpanjangan.';
+      alert(`✗ ${message}`);
+    } finally {
+      setMenghapus(false);
+    }
+  };
+
 //FORM PERMINTAAN PERPANJANGAN ACC/TIDAK
   return (
     <div className="space-y-5">
@@ -116,7 +134,7 @@ export default function MonitoringPerpanjanganPage() {
         <p className="mt-0.5 text-[10px] text-gray-500">Antrian keputusan admin untuk pengajuan perpanjangan kerja sama dari Status dan Progres Kerja Sama.</p>
       </div>
 
-      {/* Search bar dan tombol export */}
+      {/* Search bar */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div className="flex-1 flex items-center gap-2">
           <input
@@ -125,16 +143,6 @@ export default function MonitoringPerpanjanganPage() {
             className="input-field w-full max-w-xs border border-slate-300 bg-white px-3 py-2 text-[12px] text-gray-700"
             // TODO: Implement search logic if needed
           />
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[12px] font-semibold text-slate-700 hover:bg-slate-100"
-            // TODO: Implement export logic
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 12l-4-4m4 4l4-4m-8 8h12" />
-            </svg>
-            Export Data
-          </button>
         </div>
       </div>
 
@@ -211,8 +219,8 @@ export default function MonitoringPerpanjanganPage() {
                 )}
               </div>
 
-              {/* Dokumen bukti perpanjangan — admin wajib cek dulu sebelum bisa memutuskan */}
-              {item.status === 'menunggu' && (
+              {/* Dokumen bukti perpanjangan — selalu tampil; untuk yang masih menunggu, admin wajib cek dulu sebelum memutuskan */}
+              {(
                 <div className="mt-3" onClick={() => markDocViewed(item.id)}>
                   {item.buktiPerpanjanganUrl ? (
                     <FileDownloadLink
@@ -269,10 +277,58 @@ export default function MonitoringPerpanjanganPage() {
                   </div>
                 );
               })()}
+
+              <div className="mt-3 flex justify-end border-t border-slate-100 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setHapusTarget(item)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-2 text-[10px] font-semibold text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 size={13} />
+                  Hapus
+                </button>
+              </div>
             </div>
           ))
         )}
       </div>
+
+      {hapusTarget && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-red-100">
+              <Trash2 size={20} className="text-red-600" />
+            </div>
+            <h2 className="mb-1 text-[15px] font-bold text-gray-900">Hapus Permintaan Perpanjangan</h2>
+            <p className="mb-1 text-[12px] text-gray-500">Yakin ingin menghapus permintaan perpanjangan berikut?</p>
+            <p className="mb-1 text-[13px] font-semibold text-gray-800">{hapusTarget.namaMitra}</p>
+            <p className="mb-3 text-[11px] text-gray-500">{hapusTarget.noDokumen}</p>
+            {hapusTarget.status === 'disetujui' && (
+              <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                Permintaan ini sudah disetujui. Menghapusnya hanya menghilangkan catatan permintaan; perubahan tanggal pada dokumen tidak dikembalikan.
+              </p>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setHapusTarget(null)}
+                disabled={menghapus}
+                className="flex-1 rounded-lg border border-gray-200 py-2.5 text-[12px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => { void handleHapus(); }}
+                disabled={menghapus}
+                className="flex-1 rounded-lg bg-red-600 py-2.5 text-[12px] font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {menghapus ? 'Menghapus...' : 'Ya, Hapus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {items.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[10px] text-slate-600">

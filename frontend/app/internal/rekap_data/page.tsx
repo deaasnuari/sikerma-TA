@@ -840,6 +840,7 @@ export default function InternalRekapDataPage() {
             namaMitra: perpanjangItem.namaMitra,
             noDokumen: perpanjangItem.noDokumen,
             berlakuHingga: perpanjangItem.berlakuHingga,
+            ruangLingkup: perpanjangItem.ruangLingkup,
           }}
           onClose={() => setPerpanjangItem(null)}
           onSubmitted={(message) => {

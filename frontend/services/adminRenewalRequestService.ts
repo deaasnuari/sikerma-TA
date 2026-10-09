@@ -93,6 +93,16 @@ export async function addRenewalRequest(payload: {
   return getRenewalRequests();
 }
 
+/** Hapus satu permintaan perpanjangan dari antrian (hanya admin). Berkas bukti tidak ikut terhapus dari server. */
+export async function deleteRenewalRequest(id: number): Promise<RenewalRequestItem[]> {
+  await apiRequest<ApiResponse<null>>(`/dokumen-kerjasama/perpanjangan/${id}`, {
+    method: 'DELETE',
+  });
+
+  emitRenewalUpdate();
+  return getRenewalRequests();
+}
+
 export async function updateRenewalRequestStatus(
   id: number,
   status: Exclude<RenewalRequestStatus, 'menunggu'>,

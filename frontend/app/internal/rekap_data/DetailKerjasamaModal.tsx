@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { ArrowLeft, Calendar, CheckCircle2, Clock, Download, FileText, Mail, Phone, User } from 'lucide-react';
 import { generateNoDokumen } from '@/services/adminMonitoringService';
 import type { PengajuanItem } from '@/services/adminPengajuanService';
+import type { JenisBerkas } from '@/services/adminRekapDataService';
+import JenisBerkasBadge from '@/components/JenisBerkasBadge';
 
 type ApprovalStatus = 'Menunggu' | 'Disetujui' | 'Ditolak';
 type Jenis = 'MoU' | 'MoA' | 'IA';
@@ -169,7 +171,7 @@ export default function DetailKerjasamaModal({ item, pengajuan, onClose }: Detai
   // Modal internal rekap_data tidak punya tipe proper untuk dokumen pendukung,
   // jadi kita baca dari field dinamis pada item.
   const dokumenTerkait = (item as any).dokumenTerkait as
-    | { nama: string; url?: string; ukuran: string; tanggal: string }[]
+    | { nama: string; url?: string; ukuran: string; tanggal: string; jenisBerkas?: JenisBerkas }[]
     | undefined;
 
   const statusInfo = statusLabelMap[item.status];
@@ -195,39 +197,6 @@ export default function DetailKerjasamaModal({ item, pengajuan, onClose }: Detai
               <p className="text-[10px] text-gray-500">{generateNoDokumen({ urutan: 1, jenis: item.jenis, tanggal: item.tanggalMulai })}</p>
             </div>
           </div>
-<button
-            type="button"
-            onClick={() => {
-              const csvContent = [
-                ['No. Dokumen', 'Nama Mitra', 'Jenis', 'Unit', 'Tanggal Mulai', 'Berlaku Hingga', 'Status'],
-                [
-                  item.noDokumen,
-                  item.namaMitra,
-                  item.jenis,
-                  item.unit,
-                  item.tanggalMulai,
-                  item.berlakuHingga,
-                  item.status,
-                ],
-              ]
-                .map((row) => row.join(','))
-                .join('\n');
-
-              const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = `${item.noDokumen || 'detail_kerjasama'}.csv`;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              URL.revokeObjectURL(url);
-            }}
-            className="inline-flex items-center gap-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:text-gray-900"
-          >
-            <Download size={15} />
-            Download
-          </button>
         </div>
 
         {/* Partner Info Bar */}
@@ -413,7 +382,7 @@ function TabInformasi({ item }: { item: KerjasamaItem }) {
 function TabDokumen({
   dokumenTerkait,
 }: {
-  dokumenTerkait?: { nama: string; url?: string; ukuran: string; tanggal: string }[];
+  dokumenTerkait?: { nama: string; url?: string; ukuran: string; tanggal: string; jenisBerkas?: JenisBerkas }[];
 }) {
   if (!dokumenTerkait || dokumenTerkait.length === 0) {
 
@@ -434,7 +403,10 @@ function TabDokumen({
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100">
                 <FileText size={18} className="text-red-500" />
               </div>
-              <div>
+              <div className="min-w-0">
+                <div className="mb-1">
+                  <JenisBerkasBadge jenis={doc.jenisBerkas} />
+                </div>
                 <p className="text-[12px] font-semibold text-gray-900">{doc.nama}</p>
                 <p className="text-[10px] text-gray-500">{doc.ukuran} • {doc.tanggal}</p>
               </div>

@@ -303,8 +303,9 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
   const isDraftEditable = workflowStatus === 'draft';
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 px-3 py-6">
-      <div className="relative max-h-[92vh] w-full max-w-4xl overflow-auto rounded-2xl bg-white shadow-2xl">
+    <div className="fixed inset-x-0 bottom-0 top-16 z-[70] overflow-y-auto bg-slate-900/40 px-3 py-4">
+      {/* Gulir ada di latar belakang (layar), bukan di dalam kartu modal. */}
+      <div className="relative mx-auto w-full max-w-4xl rounded-2xl bg-white shadow-2xl">
 
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-5 py-3">
