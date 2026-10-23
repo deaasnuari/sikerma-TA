@@ -175,3 +175,81 @@ export async function downloadFileWithAuth(endpoint: string, fileName: string): 
 }
 
 export { API_BASE_URL };
+
+// ---------------------------------------------------------------------------------------------
+// Berkas di storage. Semua berkas (kecuali carousel) TIDAK lagi bisa dibuka lewat URL /storage/...
+// langsung — backend hanya melayani lewat GET /berkas?path=... yang butuh login. Karena navigasi
+// <a href> tidak membawa header Authorization, berkas diambil lewat fetch lalu dibuka dari blob.
+// ---------------------------------------------------------------------------------------------
+
+// Kembalikan path berkas (mis. "pengajuan/2026/01/x.pdf") kalau url menunjuk ke /storage/...
+// yang dilindungi; null kalau bukan (carousel, URL luar, blob:, data:, dst.).
+export function extractProtectedStoragePath(url: string | null | undefined): string | null {
+  if (!url || /^(blob|data):/i.test(url)) return null;
+
+  let pathname: string;
+  try {
+    pathname = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost').pathname;
+  } catch {
+    return null;
+  }
+
+  const match = pathname.match(/^\/storage\/(.+)$/);
+  if (!match || /^carousel\//i.test(match[1])) return null;
+
+  return decodeURIComponent(match[1]);
+}
+
+function berkasEndpoint(path: string): string {
+  return `/berkas?path=${encodeURIComponent(path)}`;
+}
+
+// Buka berkas terlindungi di tab baru. Tab dibuka SEKARANG (sinkron dengan klik) supaya tidak
+// diblokir popup blocker, lalu diarahkan ke blob setelah fetch selesai.
+export async function openProtectedFile(path: string): Promise<void> {
+  const tab = window.open('', '_blank');
+
+  try {
+    const response = await fetchWithFallback(berkasEndpoint(path), {}, (accessToken) => ({
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    }));
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem('user');
+        window.location.replace('/login?reason=expired');
+        throw new Error('Unauthenticated.');
+      }
+      throw new Error(response.status === 404 ? 'File tidak ditemukan atau Anda tidak punya akses.' : 'Gagal membuka file.');
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+
+    if (tab) {
+      tab.location.href = objectUrl;
+    } else {
+      window.location.href = objectUrl;
+    }
+    // Dilepas belakangan: tab baru butuh waktu memuat blob-nya.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 5 * 60 * 1000);
+  } catch (err) {
+    tab?.close();
+    alert(err instanceof Error ? err.message : 'Gagal membuka file.');
+  }
+}
+
+// Pengganti window.open(url, '_blank') untuk URL berkas: yang menunjuk ke /storage/... terlindungi
+// dibuka lewat login, sisanya (blob:, URL luar) dibuka seperti biasa.
+export function openUrl(url: string): void {
+  const protectedPath = extractProtectedStoragePath(url);
+  if (protectedPath) {
+    void openProtectedFile(protectedPath);
+    return;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+export async function downloadProtectedFile(path: string, fileName: string): Promise<void> {
+  await downloadFileWithAuth(berkasEndpoint(path), fileName);
+}

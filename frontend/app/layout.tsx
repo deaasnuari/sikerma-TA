@@ -4,6 +4,7 @@ import Script from 'next/script';
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { SWRProvider } from "@/components/SWRProvider";
+import ProtectedFileLinkInterceptor from "@/components/ProtectedFileLinkInterceptor";
 
 const poppins = Poppins({
   subsets: ['latin'],
@@ -84,6 +85,7 @@ export default function RootLayout({
         <Script id="strip-fdprocessedid" strategy="beforeInteractive">
           {stripExtensionInjectedAttributes}
         </Script>
+        <ProtectedFileLinkInterceptor />
         <SWRProvider>
           <AuthProvider>
             {children}

@@ -154,10 +154,18 @@ export default function MonitoringdanstatusPage() {
     sessionStorage.removeItem('open-perpanjang-id');
     const targetId = parseInt(pendingId, 10);
     const found = monitoringData.find((k) => k.id === targetId);
-    if (found) {
-      setRenewalChoiceModal({ open: true, kerjasamaId: targetId });
-    }
-  }, [isRealDataLoaded, monitoringData]);
+    if (!found) return;
+    // Saring dulu ke dokumen itu supaya admin melihat barisnya di daftar Status & Progres,
+    // baru popup pilihan perpanjangan muncul setelah jeda singkat.
+    const keyword = found.noDokumen && found.noDokumen !== '-' ? found.noDokumen : found.namaMitra;
+    setActiveTab('Semua');
+    setSearchInput(keyword);
+    setSearchKeyword(keyword);
+    setCurrentPage(1);
+    // Tanpa cleanup: id sudah dihapus dari sessionStorage, jadi timer harus tetap jalan walau
+    // monitoringData berubah sebelum 700ms.
+    setTimeout(() => setRenewalChoiceModal({ open: true, kerjasamaId: targetId }), 700);
+  },[isRealDataLoaded, monitoringData]);
 
   // Diarahkan dari kolom Status Kerjasama di Rekap Data: saring ke dokumen itu lalu buka
   // riwayat notifikasinya.

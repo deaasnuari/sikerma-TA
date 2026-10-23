@@ -1,5 +1,6 @@
 'use client';
 
+import { openUrl } from '@/lib/api';
 import { useEffect, useRef, useState } from 'react';
 import { Download, FileText, Save, Upload, X } from 'lucide-react';
 import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploadUtils';
@@ -287,7 +288,7 @@ export default function LaporanKegiatanTemplateModal({ isOpen, onClose, data }: 
       return;
     }
 
-    window.open(uploadedPreviewUrl, '_blank', 'noopener,noreferrer');
+    openUrl(uploadedPreviewUrl);
   }
 
   function escapeHtml(value: string) {

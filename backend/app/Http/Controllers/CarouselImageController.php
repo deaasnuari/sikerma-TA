@@ -39,8 +39,17 @@ class CarouselImageController extends Controller
         ]);
     }
 
+    private function ensureAdmin(Request $request): void
+    {
+        if (! $request->user() || $request->user()->role !== 'admin') {
+            abort(403, 'Akses ditolak. Hanya admin yang dapat mengelola carousel.');
+        }
+    }
+
     public function store(Request $request): JsonResponse
     {
+        $this->ensureAdmin($request);
+
         $currentCount = CarouselImage::query()->where('is_active', true)->count();
 
         if ($currentCount >= self::MAX_IMAGES) {
@@ -81,6 +90,8 @@ class CarouselImageController extends Controller
 
     public function update(Request $request, CarouselImage $carouselImage): JsonResponse
     {
+        $this->ensureAdmin($request);
+
         $validated = $request->validate([
             'sort_order' => ['required', 'integer', 'min:0', 'max:9999'],
         ]);
@@ -90,8 +101,10 @@ class CarouselImageController extends Controller
         return response()->json(['message' => 'Urutan carousel diperbarui.']);
     }
 
-    public function destroy(CarouselImage $carouselImage): JsonResponse
+    public function destroy(Request $request, CarouselImage $carouselImage): JsonResponse
     {
+        $this->ensureAdmin($request);
+
         if ($carouselImage->image_path && Storage::disk('public')->exists($carouselImage->image_path)) {
             Storage::disk('public')->delete($carouselImage->image_path);
         }

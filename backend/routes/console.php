@@ -25,6 +25,11 @@ Schedule::command('sikerma:sinkron-status-siklus --apply')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Buang token login yang sudah kedaluwarsa (lihat sanctum.expiration) supaya tabel tidak menumpuk.
+Schedule::command('sanctum:prune-expired --hours=24')
+    ->daily()
+    ->onOneServer();
+
 Artisan::command('civitas:sync-struktur {--apply : Terapkan perubahan ke database (default hanya preview/dry-run)}', function (CivitasStructureService $civitas) {
     // Isi kolom master_unit_prodi.kode_kampus (ID_JURUSAN/ID_PROGRAM_STUDI/ID_UNIT dari
     // Civitas API) berdasarkan pencocokan nama — sekali jalan, aman diulang (idempotent),

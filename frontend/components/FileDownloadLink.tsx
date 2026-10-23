@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { downloadFileWithAuth } from '@/lib/api';
+import { downloadFileWithAuth, openUrl } from '@/lib/api';
 
 interface FileDownloadLinkProps extends Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href' | 'onClick'> {
   // URL mentah ke storage (fallback) — dipakai kalau downloadUrl tidak ada.
@@ -27,7 +27,7 @@ export default function FileDownloadLink({ url, downloadUrl, fileName, children,
 
     if (!downloadUrl) {
       // Tidak ada path API-nya (mis. data legacy) — buka URL storage mentah apa adanya.
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      if (url) openUrl(url);
       return;
     }
 
@@ -37,7 +37,7 @@ export default function FileDownloadLink({ url, downloadUrl, fileName, children,
     } catch (err) {
       // Fallback ke URL mentah kalau unduhan resmi gagal (mis. sesi habis, dsb).
       if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
+        openUrl(url);
       } else {
         alert(err instanceof Error ? err.message : 'Gagal mengunduh file.');
       }

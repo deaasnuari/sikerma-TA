@@ -1,5 +1,6 @@
 'use client';
 
+import { openUrl } from '@/lib/api';
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, ChevronRight, Download, FileText, Save, Send, Upload, X } from 'lucide-react';
 import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploadUtils';
@@ -551,7 +552,7 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
                 <p className="font-semibold">File: {uploadedFile.nama}</p>
                 <p>Ukuran: {uploadedFile.ukuran} · Diupload: {uploadedFile.uploadedAt}</p>
                 {previewUrl && (
-                  <button type="button" onClick={() => window.open(previewUrl, '_blank', 'noopener,noreferrer')}
+                  <button type="button" onClick={() => openUrl(previewUrl)}
                     className="mt-2 inline-flex items-center gap-1 text-[#1E376C] underline underline-offset-2 hover:text-[#28478A]">
                     <FileText size={12}/> Lihat File
                   </button>

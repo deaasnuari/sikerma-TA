@@ -73,8 +73,12 @@ return [
     |
     */
 
+    // HANYA folder carousel yang dibuka publik lewat /storage (gambar landing page). Semua berkas
+    // lain (dokumen, lampiran, laporan) tidak boleh bisa dibuka tanpa login — diakses lewat
+    // GET /api/berkas (BerkasController). Di server lama: hapus symlink public/storage lalu
+    // jalankan `php artisan storage:link` ulang agar memakai pengaturan ini.
     'links' => [
-        public_path('storage') => storage_path('app/public'),
+        public_path('storage/carousel') => storage_path('app/public/carousel'),
     ],
 
 ];

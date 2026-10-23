@@ -40,6 +40,10 @@ class NotificationController extends Controller
      */
     public function sendEmail(Request $request)
     {
+        if (! $request->user() || $request->user()->role !== 'admin') {
+            abort(403, 'Akses ditolak. Hanya admin yang dapat mengirim notifikasi email.');
+        }
+
         $validated = $request->validate([
             'email' => 'required|email',
             'subject' => 'required|string',
@@ -171,6 +175,10 @@ class NotificationController extends Controller
      */
     public function sendBulk(Request $request)
     {
+        if (! $request->user() || $request->user()->role !== 'admin') {
+            abort(403, 'Akses ditolak. Hanya admin yang dapat mengirim notifikasi email.');
+        }
+
         $validated = $request->validate([
             'recipients' => 'required|array',
             'recipients.*.email' => 'required|email',

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BerkasController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\CarouselImageController;
 use App\Http\Controllers\DokumenKerjasamaController;
@@ -16,11 +17,11 @@ use App\Http\Controllers\PengajuanAktivitasController;
 use App\Http\Controllers\LaporanPelaksanaanController;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/login-kampus', [AuthController::class, 'loginLdap']);
-Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
-Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:otp-kirim');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
+Route::post('/login-kampus', [AuthController::class, 'loginLdap'])->middleware('throttle:login');
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:otp-kirim');
+Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:otp-verifikasi');
 
 Route::middleware('auth:sanctum')->group(function () {
 	Route::post('/logout', [AuthController::class, 'logout']);
@@ -88,6 +89,16 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::apiResource('/dokumen-kerjasama', DokumenKerjasamaController::class)
 		->parameters(['dokumen-kerjasama' => 'dokumen_kerjasama']);
 
+	// Kelola carousel & kirim email notifikasi: wajib login, dan di controller hanya admin.
+	Route::post('/admin/carousel-images', [CarouselImageController::class, 'store']);
+	Route::patch('/admin/carousel-images/{carouselImage}', [CarouselImageController::class, 'update']);
+	Route::delete('/admin/carousel-images/{carouselImage}', [CarouselImageController::class, 'destroy']);
+	Route::post('/notifications/send-email', [NotificationController::class, 'sendEmail']);
+	Route::post('/notifications/send-bulk', [NotificationController::class, 'sendBulk']);
+
+	// Buka berkas di storage (dokumen, lampiran pengajuan, laporan) — wajib login + dicek per berkas.
+	Route::get('/berkas', [BerkasController::class, 'show']);
+
 	Route::get('/laporan-pelaksanaan', [LaporanPelaksanaanController::class, 'index']);
 	Route::post('/laporan-pelaksanaan', [LaporanPelaksanaanController::class, 'store']);
 	Route::delete('/laporan-pelaksanaan/{laporan_pelaksanaan}', [LaporanPelaksanaanController::class, 'destroy']);
@@ -102,14 +113,7 @@ Route::get('/public/stats', [DokumenKerjasamaController::class, 'publicStats']);
 // Publik juga (dipakai landing page & dashboard admin) — datanya sudah sama kelasnya
 // dengan /public/kerjasama & /public/stats (nama/kategori mitra memang publik).
 Route::get('/dokumen-kerjasama/stats/mitra', [DokumenKerjasamaController::class, 'mitraStats']);
-Route::post('/admin/carousel-images', [CarouselImageController::class, 'store']);
-Route::patch('/admin/carousel-images/{carouselImage}', [CarouselImageController::class, 'update']);
-Route::delete('/admin/carousel-images/{carouselImage}', [CarouselImageController::class, 'destroy']);
 
 // OTP Email Verification Routes
-Route::post('/otp/send', [OtpController::class, 'sendOtp']);
-Route::post('/otp/verify', [OtpController::class, 'verifyOtp']);
-
-// Notification Email Routes
-Route::post('/notifications/send-email', [NotificationController::class, 'sendEmail']);
-Route::post('/notifications/send-bulk', [NotificationController::class, 'sendBulk']);
+Route::post('/otp/send', [OtpController::class, 'sendOtp'])->middleware('throttle:otp-kirim');
+Route::post('/otp/verify', [OtpController::class, 'verifyOtp'])->middleware('throttle:otp-verifikasi');

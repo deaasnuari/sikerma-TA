@@ -71,7 +71,8 @@ class NotificationRiwayatTest extends TestCase
         Mail::fake();
         $dokumen = $this->buatDokumen();
 
-        $response = $this->postJson('/api/notifications/send-email', [
+        $response = $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->postJson('/api/notifications/send-email', [
             'email'     => 'mitra@contoh.co.id',
             'subject'   => 'Uji',
             'body'      => 'Isi uji',
@@ -96,7 +97,8 @@ class NotificationRiwayatTest extends TestCase
     {
         Mail::fake();
 
-        $response = $this->postJson('/api/notifications/send-email', [
+        $response = $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->postJson('/api/notifications/send-email', [
             'email'     => 'mitra@contoh.co.id',
             'subject'   => 'Uji',
             'body'      => 'Isi uji',

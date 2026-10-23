@@ -50,7 +50,9 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Token login hangus setelah 8 jam (satu hari kerja); frontend otomatis menendang ke halaman
+    // login saat menerima 401. Ubah lewat SANCTUM_TOKEN_EXPIRATION (menit), kosongkan = tanpa batas.
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 480),
 
     /*
     |--------------------------------------------------------------------------

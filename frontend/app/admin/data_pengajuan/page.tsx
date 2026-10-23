@@ -1,5 +1,6 @@
 'use client';
 
+import { openUrl } from '@/lib/api';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { FileText, Clock, CheckCircle, XCircle, Search, Filter, Plus, Eye, MessageSquare, X, ThumbsUp, FilePenLine, CalendarDays, ChevronLeft, ChevronRight, Pencil, Trash2, ExternalLink, Paperclip, Download, Upload, Bell, CheckSquare, Square } from 'lucide-react';
@@ -2714,9 +2715,9 @@ function addEditJurusanUnitOption() {
                           type="button"
                           onClick={() => {
                             if (reviewItem.finalFilePath) {
-                              window.open(reviewItem.finalFilePath, '_blank');
+                              openUrl(reviewItem.finalFilePath);
                             } else {
-                              window.open(`http://localhost:8000/storage/final/${reviewItem.finalFileName}`, '_blank');
+                              openUrl(`/storage/final/${reviewItem.finalFileName}`);
                             }
                           }}
                           className="rounded p-1 text-slate-400 hover:bg-slate-100"

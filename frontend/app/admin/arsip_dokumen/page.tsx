@@ -12,7 +12,8 @@ import {
   Info,
   RefreshCw,
 } from 'lucide-react';
-import { fetchArsipDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
+import { deleteDokumenKerjasamaById, fetchArsipDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
+import { fetchMonitoringDataFromApi } from '@/services/adminMonitoringService';
 import { exportToExcel } from '@/lib/exportExcel';
 import FileDownloadLink from '@/components/FileDownloadLink';
 
@@ -62,8 +63,17 @@ export default function ArsipDokumenPage() {
 
   const handlePerpanjang = (item: ArsipDokumen) => {
     sessionStorage.setItem('open-perpanjang-id', String(item.id));
+    // Mulai muat data Monitoring sebelum pindah halaman; promise-nya dipakai bersama (in-flight/cache
+    // modul), jadi Monitoring tinggal memakainya dan form perpanjangan langsung terbuka.
+    void fetchMonitoringDataFromApi();
     router.push('/admin/monitoring');
   };
+
+  // Pemanasan: isi cache data Monitoring selagi admin masih membaca halaman Arsip.
+  useEffect(() => {
+    router.prefetch('/admin/monitoring');
+    void fetchMonitoringDataFromApi();
+  }, [router]);
 
   // Pemetaan status -> tab Arsip. SENGAJA tidak dihitung ulang dari tanggal di sini lagi —
   // sebelumnya fungsi ini punya aturan sendiri (jendela 3 bulan kalender) yang beda dari
@@ -118,11 +128,18 @@ export default function ArsipDokumenPage() {
     };
   }, []);
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
     const item = data.find((d) => d.id === id);
     if (!item) return;
-    if (!confirm(`Yakin ingin menghapus arsip "${item.noDokumen}" (${item.namaMitra})?`)) return;
-    setData((prev) => prev.filter((d) => d.id !== id));
+    if (!confirm(`Yakin ingin memindahkan arsip "${item.noDokumen}" (${item.namaMitra}) ke Sampah?`)) return;
+    try {
+      // Soft-delete di server (masuk Sampah di Rekap Data, bisa dipulihkan) — sebelumnya cuma
+      // hilang dari tampilan dan muncul lagi setelah refresh.
+      await deleteDokumenKerjasamaById(id);
+      setData((prev) => prev.filter((d) => d.id !== id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal menghapus arsip.');
+    }
   };
 
   // Filter dan deduplikasi berdasarkan id
@@ -242,7 +259,7 @@ export default function ArsipDokumenPage() {
                 Kalau kerja sama ditandai <span className="font-semibold">tidak diperpanjang</span> (dari halaman Monitoring), catatan dan buktinya otomatis muncul di kolom <span className="font-semibold">Catatan/Bukti Tidak Diperpanjang</span> di bawah
               </li>
               <li>
-                Arsip dapat dihapus permanen oleh admin jika tidak diperlukan lagi
+                Arsip yang dihapus dipindahkan ke Sampah di Rekap Data dan masih bisa dipulihkan
               </li>
             </ul>
           </div>
@@ -394,6 +411,7 @@ export default function ArsipDokumenPage() {
                     <td className="py-3 px-4">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
+                          onMouseEnter={() => void fetchMonitoringDataFromApi()}
                           onClick={() => handlePerpanjang(item)}
                           className="inline-flex items-center gap-1 rounded-lg border border-green-300 bg-green-50 px-2.5 py-1 text-[10.5px] font-semibold text-green-700 hover:bg-green-100 transition-colors whitespace-nowrap"
                           title="Perpanjang di Monitoring"
