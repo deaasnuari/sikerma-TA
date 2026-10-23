@@ -339,4 +339,46 @@ class AdminUserTest extends TestCase
         $this->actingAs($user)->deleteJson("/api/admin/users/{$target->id}")
             ->assertForbidden();
     }
+
+    // -------------------------------------------------------------------------
+    // Akun titipan Distribusi CC tidak tampil sebelum orangnya login
+    // -------------------------------------------------------------------------
+
+    public function test_akun_titipan_distribusi_cc_baru_muncul_di_manajemen_user_setelah_login_ldap(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $provision = $this->actingAs($admin)->postJson('/api/distribusi-kandidat/provision', [
+            'nik' => '777001',
+            'nama' => 'Kajur Belum Login',
+            'jabatan' => 'ketua_jurusan',
+        ]);
+        $provision->assertOk();
+        $id = $provision->json('data.id');
+
+        // Akunnya ada (dipakai Distribusi CC), tapi belum tampil di Manajemen User.
+        $this->assertDatabaseHas('users', ['id' => $id, 'nik' => '777001']);
+        $ids = collect($this->actingAs($admin)->getJson('/api/admin/users')->json('data'))->pluck('id')->map(fn ($v) => (int) $v);
+        $this->assertNotContains($id, $ids);
+        $this->assertContains($admin->id, $ids, 'admin dan akun lain tetap tampil');
+
+        // Orangnya login lewat akun kampus -> akun yang sama (cocok NIK) mulai tampil.
+        $this->mock(\App\Services\CivitasAuthService::class, function ($mock) {
+            $mock->shouldReceive('loginStaff')->once()->andReturn([
+                'NIK' => '777001', 'NAMA' => 'Kajur Belum Login', 'EMAIL' => 'kajur@polibatam.ac.id',
+                'NIP' => '1', 'UNIT_KERJA' => 'TEKNIK INFORMATIKA', 'STAFF' => 'DOSEN',
+            ]);
+        });
+        $this->mock(\App\Services\CivitasStructureService::class, function ($mock) {
+            $mock->shouldReceive('getJurusan')->andReturn([]);
+            $mock->shouldReceive('getProgramStudi')->andReturn([]);
+            $mock->shouldReceive('getUnit')->andReturn([]);
+        });
+        $this->postJson('/api/login-kampus', ['username' => 'kajur', 'password' => 'rahasia'])->assertOk();
+
+        $this->assertSame(1, User::where('nik', '777001')->count(), 'tidak membuat akun dobel');
+        $this->assertNotNull(User::find($id)->last_login_at);
+        $idsSetelahLogin = collect($this->actingAs($admin)->getJson('/api/admin/users')->json('data'))->pluck('id')->map(fn ($v) => (int) $v);
+        $this->assertContains($id, $idsSetelahLogin);
+    }
 }

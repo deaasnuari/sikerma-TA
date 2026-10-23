@@ -16,6 +16,9 @@ class AdminUserController extends Controller
 {
     private const APPROVAL_STATUSES = ['active', 'pending', 'rejected'];
 
+    // Akhiran email placeholder akun titipan Distribusi CC (lihat PengajuanController::provisionDistribusiUser()).
+    private const EMAIL_PLACEHOLDER_DISTRIBUSI = '@no-email.sikerma.local';
+
     private const STRUCTURAL_POSITION_LABELS = [
         'ketua_jurusan' => 'Ketua Jurusan',
         'ketua_prodi'   => 'Ketua Program Studi',
@@ -138,7 +141,15 @@ class AdminUserController extends Controller
     {
         $this->ensureAdminAccess($request);
 
+        // Akun titipan hasil pemilihan Distribusi CC (email placeholder, belum pernah login) tidak ditampilkan:
+        // Manajemen User baru memuat akun kampus setelah orangnya benar-benar login ke SIKERMA.
+        // Distribusi CC sendiri tidak terpengaruh (akun titipan tetap ada dan dipakai di sana).
         $users = User::query()
+            ->where(function ($query) {
+                $query->whereNotNull('last_login_at')
+                    ->orWhereNull('email')
+                    ->orWhere('email', 'not like', '%'.self::EMAIL_PLACEHOLDER_DISTRIBUSI);
+            })
             ->latest('id')
             ->get()
             ->map(fn (User $user) => $this->toUserPayload($user));

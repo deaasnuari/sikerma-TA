@@ -93,6 +93,8 @@ export interface RekapDokumen {
   manfaatSebenarnya?: string;
   keteranganAsli?: string;
   durasiBulan?: number;
+  // Nilai kerja sama (teks bebas, bisa Rp/USD) — diisi admin di detail Rekap Data.
+  nilaiKerjasama?: string;
   jurusanNama?: string;
   prodiNama?: string;
   unitKerjaNama?: string;

@@ -33,6 +33,7 @@ class DokumenKerjasama extends Model
         'judul_dokumen',
         'manfaat',
         'luaran_kerja_sama',
+        'nilai_kerjasama',
         'ruang_lingkup_ids',
         'tanggal_mulai',
         'tanggal_berakhir',

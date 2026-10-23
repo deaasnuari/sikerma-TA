@@ -138,6 +138,9 @@ export default function RekapDataPage() {
   const [isEditingFollowUp, setIsEditingFollowUp] = useState(false);
   const [followUpDraft, setFollowUpDraft] = useState('');
   const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [isEditingNilai, setIsEditingNilai] = useState(false);
+  const [nilaiDraft, setNilaiDraft] = useState('');
+  const [savingNilai, setSavingNilai] = useState(false);
   const [isEditingLuaran, setIsEditingLuaran] = useState(false);
   const [luaranDraft, setLuaranDraft] = useState('');
   const [savingLuaran, setSavingLuaran] = useState(false);
@@ -148,6 +151,8 @@ export default function RekapDataPage() {
     setManfaatDraft('');
     setIsEditingFollowUp(false);
     setFollowUpDraft('');
+    setIsEditingNilai(false);
+    setNilaiDraft('');
   }, [detailItem]);
 
 
@@ -328,6 +333,7 @@ export default function RekapDataPage() {
       'Tanggal Awal Kerja Sama',
       'Tanggal Akhir Kerja Sama',
       'Durasi (dalam bulan)',
+      'Nilai Kerja Sama',
       // Jurusan / Unit
       'Jurusan',
       'Prodi',
@@ -363,6 +369,7 @@ export default function RekapDataPage() {
       row.tanggalMulai,
       row.berlakuHingga,
       row.durasiBulan ?? '',
+      row.nilaiKerjasama || '',
       row.jurusanNama || '',
       row.prodiNama || '',
       row.unitKerjaNama || '',
@@ -494,6 +501,20 @@ export default function RekapDataPage() {
       setIsEditingFollowUp(false);
     } finally {
       setSavingFollowUp(false);
+    }
+  };
+
+  const handleSaveNilai = async () => {
+    if (!detailItem?.id) return;
+    setSavingNilai(true);
+    try {
+      await updateDokumenKerjasamaById(detailItem.id, { nilai_kerjasama: nilaiDraft.trim() || null });
+      const updated = { ...detailItem, nilaiKerjasama: nilaiDraft.trim() || undefined };
+      setDetailItem(updated);
+      setRekapData((prev) => prev.map((r) => (r.id === detailItem.id ? updated : r)));
+      setIsEditingNilai(false);
+    } finally {
+      setSavingNilai(false);
     }
   };
 
@@ -781,6 +802,7 @@ export default function RekapDataPage() {
                 <th rowSpan={2} className="px-4 py-3 align-middle">Tanggal Awal Kerja Sama</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Tanggal Akhir Kerja Sama</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Durasi (bulan)</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Nilai Kerja Sama</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Jurusan/Prodi/Unit</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Status Kerjasama</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Jenis</th>
@@ -799,7 +821,7 @@ export default function RekapDataPage() {
             <tbody>
               {filteredRows.length === 0 ? (
                 <tr key="empty">
-                  <td colSpan={19} className="px-4 py-10 text-center text-[12px] text-gray-500">
+                  <td colSpan={20} className="px-4 py-10 text-center text-[12px] text-gray-500">
                     Data tidak ditemukan berdasarkan filter saat ini.
                   </td>
                 </tr>
@@ -846,6 +868,7 @@ export default function RekapDataPage() {
                     <td className="px-4 py-3 whitespace-nowrap">{row.tanggalMulai}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.berlakuHingga}</td>
                     <td className="px-4 py-3 text-center">{row.durasiBulan ?? '-'}</td>
+                    <td className="px-4 py-3 max-w-[160px]"><p className="text-[11px] text-gray-700 line-clamp-2">{row.nilaiKerjasama || '-'}</p></td>
                     {/* Jurusan/Unit — satu kolom, isinya menyesuaikan pilihan Jurusan (+Prodi) atau Unit saat pengajuan */}
                     <td className="px-4 py-3">{jurusanUnitDisplay}</td>
                     {/* Status — klik untuk ke halaman Status dan Progres Kerja Sama, langsung buka
@@ -1249,6 +1272,45 @@ export default function RekapDataPage() {
                   </div>
                 ) : (
                   <p className="text-[12px] text-gray-700">{detailItem.manfaatSebenarnya || detailItem.manfaatKerjasama || <span className="italic text-gray-400">Belum diisi</span>}</p>
+                )}
+              </div>
+
+              {/* Nilai Kerja Sama — hasil/dana dari kerja sama yang berjalan. Teks bebas supaya bisa
+                  ditulis dengan Rp, USD, atau mata uang lain; ikut diexport bersama kolom lain. */}
+              <div className="rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide">Nilai Kerja Sama</p>
+                  {!isEditingNilai && detailItem.id && (
+                    <button
+                      type="button"
+                      onClick={() => { setNilaiDraft(detailItem.nilaiKerjasama || ''); setIsEditingNilai(true); }}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-[#1E376C] hover:bg-[#1E376C]/10 transition-colors"
+                    >
+                      <Pencil size={11} />
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {isEditingNilai ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={nilaiDraft}
+                      onChange={(e) => setNilaiDraft(e.target.value)}
+                      maxLength={255}
+                      className="input-field h-10 w-full rounded-lg px-3 text-[12px]"
+                      placeholder="Contoh: Rp 50.000.000 atau USD 5,000"
+                    />
+                    <p className="text-[10px] text-gray-400">Tulis nominal beserta mata uangnya (Rp, USD, dll.). Boleh tambah keterangan, mis. "Rp 20 juta per tahun".</p>
+                    <div className="flex gap-2 justify-end">
+                      <button type="button" onClick={() => setIsEditingNilai(false)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50">Batal</button>
+                      <button type="button" onClick={handleSaveNilai} disabled={savingNilai} className="rounded-lg bg-[#1E376C] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#2B4A93] disabled:opacity-60">
+                        {savingNilai ? 'Menyimpan...' : 'Simpan'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[12px] font-semibold text-gray-800">{detailItem.nilaiKerjasama || <span className="font-normal italic text-gray-400">Belum diisi</span>}</p>
                 )}
               </div>
 

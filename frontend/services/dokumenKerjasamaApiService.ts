@@ -99,6 +99,7 @@ type ApiDokumenRow = {
   judul_dokumen?: string | null;
   manfaat?: string | null;
   luaran_kerja_sama?: string | null;
+  nilai_kerjasama?: string | null;
   // Snapshot data pengajuan (tersimpan saat disetujui, aman dari penghapusan pengajuan)
   snap_nama_mitra?: string | null;
   snap_whatsapp_pengusul?: string | null;
@@ -431,6 +432,7 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       tingkatLokal,
       judulKegiatan: row.judul_dokumen || row.nama_dokumen || undefined,
       luaranKerjaSama: row.luaran_kerja_sama || undefined,
+      nilaiKerjasama: row.nilai_kerjasama || undefined,
       manfaatSebenarnya: row.manfaat || undefined,
       keteranganAsli: row.keterangan || undefined,
       durasiBulan,
@@ -497,6 +499,8 @@ export async function updateDokumenKerjasamaById(
     follow_up?: string | null;
     manfaat?: string | null;
     luaran_kerja_sama?: string | null;
+    // Teks bebas (mis. "Rp 50.000.000" atau "USD 5,000").
+    nilai_kerjasama?: string | null;
     ruang_lingkup_ids?: number[] | null;
     mitra_id?: number | null;
   }

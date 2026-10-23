@@ -185,6 +185,8 @@ class AuthController extends Controller
             ]);
         }
 
+        $user->forceFill(['last_login_at' => now()])->save();
+
         $token = $user->createToken('web-login')->plainTextToken;
 
         return response()->json([
@@ -277,6 +279,8 @@ class AuthController extends Controller
                 $user->update(['role' => $newRole]);
             }
         }
+
+        $user->forceFill(['last_login_at' => now()])->save();
 
         $token = $user->createToken('web-login-ldap')->plainTextToken;
 

@@ -107,4 +107,51 @@ class FinalPengajuanMasukRekapTest extends TestCase
         $this->assertSame('Ivy', $row['snap_pic_polibatam_nama']);
         $this->assertSame('ivy@polibatam.ac.id', $row['snap_pic_polibatam_email']);
     }
+
+    public function test_admin_mengisi_nilai_kerjasama_dengan_teks_bebas_dan_tampil_di_rekap(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $pengajuan = $this->pengajuanDenganFinal('PMH-040');
+        $this->finalkan($pengajuan, 'NILAI-001/MOU');
+        $dokumen = DokumenKerjasama::where('sumber_pengajuan_id', $pengajuan->id)->firstOrFail();
+
+        $this->actingAs($admin)->patchJson("/api/dokumen-kerjasama/{$dokumen->id}", ['nilai_kerjasama' => 'USD 5,000 per tahun'])->assertOk();
+        $this->assertSame('USD 5,000 per tahun', $dokumen->fresh()->nilai_kerjasama);
+
+        $row = collect($this->actingAs($admin)->getJson('/api/dokumen-kerjasama?per_page=50')->json('data.data'))->firstWhere('id', $dokumen->id);
+        $this->assertSame('USD 5,000 per tahun', $row['nilai_kerjasama']);
+
+        // Boleh dikosongkan lagi; terlalu panjang ditolak; non-admin tidak boleh mengubah.
+        $this->actingAs($admin)->patchJson("/api/dokumen-kerjasama/{$dokumen->id}", ['nilai_kerjasama' => null])->assertOk();
+        $this->assertNull($dokumen->fresh()->nilai_kerjasama);
+        $this->actingAs($admin)->patchJson("/api/dokumen-kerjasama/{$dokumen->id}", ['nilai_kerjasama' => str_repeat('x', 256)])->assertStatus(422);
+        $this->actingAs(User::factory()->create(['role' => 'internal']))->patchJson("/api/dokumen-kerjasama/{$dokumen->id}", ['nilai_kerjasama' => 'Rp 1'])->assertForbidden();
+    }
+
+    public function test_nilai_kerjasama_tidak_dikirim_ke_mitra_tapi_terlihat_admin_dan_internal(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $internal = User::factory()->create(['role' => 'internal']);
+        $mitra = User::factory()->create(['role' => 'external']);
+
+        $pengajuan = $this->pengajuanDenganFinal('PMH-050');
+        // Internal pemilik pengajuan; mitra ikut melihat lewat distribusi (CC).
+        $pengajuan->update(['user_pengusul_id' => $internal->id, 'distribusi_user_ids' => [$mitra->id]]);
+        $this->finalkan($pengajuan, 'RAHASIA-001/MOU');
+        $dokumen = DokumenKerjasama::where('sumber_pengajuan_id', $pengajuan->id)->firstOrFail();
+        $dokumen->update(['nilai_kerjasama' => 'Rp 75.000.000']);
+
+        $barisDariDaftar = fn (User $user) => collect($this->actingAs($user)->getJson('/api/dokumen-kerjasama?per_page=50')->json('data.data'))->firstWhere('id', $dokumen->id);
+
+        $this->assertSame('Rp 75.000.000', $barisDariDaftar($admin)['nilai_kerjasama']);
+        $this->assertSame('Rp 75.000.000', $barisDariDaftar($internal)['nilai_kerjasama']);
+
+        $baris = $barisDariDaftar($mitra);
+        $this->assertNotNull($baris, 'mitra tetap melihat dokumennya sendiri');
+        $this->assertArrayNotHasKey('nilai_kerjasama', $baris);
+
+        $this->actingAs($mitra)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk()->assertJsonMissingPath('data.nilai_kerjasama');
+        $this->actingAs($admin)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk()->assertJsonPath('data.nilai_kerjasama', 'Rp 75.000.000');
+        $this->actingAs($internal)->getJson("/api/dokumen-kerjasama/{$dokumen->id}")->assertOk()->assertJsonPath('data.nilai_kerjasama', 'Rp 75.000.000');
+    }
 }

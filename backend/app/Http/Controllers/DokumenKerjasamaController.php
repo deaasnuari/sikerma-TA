@@ -171,6 +171,9 @@ class DokumenKerjasamaController extends Controller
         ]);
     }
 
+    // Hanya untuk admin dan internal: akun mitra eksternal tidak boleh menerima nilai kerja sama di API.
+    private const FIELD_TERTUTUP_MITRA = ['nilai_kerjasama'];
+
     public function index(Request $request): Response
     {
         $query = DokumenKerjasama::query()->with([
@@ -282,6 +285,10 @@ class DokumenKerjasamaController extends Controller
 
         $data = $query->orderByDesc('id')->paginate((int) $request->integer('per_page', 20));
 
+        if ($normalizedRole === 'external') {
+            $data->getCollection()->each->makeHidden(self::FIELD_TERTUTUP_MITRA);
+        }
+
         return response([
             'success' => true,
             'data' => $data,
@@ -346,6 +353,10 @@ class DokumenKerjasamaController extends Controller
             'unitProdiItems.parent:id,nama,jenis_node,kategori_unit',
             'mitra:id,nama_mitra,kode_mitra,kategori_mitra,bidang_usaha,tingkat_perusahaan,negara,email_mitra,email_kontak_utama,alamat,nama_kontak_utama,jabatan_kontak_utama,telepon_kontak_utama,whatsapp_mitra,no_telepon_mitra',
         ]);
+
+        if ($normalizedRole === 'external') {
+            $dokumen_kerjasama->makeHidden(self::FIELD_TERTUTUP_MITRA);
+        }
 
         return response([
             'success' => true,
@@ -903,6 +914,7 @@ class DokumenKerjasamaController extends Controller
             'judul_dokumen' => ['nullable', 'string', 'max:255'],
             'manfaat' => ['nullable', 'string'],
             'luaran_kerja_sama' => ['nullable', 'string'],
+            'nilai_kerjasama' => ['nullable', 'string', 'max:255'],
             'ruang_lingkup_ids' => ['nullable', 'array'],
             'ruang_lingkup_ids.*' => ['integer', 'exists:master_ruang_lingkup,id'],
             'tanggal_mulai' => ['nullable', 'date'],
@@ -961,6 +973,7 @@ class DokumenKerjasamaController extends Controller
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
             'manfaat' => ['nullable', 'string'],
             'luaran_kerja_sama' => ['nullable', 'string'],
+            'nilai_kerjasama' => ['nullable', 'string', 'max:255'],
             'ruang_lingkup_ids' => ['nullable', 'array'],
             'ruang_lingkup_ids.*' => ['integer', 'exists:master_ruang_lingkup,id'],
             'tanggal_mulai' => ['nullable', 'date'],
@@ -1012,6 +1025,7 @@ class DokumenKerjasamaController extends Controller
             'judul_dokumen' => ['nullable', 'string', 'max:255'],
             'manfaat' => ['nullable', 'string'],
             'luaran_kerja_sama' => ['nullable', 'string'],
+            'nilai_kerjasama' => ['nullable', 'string', 'max:255'],
             'ruang_lingkup_ids' => ['nullable', 'array'],
             'ruang_lingkup_ids.*' => ['integer', 'exists:master_ruang_lingkup,id'],
             'tanggal_mulai' => ['nullable', 'date'],

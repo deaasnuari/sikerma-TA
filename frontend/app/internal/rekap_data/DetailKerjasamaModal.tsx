@@ -31,6 +31,7 @@ interface KerjasamaItem {
   manfaatKerjasama?: string;
   luaranKerjaSama?: string;
   durasiBulan?: number;
+  nilaiKerjasama?: string;
   jurusanNama?: string;
   prodiNama?: string;
   unitKerjaNama?: string;
@@ -329,6 +330,12 @@ function TabInformasi({ item }: { item: KerjasamaItem }) {
             <p className="text-[10px] text-gray-500">Durasi</p>
             <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{item.durasiBulan ? `${item.durasiBulan} bulan` : '-'}</p>
           </div>
+        </div>
+
+        {/* Nilai kerja sama diisi admin (di Rekap Data admin); di sini hanya dibaca. */}
+        <div>
+          <p className="text-[10px] text-gray-500">Nilai Kerja Sama</p>
+          <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{item.nilaiKerjasama || '-'}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

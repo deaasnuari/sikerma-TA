@@ -58,6 +58,7 @@ interface KerjasamaItem {
   manfaatSebenarnya?: string;
   luaranKerjaSama?: string;
   durasiBulan?: number;
+  nilaiKerjasama?: string;
   jurusanNama?: string;
   prodiNama?: string;
   unitKerjaNama?: string;
@@ -97,6 +98,7 @@ function mapRekapToItem(d: RekapDokumen): KerjasamaItem {
     manfaatSebenarnya: d.manfaatSebenarnya,
     luaranKerjaSama: d.luaranKerjaSama,
     durasiBulan: d.durasiBulan,
+    nilaiKerjasama: d.nilaiKerjasama,
     jurusanNama: d.jurusanNama,
     prodiNama: d.prodiNama,
     unitKerjaNama: d.unitKerjaNama,
@@ -398,6 +400,7 @@ export default function InternalRekapDataPage() {
       'Tanggal Awal Kerja Sama',
       'Tanggal Akhir Kerja Sama',
       'Durasi (bulan)',
+      'Nilai Kerja Sama',
       'Jurusan/Prodi/Unit',
       'Status Kerjasama',
       'Jenis',
@@ -421,6 +424,7 @@ export default function InternalRekapDataPage() {
         item.tanggalMulai,
         item.berlakuHingga,
         item.durasiBulan ?? '-',
+        item.nilaiKerjasama || '-',
         jurusanUnitDisplay,
         item.status,
         item.jenis,
@@ -667,6 +671,7 @@ export default function InternalRekapDataPage() {
                 <th className="px-4 py-3">Tanggal Awal Kerja Sama</th>
                 <th className="px-4 py-3">Tanggal Akhir Kerja Sama</th>
                 <th className="px-4 py-3">Durasi (bulan)</th>
+                <th className="px-4 py-3">Nilai Kerja Sama</th>
                 <th className="px-4 py-3">Jurusan/Prodi/Unit</th>
                 <th className="px-4 py-3">Status Kerjasama</th>
                 <th className="px-4 py-3">Jenis</th>
@@ -676,7 +681,7 @@ export default function InternalRekapDataPage() {
             <tbody>
               {paginatedData.length === 0 ? (
                 <tr>
-                  <td colSpan={18} className="px-4 py-10 text-center text-[12px] text-gray-500">
+                  <td colSpan={19} className="px-4 py-10 text-center text-[12px] text-gray-500">
                     Data tidak ditemukan berdasarkan filter saat ini.
                   </td>
                 </tr>
@@ -712,6 +717,7 @@ export default function InternalRekapDataPage() {
                     <td className="px-4 py-3 whitespace-nowrap">{row.tanggalMulai}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.berlakuHingga}</td>
                     <td className="px-4 py-3 text-center">{row.durasiBulan ?? '-'}</td>
+                    <td className="px-4 py-3 max-w-[160px]"><p className="text-[11px] text-gray-700 line-clamp-2">{row.nilaiKerjasama || '-'}</p></td>
                     <td className="px-4 py-3">{jurusanUnitDisplay}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-3 py-1 text-[10px] font-semibold ${statusBadgeMap[row.status]}`}>
