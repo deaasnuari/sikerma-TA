@@ -41,6 +41,13 @@ export interface RekapDokumen {
   tahun: string;
   status: RekapStatus;
   whatsappNumber?: string;
+  // Pecahan whatsappNumber: WhatsApp mitra, WhatsApp PIC mitra, dan PIC Polibatam (nomor tanpa kode negara).
+  whatsappMitraUmum?: string;
+  whatsappPicMitra?: string;
+  picPolibatamNama?: string;
+  picPolibatamJabatan?: string;
+  picPolibatamEmail?: string;
+  picPolibatamTelepon?: string;
   emailMitra?: string;
   // No. Telepon mitra — terpisah dari WhatsApp di atas (master_mitra.no_telepon_mitra).
   noTeleponMitra?: string;
@@ -56,6 +63,8 @@ export interface RekapDokumen {
   // ATAU Prodi). jurusanUnitProdiId cuma terisi kalau unitProdiId itu Prodi — dipakai form edit
   // untuk prefill dropdown Jurusan → Prodi bertingkat.
   unitProdiId?: number;
+  // Semua jurusan/prodi dokumen (pilihan majemuk); unitProdiId di atas = yang utama.
+  unitProdiIds?: number[];
   jurusanUnitProdiId?: number;
   dokumenTerkait?: DokumenTerkait[];
   dokumenPendukungTerkait?: DokumenTerkait[];
@@ -83,7 +92,7 @@ export interface RekapDokumen {
   // masih bersumber dari `keterangan` untuk menjaga tampilan lama tetap jalan.
   manfaatSebenarnya?: string;
   keteranganAsli?: string;
-  durasiTahun?: number;
+  durasiBulan?: number;
   jurusanNama?: string;
   prodiNama?: string;
   unitKerjaNama?: string;
@@ -123,6 +132,10 @@ export interface DokumenData {
   // Terisi kalau asalKategori === 'Jurusan' dan Prodi-nya sudah dipilih — dikirim sebagai
   // unit_prodi_id ke backend supaya dokumen tersimpan di level Prodi, bukan cuma Jurusan.
   prodiId?: number | null;
+  // Pilihan majemuk (prodi + jurusan tanpa prodi); prodiId di atas = yang utama. jurusanIds hanya dikirim
+  // saat submit supaya backend bisa memvalidasi tiap prodi memang anak dari salah satu jurusan itu.
+  prodiIds?: number[];
+  jurusanIds?: number[];
   negara?: string;
   ruangLingkup?: string[];
   ruangLingkupIds?: number[];
@@ -509,7 +522,7 @@ export function getRekapJenisOptions(items: RekapDokumen[]): string[] {
 // jurusan/unit aktif harus selalu ikut Data Master (lihat masterUnitOptions di rekap_data/page.tsx),
 // supaya kalau nama di Data Master diubah/disinkron ulang, dropdown ini tidak nyisain nama lama.
 export function getRekapUnitOptions(items: RekapDokumen[]): string[] {
-  return ['Semua Jurusan/unit', ...Array.from(new Set(items.map((item) => item.unit).filter(Boolean)))];
+  return ['Semua Jurusan/Prodi/Unit', ...Array.from(new Set(items.map((item) => item.unit).filter(Boolean)))];
 }
 
 // Ambil daftar jenis mitra (kategori mitra) unik untuk dropdown filter.
@@ -545,7 +558,7 @@ export function getAvailableYears(items: RekapDokumen[]): number[] {
 export function filterRekapData(items: RekapDokumen[], filters: RekapFilterOptions): RekapDokumen[] {
   return items.filter((item) => {
     const matchesJenis = filters.filterJenis === 'Semua Jenis' || item.jenis === filters.filterJenis;
-    const matchesUnit = filters.filterUnit === 'Semua Jurusan/unit' || item.unit === filters.filterUnit;
+    const matchesUnit = filters.filterUnit === 'Semua Jurusan/Prodi/Unit' || item.unit === filters.filterUnit;
     const matchesStatus = filters.filterStatus === 'Semua Status' || item.status === filters.filterStatus;
     const matchesTahun = filters.filterTahun === null || item.tahun === filters.filterTahun;
     const matchesBulanMulai = matchesBulan(item.tanggalMulaiRaw, filters.filterBulan);
@@ -573,7 +586,7 @@ export function filterRekapData(items: RekapDokumen[], filters: RekapFilterOptio
       item.luaranKerjaSama,
       item.tanggalMulai,
       item.berlakuHingga,
-      item.durasiTahun !== undefined ? String(item.durasiTahun) : '',
+      item.durasiBulan !== undefined ? String(item.durasiBulan) : '',
       item.jurusanNama,
       item.prodiNama,
       item.unitKerjaNama,
@@ -687,6 +700,7 @@ if (item.sourcePengajuanId) {
     unitKerja: isProdi ? (item.jurusanNama || item.unit) : item.unit,
     // prodiId cuma terisi kalau unitProdiId dokumen ini memang menunjuk ke Prodi (bukan Jurusan/Unit).
     prodiId: item.jurusanUnitProdiId ? item.unitProdiId ?? null : null,
+    prodiIds: asalKategori === 'Jurusan' ? (item.unitProdiIds ?? (item.unitProdiId ? [item.unitProdiId] : [])) : [],
     ruangLingkup: item.ruangLingkup || [],
     ruangLingkupIds: item.ruangLingkupIds || [],
     dokumenTerkait: item.dokumenTerkait,

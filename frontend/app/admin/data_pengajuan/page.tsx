@@ -8,6 +8,9 @@ import { addAdminNotification, markNotificationsByHrefPrefixAsRead } from '@/ser
 import AdminAjukanKerjasamaForm from './AjukanKerjasamaForm';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { invalidateRekapCache } from '@/services/dokumenKerjasamaApiService';
+import FileRevisiBox from '@/components/FileRevisiBox';
+import { buildPesanWhatsAppPengajuan } from '@/lib/whatsappPesan';
 import InternalAjukanKerjasamaForm from '@/app/internal/data_pengajuan/AjukanKerjasamaForm';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 import { getPageNumbers } from '@/lib/pagination';
@@ -138,9 +141,15 @@ function normalizeWhatsAppNumber(value?: string | null): string {
   return number;
 }
 
-function buildWhatsAppUrl(value?: string | null): string | null {
+function buildWhatsAppUrl(value?: string | null, pesan?: string): string | null {
   const normalized = normalizeWhatsAppNumber(value);
-  return normalized ? `https://wa.me/${normalized}` : null;
+  return normalized ? `https://wa.me/${normalized}${pesan ? `?text=${encodeURIComponent(pesan)}` : ''}` : null;
+}
+
+// Nomor PIC Polibatam disimpan tanpa kode negara (form-nya sudah memberi awalan +62), mis. "812 3457 6789".
+function buildPolibatamWhatsAppUrl(value?: string | null, pesan?: string): string | null {
+  const local = (value || '').replace(/\D/g, '').replace(/^62/, '').replace(/^0+/, '');
+  return local ? `https://wa.me/62${local}${pesan ? `?text=${encodeURIComponent(pesan)}` : ''}` : null;
 }
 
 const editTemplateDokumenMap: Record<string, TemplateDokumenConfig> = {
@@ -235,7 +244,7 @@ export default function PengajuanKerjasama() {
 
   // Keep hook order stable on every render to avoid runtime hook mismatch.
   const [filterJurusan, setFilterJurusan] = useState('Semua Kategori Kerjasama');
-  const [filterUnitProdi, setFilterUnitProdi] = useState('Semua Jurusan/unit');
+  const [filterUnitProdi, setFilterUnitProdi] = useState('Semua Jurusan/Prodi/Unit');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterTahun, setFilterTahun] = useState('Semua Tahun');
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
@@ -252,6 +261,8 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const [reviewFinalFile, setReviewFinalFile] = useState<File | null>(null);
   const [reviewFinalFilePreview, setReviewFinalFilePreview] = useState<{ name: string; url: string } | null>(null);
   const [reviewFinalLink, setReviewFinalLink] = useState('');
+  // Berkas Word opsional yang dilampirkan admin saat meminta revisi.
+  const [reviewRevisiFile, setReviewRevisiFile] = useState<{ file: File; url: string } | null>(null);
   const [reviewDistribusiUserIds, setReviewDistribusiUserIds] = useState<number[]>([]);
   const [reviewDistribusiSearch, setReviewDistribusiSearch] = useState('');
   const [internalUsersList, setInternalUsersList] = useState<DistribusiKandidat[]>([]);
@@ -857,7 +868,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
     if (seen.has(item.id)) {
       continue;
     }
-    if (filterUnitProdi !== 'Semua Jurusan/unit' && item.namaUnitProdi !== filterUnitProdi) {
+    if (filterUnitProdi !== 'Semua Jurusan/Prodi/Unit' && item.namaUnitProdi !== filterUnitProdi) {
       continue;
     }
     filtered.push(item);
@@ -908,6 +919,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
       jenisKerjasama: editingItem.jenisDokumen,
       unitPelaksana: editingItem.namaUnitProdi,
       selectedProdiId: editingItem.unitProdiId ?? null,
+      selectedProdiIds: editingItem.unitProdiIds ?? (editingItem.unitProdiId ? [editingItem.unitProdiId] : []),
       tanggalMulai: toDateInputValue(editingItem.tanggalMulai),
       tanggalBerakhir: toDateInputValue(editingItem.tanggalBerakhir),
       judulKerjasama: editingItem.judulPengajuan,
@@ -916,6 +928,10 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
       jabatanKontak: editingItem.mitraPicJabatan || editingItem.jabatanPengusul || '',
       emailKontak: editingItem.mitraPicEmail || editingItem.emailPengusul || '',
       teleponKontak: editingItem.mitraPicTelepon || editingItem.whatsappPengusul || '',
+      picPolibatamNama: editingItem.picPolibatamNama || '',
+      picPolibatamJabatan: editingItem.picPolibatamJabatan || '',
+      picPolibatamEmail: editingItem.picPolibatamEmail || '',
+      picPolibatamTelepon: editingItem.picPolibatamTelepon || '',
       selectedRuangLingkup: editingItem.ruangLingkup,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -936,6 +952,7 @@ function openReview(item: PengajuanItem) {
     setReviewFinalFile(null);
     setReviewFinalFilePreview(null);
     setReviewFinalLink('');
+    setReviewRevisiFile(null);
     setReviewDistribusiUserIds(item.distribusiUserIds ?? []);
     setReviewDistribusiSearch('');
   }
@@ -945,8 +962,13 @@ function openReview(item: PengajuanItem) {
     if (selected.length === 0) return;
 
     const file = selected[0];
+    // Berkas final yang di-ACC wajib PDF (versi final bertanda tangan), bukan Word.
+    if (!/\.pdf$/i.test(file.name)) {
+      setInfoModalMessage(`${file.name}: Berkas final harus berformat PDF.`);
+      return;
+    }
     const validationError = validateSelectedFile(file, {
-      accept: '.pdf,.doc,.docx',
+      accept: '.pdf',
       maxSizeBytes: MAX_EDIT_FILE_SIZE,
     });
     if (validationError) {
@@ -966,9 +988,38 @@ function openReview(item: PengajuanItem) {
     reader.readAsDataURL(file);
   }
 
+  function handleReviewRevisiFileUpload(files: FileList | null) {
+    const file = Array.from(files || [])[0];
+    if (!file) return;
+
+    // Hanya Word: cek ekstensi eksplisit (validateSelectedFile juga menerima tipe MIME lain bila cocok).
+    if (!/\.docx?$/i.test(file.name)) {
+      setInfoModalMessage(`${file.name}: File revisi harus berformat Word (.doc atau .docx).`);
+      return;
+    }
+    const validationError = validateSelectedFile(file, {
+      accept: '.doc,.docx',
+      maxSizeBytes: MAX_EDIT_FILE_SIZE,
+    });
+    if (validationError) {
+      setInfoModalMessage(`${file.name}: ${validationError}`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => setReviewRevisiFile({ file, url: reader.result as string });
+    reader.readAsDataURL(file);
+  }
+
   function handleRemoveReviewFinalFile() {
     setReviewFinalFile(null);
     setReviewFinalFilePreview(null);
+  }
+
+function revisiFilePayload() {
+    return reviewRevisiFile
+      ? { name: reviewRevisiFile.file.name, url: reviewRevisiFile.url, type: reviewRevisiFile.file.type, size: reviewRevisiFile.file.size }
+      : undefined;
   }
 
 async function saveReview() {
@@ -980,7 +1031,7 @@ async function saveReview() {
           setInfoModalMessage('Catatan Revisi wajib diisi.');
           return;
         }
-        const updated = await savePengajuanRevisionApi(reviewItem.id, reviewComment, reviewComment, reviewItem.updatedAt);
+        const updated = await savePengajuanRevisionApi(reviewItem.id, reviewComment, reviewComment, reviewItem.updatedAt, revisiFilePayload());
         setPengajuanData((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
       } else {
         const updated = await savePengajuanReviewApi(reviewItem.id, reviewDecision, reviewComment, undefined, reviewItem.updatedAt);
@@ -1006,7 +1057,7 @@ async function saveReview() {
 
     if (reviewDecision === 'Revisi') {
       try {
-        const updated = await savePengajuanRevisionApi(reviewItem.id, reviewComment, reviewComment, reviewItem.updatedAt);
+        const updated = await savePengajuanRevisionApi(reviewItem.id, reviewComment, reviewComment, reviewItem.updatedAt, revisiFilePayload());
         setPengajuanData((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
         addAdminNotification({
           title: 'Pengajuan Diminta Revisi',
@@ -1174,6 +1225,10 @@ async function saveReview() {
             targetRole: 'external',
           });
         }
+        // Dokumen final baru langsung masuk Rekap Data: buang cache daftar rekap dan kabari halaman
+        // Rekap yang sedang terbuka supaya mengambil ulang (dokumen terbaru tampil paling atas).
+        invalidateRekapCache();
+        window.dispatchEvent(new Event('rekap-data-updated'));
         setInfoModalMessage('Review pengajuan berhasil disimpan dan notifikasi dikirim.');
       } catch (err) {
         setInfoModalMessage('Gagal menyimpan review ke server: ' + (err instanceof Error ? err.message : 'Terjadi kesalahan.'));
@@ -1423,12 +1478,18 @@ function addEditJurusanUnitOption() {
       jabatanKontak: string;
       emailKontak: string;
       teleponKontak: string;
+      picPolibatamNama?: string;
+      picPolibatamJabatan?: string;
+      picPolibatamEmail?: string;
+      picPolibatamTelepon?: string;
     };
     asal: 'Jurusan' | 'Unit';
     selectedRuangLingkup: string[];
     dokumen: File[];
     dokumenAttachments: { file: File; dataUrl?: string }[];
     selectedProdiId: number | null;
+    selectedProdiIds: number[];
+    selectedJurusanIds: number[];
     existingFileAttachments?: PengajuanFileAttachment[];
   }): Promise<boolean> {
     if (!editingItem) {
@@ -1524,6 +1585,9 @@ function addEditJurusanUnitOption() {
         const allUnits = [...masterJurusanRows, ...masterUnitRows, ...masterProdiRows];
         return allUnits.find((u) => u.nama.toLowerCase() === unitName)?.id ?? editingItem.unitProdiId;
       })(),
+      ...(payload.selectedProdiIds.length > 0
+        ? { unitProdiIds: payload.selectedProdiIds, jurusanIds: payload.selectedJurusanIds }
+        : {}),
       jenisDokumen: payload.formData.jenisKerjasama.trim() || editingItem.jenisDokumen,
       tanggalMulai: payload.formData.tanggalMulai || undefined,
       tanggalBerakhir: payload.formData.tanggalBerakhir || undefined,
@@ -1531,6 +1595,10 @@ function addEditJurusanUnitOption() {
       ruangLingkupIds: resolvedRuangLingkupIds.length > 0 ? resolvedRuangLingkupIds : editingItem.ruangLingkupIds,
       emailPengusul: payload.formData.emailKontak || editingItem.mitraPicEmail || editingItem.emailPengusul,
       whatsappPengusul: payload.formData.teleponKontak || editingItem.mitraPicTelepon || editingItem.whatsappPengusul,
+      picPolibatamNama: payload.formData.picPolibatamNama?.trim() ?? '',
+      picPolibatamJabatan: payload.formData.picPolibatamJabatan?.trim() ?? '',
+      picPolibatamEmail: payload.formData.picPolibatamEmail?.trim() ?? '',
+      picPolibatamTelepon: payload.formData.picPolibatamTelepon?.trim() ?? '',
       mitraTelepon: payload.formData.teleponMitra || editingItem.mitraTelepon,
       mitraNoTelepon: payload.formData.noTeleponMitra || editingItem.mitraNoTelepon,
       deskripsiPengajuan: payload.formData.deskripsi.trim().slice(0, 100) || editingItem.deskripsiPengajuan,
@@ -1889,7 +1957,7 @@ function addEditJurusanUnitOption() {
           <GroupedFilterSelect
             value={filterUnitProdi}
             onChange={setFilterUnitProdi}
-            allLabel="Semua Jurusan/unit"
+            allLabel="Semua Jurusan/Prodi/Unit"
             groups={[
               { label: 'Jurusan', options: unitProdiGroups.jurusan },
               { label: 'Program Studi', options: unitProdiGroups.prodi },
@@ -2363,9 +2431,9 @@ function addEditJurusanUnitOption() {
                 <div className="mt-3 grid gap-3 text-[10px] sm:grid-cols-2">
                   <div>
                     <p className="text-gray-500">Nomor WhatsApp Aktif Mitra</p>
-                    {buildWhatsAppUrl(detailItem.mitraTelepon) ? (
+                    {buildWhatsAppUrl(detailItem.mitraTelepon, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama)) ? (
                       <a
-                        href={buildWhatsAppUrl(detailItem.mitraTelepon) || '#'}
+                        href={buildWhatsAppUrl(detailItem.mitraTelepon, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama)) || '#'}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-1 inline-flex items-center gap-1 font-semibold text-green-700 underline hover:text-green-800"
@@ -2378,15 +2446,31 @@ function addEditJurusanUnitOption() {
                     )}
                   </div>
                   <div>
-                    <p className="text-gray-500">No WhatsApp Person PIC</p>
-                    {buildWhatsAppUrl(detailItem.whatsappPengusul) ? (
+                    <p className="text-gray-500">No WhatsApp PIC Mitra</p>
+                    {buildWhatsAppUrl(detailItem.whatsappPengusul, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama)) ? (
                       <a
-                        href={buildWhatsAppUrl(detailItem.whatsappPengusul) || '#'}
+                        href={buildWhatsAppUrl(detailItem.whatsappPengusul, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama)) || '#'}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-1 inline-flex items-center gap-1 font-semibold text-green-700 underline hover:text-green-800"
                       >
-                        {detailItem.whatsappPengusul}
+                        {detailItem.mitraPicNama ? `${detailItem.mitraPicNama} · ` : ''}{detailItem.whatsappPengusul}
+                        <ExternalLink size={12} />
+                      </a>
+                    ) : (
+                      <p className="text-gray-900 font-medium">-</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-gray-500">No WhatsApp PIC Polibatam</p>
+                    {buildPolibatamWhatsAppUrl(detailItem.picPolibatamTelepon, buildPesanWhatsAppPengajuan(detailItem, detailItem.picPolibatamNama)) ? (
+                      <a
+                        href={buildPolibatamWhatsAppUrl(detailItem.picPolibatamTelepon, buildPesanWhatsAppPengajuan(detailItem, detailItem.picPolibatamNama)) || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-flex items-center gap-1 font-semibold text-green-700 underline hover:text-green-800"
+                      >
+                        {detailItem.picPolibatamNama ? `${detailItem.picPolibatamNama} · ` : ''}+62 {detailItem.picPolibatamTelepon}
                         <ExternalLink size={12} />
                       </a>
                     ) : (
@@ -2423,7 +2507,7 @@ function addEditJurusanUnitOption() {
                     </span>
                   </div>
                   <div>
-                    <p className="text-gray-500">Jurusan/Unit</p>
+                    <p className="text-gray-500">Jurusan/Prodi/Unit</p>
                     <p className="text-gray-900 font-medium">{detailItem.namaUnitProdi}</p>
                   </div>
                   <div>
@@ -2465,6 +2549,8 @@ function addEditJurusanUnitOption() {
                   ))}
                 </div>
               </div>
+
+              <FileRevisiBox files={detailItem.revisiFiles} forPengusul={false} />
 
               <div className="bg-white rounded-lg px-4 py-3 border border-[#D9DCE4]">
                 <p className="text-[12px] font-semibold text-gray-900 mb-2">Dokumen Pendukung</p>
@@ -2626,6 +2712,43 @@ function addEditJurusanUnitOption() {
                     placeholder="Berikan catatan revisi untuk pengusul..."
                     className="mt-1 w-full rounded-lg border border-[#D2D7E5] bg-white px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-[#1E376C]"
                   />
+
+                  <div className="mt-3 rounded-lg border border-[#D9DCE4] bg-white p-3">
+                    <p className="text-[10px] font-semibold text-gray-700">Lampirkan File Revisi (opsional)</p>
+                    <p className="mb-2 mt-0.5 text-[9.5px] text-gray-500">
+                      Hanya format Word (.doc / .docx), maksimal 10 MB. Pengusul (internal atau mitra) dapat mengunduhnya lalu mengunggah perbaikannya.
+                    </p>
+                    {reviewRevisiFile ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Paperclip size={14} className="shrink-0 text-green-600" />
+                          <span className="truncate text-[10px] font-medium text-green-700">{reviewRevisiFile.file.name}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setReviewRevisiFile(null)}
+                          className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
+                          aria-label="Hapus file revisi"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-white px-4 py-3 text-[12px] font-medium text-slate-600 hover:border-[#173B82] hover:text-[#173B82]">
+                        <Upload size={16} />
+                        Klik untuk Pilih File Word
+                        <input
+                          type="file"
+                          accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          className="hidden"
+                          onChange={(e) => {
+                            handleReviewRevisiFileUpload(e.target.files);
+                            e.currentTarget.value = '';
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -2648,7 +2771,7 @@ function addEditJurusanUnitOption() {
                   <p className="text-[12px] font-semibold text-gray-900 mb-3">Upload Final Berkas</p>
                   <p className="text-[10px] text-gray-600 mb-1">Unggah dokumen final yang telah disetujui untuk disimpan sebagai arsip.</p>
                   <p className="text-[10px] font-medium text-amber-700 mb-1">
-                    Dokumen yang disetujui (ACC) pada tahap ini merupakan berkas final yang telah ditandatangani oleh kedua belah pihak. Mohon pastikan dokumen yang diunggah adalah versi final yang sah dan telah ditandatangani, bukan berupa draf.
+                    Dokumen yang disetujui (ACC) pada tahap ini merupakan berkas final yang telah ditandatangani oleh kedua belah pihak. Mohon pastikan dokumen yang diunggah adalah versi final yang sah dan telah ditandatangani, bukan berupa draf. Format berkas final harus PDF.
                   </p>
                   <p className="text-[10px] text-gray-500 mb-3">
                     Ukuran maksimal 10 MB. Kalau dokumennya lebih besar dari itu, pakai tautan (mis. Google Drive) di kolom bawah saja — tidak perlu upload, biar penyimpanan server tidak cepat penuh.
@@ -2656,10 +2779,10 @@ function addEditJurusanUnitOption() {
 
 <label className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-white px-4 py-4 text-[12px] font-medium text-slate-600 hover:border-[#173B82] hover:text-[#173B82]">
                     <Upload size={16} />
-                    Klik untuk Pilih File
+                    Klik untuk Pilih File (PDF)
                     <input
                       type="file"
-                      accept=".pdf,.doc,.docx"
+                      accept=".pdf,application/pdf"
                       className="hidden"
                       onChange={(e) => {
                         handleReviewFinalFileUpload(e.target.files);
@@ -2852,21 +2975,44 @@ function addEditJurusanUnitOption() {
               </div>
 
               {/* WhatsApp PIC Section */}
-              {reviewItem.whatsappPengusul && (
-                <div className="mt-2 rounded-lg border border-green-200 bg-green-50 p-3">
-                  <p className="text-[10px] font-semibold text-green-800 mb-2">Hubungi PIC via WhatsApp</p>
-                  <a
-                    href={buildWhatsAppUrl(reviewItem.whatsappPengusul) || '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-[10px] font-semibold text-white hover:bg-green-700"
-                  >
-                    <MessageSquare size={14} />
-                    Hubungi via WhatsApp
-                    <ExternalLink size={12} />
-                  </a>
+              {/* Kedua tombol selalu tampil; data lama yang nomornya belum ada tampil nonaktif. */}
+              <div className="mt-2 rounded-lg border border-green-200 bg-green-50 p-3">
+                <p className="text-[10px] font-semibold text-green-800 mb-2">Hubungi PIC via WhatsApp</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'WhatsApp PIC Mitra', url: buildWhatsAppUrl(reviewItem.whatsappPengusul, buildPesanWhatsAppPengajuan(reviewItem, reviewItem.mitraPicNama)) },
+                    {
+                      label: `WhatsApp PIC Polibatam${reviewItem.picPolibatamNama ? ` (${reviewItem.picPolibatamNama})` : ''}`,
+                      url: buildPolibatamWhatsAppUrl(reviewItem.picPolibatamTelepon, buildPesanWhatsAppPengajuan(reviewItem, reviewItem.picPolibatamNama)),
+                    },
+                  ].map((tombol) =>
+                    tombol.url ? (
+                      <a
+                        key={tombol.label}
+                        href={tombol.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-[10px] font-semibold text-white hover:bg-green-700"
+                      >
+                        <MessageSquare size={14} />
+                        {tombol.label}
+                        <ExternalLink size={12} />
+                      </a>
+                    ) : (
+                      <button
+                        key={tombol.label}
+                        type="button"
+                        disabled
+                        title="Nomor WhatsApp belum diisi"
+                        className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-gray-200 px-4 py-2 text-[10px] font-semibold text-gray-500"
+                      >
+                        <MessageSquare size={14} />
+                        {tombol.label} · nomor belum diisi
+                      </button>
+                    ),
+                  )}
                 </div>
-              )}
+              </div>
 
               <div className="flex items-center justify-end gap-2">
                 <button

@@ -2,6 +2,7 @@
 
 import { useMemo, type ComponentProps } from 'react';
 import AjukanKerjasamaForm from '@/app/internal/data_pengajuan/AjukanKerjasamaForm';
+import FileRevisiBox from '@/components/FileRevisiBox';
 import {
   refreshPengajuanDataFromApi,
   updatePengajuanItemApi,
@@ -67,6 +68,7 @@ export default function PerbaikanPengajuanModal({ item, nomorPengajuanSource, on
       jenisKerjasama: item.jenisDokumen,
       unitPelaksana: item.namaUnitProdi,
       selectedProdiId: item.unitProdiId ?? null,
+      selectedProdiIds: item.unitProdiIds ?? (item.unitProdiId ? [item.unitProdiId] : []),
       tanggalMulai: toDateInputValue(item.tanggalMulai),
       tanggalBerakhir: toDateInputValue(item.tanggalBerakhir),
       judulKerjasama: item.judulPengajuan,
@@ -75,6 +77,10 @@ export default function PerbaikanPengajuanModal({ item, nomorPengajuanSource, on
       jabatanKontak: item.mitraPicJabatan || item.jabatanPengusul || '',
       emailKontak: item.mitraPicEmail || item.emailPengusul || '',
       teleponKontak: item.mitraPicTelepon || item.whatsappPengusul || '',
+      picPolibatamNama: item.picPolibatamNama || '',
+      picPolibatamJabatan: item.picPolibatamJabatan || '',
+      picPolibatamEmail: item.picPolibatamEmail || '',
+      picPolibatamTelepon: item.picPolibatamTelepon || '',
       selectedRuangLingkup: item.ruangLingkup,
     };
   // Dihitung sekali per pengajuan (form baru dirender setelah master unit termuat) — kalau
@@ -130,6 +136,9 @@ export default function PerbaikanPengajuanModal({ item, nomorPengajuanSource, on
           mitraTelepon: form.teleponMitra.trim(),
           mitraNoTelepon: form.noTeleponMitra.trim(),
           unitProdiId,
+          ...(payload.selectedProdiIds.length > 0
+            ? { unitProdiIds: payload.selectedProdiIds, jurusanIds: payload.selectedJurusanIds }
+            : {}),
           jenisDokumen: form.jenisKerjasama.trim() || item.jenisDokumen,
           tanggalMulai: form.tanggalMulai || undefined,
           tanggalBerakhir: form.tanggalBerakhir || undefined,
@@ -138,6 +147,10 @@ export default function PerbaikanPengajuanModal({ item, nomorPengajuanSource, on
           manfaat: form.deskripsi.trim(),
           emailPengusul: form.emailKontak.trim(),
           whatsappPengusul: form.teleponKontak.trim(),
+          picPolibatamNama: form.picPolibatamNama.trim(),
+          picPolibatamJabatan: form.picPolibatamJabatan.trim(),
+          picPolibatamEmail: form.picPolibatamEmail.trim(),
+          picPolibatamTelepon: form.picPolibatamTelepon.trim(),
           jabatanPengusul: form.jabatanKontak.trim(),
           ...(filesChanged
             ? { fileName: allFiles.map((f) => f.name).join(', '), fileAttachments: allFiles }
@@ -174,6 +187,11 @@ export default function PerbaikanPengajuanModal({ item, nomorPengajuanSource, on
       onClick={onClose}
     >
       <div className="w-full max-w-[1120px] rounded-2xl" onClick={(e) => e.stopPropagation()}>
+        {isRevisi && item.revisiFiles && item.revisiFiles.length > 0 && (
+          <div className="mb-3 rounded-2xl bg-white p-4">
+            <FileRevisiBox files={item.revisiFiles} />
+          </div>
+        )}
         {unitProdiLoading ? (
           <div className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500">Memuat form…</div>
         ) : (
@@ -181,6 +199,7 @@ export default function PerbaikanPengajuanModal({ item, nomorPengajuanSource, on
           isModal
           disableDraftPersistence
           nomorPengajuanSource={nomorPengajuanSource}
+          showKontakPolibatam={nomorPengajuanSource !== 'eksternal'}
           submitButtonLabel={isRevisi ? 'Kirim Ulang Perbaikan' : 'Simpan Perubahan'}
           initialFileAttachments={item.fileAttachments ?? []}
           initialData={initialData}

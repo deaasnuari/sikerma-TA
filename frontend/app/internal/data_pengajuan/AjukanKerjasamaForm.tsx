@@ -2,8 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import { CalendarDays, CheckCircle, ChevronDown, Download, MessageCircle, Paperclip, Pencil, Plus, Upload, X } from 'lucide-react';
+import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 import { getMasterMitra, type MasterMitra as MasterMitraRow } from '@/services/masterMitraService';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   pengajuanJurusanOptions,
   type PengajuanFileAttachment,
@@ -126,6 +127,11 @@ const initialForm = {
   jabatanKontak: '',
   emailKontak: '',
   teleponKontak: '',
+  // PIC dari pihak Polibatam (pengaju internal), terpisah dari kontak person mitra di atas.
+  picPolibatamNama: '',
+  picPolibatamJabatan: '',
+  picPolibatamEmail: '',
+  picPolibatamTelepon: '',
 };
 
 const INTERNAL_PENGAJUAN_DRAFT_KEY = 'internal-pengajuan-draft-v1';
@@ -161,6 +167,11 @@ type InternalPengajuanDraft = {
   customNegaraOpts?: string[];
 };
 
+const HIDDEN_JURUSAN_ALIASES = new Set(['EL', 'TM', 'MB']);
+
+const prodiAktifOf = (jurusan: MasterUnitProdi) =>
+  (jurusan.children ?? []).filter((child) => child.jenis_node === 'prodi' && child.aktif);
+
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -177,9 +188,13 @@ type InternalAjukanKerjasamaFormProps = {
     selectedRuangLingkup?: string[];
     selectedJurusanId?: number | null;
     selectedProdiId?: number | null;
+    selectedJurusanIds?: number[];
+    selectedProdiIds?: number[];
     nomorPengajuan?: string;
   };
   initialFileAttachments?: PengajuanFileAttachment[];
+  // Bagian "Kontak Person Polibatam"; dimatikan untuk pengajuan mitra eksternal.
+  showKontakPolibatam?: boolean;
   nomorPengajuanSource?: 'admin' | 'internal' | 'eksternal';
   initialMasterUnitProdiTree?: MasterUnitProdi[];
   initialMasterRuangLingkupRows?: MasterRuangLingkup[];
@@ -195,6 +210,8 @@ type InternalAjukanKerjasamaFormProps = {
     dokumen: File[];
     dokumenAttachments: { file: File; dataUrl?: string }[];
     selectedProdiId: number | null;
+    selectedProdiIds: number[];
+    selectedJurusanIds: number[];
     existingFileAttachments: PengajuanFileAttachment[];
   }) => boolean | void | Promise<boolean | void>;
 };
@@ -271,6 +288,7 @@ export default function InternalAjukanKerjasamaForm({
   appearanceStorageKey = DEFAULT_APPEARANCE_STORAGE_KEY,
   initialData,
   initialFileAttachments,
+  showKontakPolibatam = true,
   nomorPengajuanSource = 'internal',
   initialMasterUnitProdiTree,
   initialMasterRuangLingkupRows,
@@ -294,13 +312,13 @@ export default function InternalAjukanKerjasamaForm({
   const [selectedRuangLingkup, setSelectedRuangLingkup] = useState<string[]>([]);
   const [masterRuangLingkupRows, setMasterRuangLingkupRows] = useState<MasterRuangLingkup[]>(initialMasterRuangLingkupRows ?? []);
   const [masterUnitProdiTree, setMasterUnitProdiTree] = useState<MasterUnitProdi[]>(initialMasterUnitProdiTree ?? []);
-  const [selectedJurusanId, setSelectedJurusanId] = useState<number | null>(null);
+  const [selectedJurusanIds, setSelectedJurusanIds] = useState<number[]>([]);
   const selectedJenisKerjasama = useMemo(
     () => parseJenisKerjasamaSelection(formData.jenisKerjasama),
     [formData.jenisKerjasama]
   );
   const requiresDokumenPendukung = selectedJenisKerjasama.some((j) => j === 'MoA' || j === 'IA');
-  const [selectedProdiId, setSelectedProdiId] = useState<number | null>(null);
+  const [selectedProdiIds, setSelectedProdiIds] = useState<number[]>([]);
   const [rlOpen, setRlOpen] = useState(false);
   const [rlSearch, setRlSearch] = useState('');
   const [juOpen, setJuOpen] = useState(false);
@@ -327,13 +345,16 @@ export default function InternalAjukanKerjasamaForm({
       m.nama_mitra.toLowerCase().includes(mitraSearch.toLowerCase()) ||
       (m.kode_mitra || '').toLowerCase().includes(mitraSearch.toLowerCase()),
   );
-  const hiddenJurusanAliases = new Set(['EL', 'TM', 'MB']);
-  const allJurusanRows = masterUnitProdiTree.filter(
-    (item) =>
-      item.jenis_node === 'unit' &&
-      item.kategori_unit === 'jurusan' &&
-      item.aktif &&
-      !hiddenJurusanAliases.has(item.nama.trim().toUpperCase()),
+  const allJurusanRows = useMemo(
+    () =>
+      masterUnitProdiTree.filter(
+        (item) =>
+          item.jenis_node === 'unit' &&
+          item.kategori_unit === 'jurusan' &&
+          item.aktif &&
+          !HIDDEN_JURUSAN_ALIASES.has(item.nama.trim().toUpperCase()),
+      ),
+    [masterUnitProdiTree],
   );
   // Sumbernya sama dengan Data Master (bukan lagi daftar hardcode pengajuanUnitOptions) —
   // supaya kalau nama unit di Data Master diubah/disinkron ulang, pilihan di sini ikut berubah.
@@ -341,10 +362,37 @@ export default function InternalAjukanKerjasamaForm({
     (item) => item.jenis_node === 'unit' && item.kategori_unit === 'unit_kerja' && item.aktif,
   );
   const allUnitOptions = [...allUnitRows.map((item) => item.nama), ...customUnitOpts];
-  const selectedJurusanNode = allJurusanRows.find((item) => item.id === selectedJurusanId) ?? null;
-  const jurusanSelectValue = selectedJurusanNode?.id ?? '';
-  const prodiOptionsForJurusan = (selectedJurusanNode?.children ?? []).filter((child) => child.jenis_node === 'prodi' && child.aktif);
-  const selectedProdiOption = prodiOptionsForJurusan.find((item) => item.id === selectedProdiId) ?? null;
+  const selectedJurusanNodes = useMemo(
+    () =>
+      selectedJurusanIds
+        .map((id) => allJurusanRows.find((item) => item.id === id))
+        .filter((item): item is NonNullable<typeof item> => Boolean(item)),
+    [selectedJurusanIds, allJurusanRows],
+  );
+  // Prodi dari SEMUA jurusan terpilih, diberi nama jurusannya untuk pengelompokan di dropdown.
+  const prodiOptionsForJurusan = useMemo(
+    () => selectedJurusanNodes.flatMap((jurusan) => prodiAktifOf(jurusan).map((child) => ({ ...child, jurusanNama: jurusan.nama }))),
+    [selectedJurusanNodes],
+  );
+  // Opsi dropdown dibuat sekali per perubahan data, supaya dropdown (React.memo) tidak ikut
+  // render ulang setiap kali bagian lain form yang besar ini berubah.
+  const jurusanSelectOptions = useMemo(
+    () => allJurusanRows.map((item) => ({ value: item.id, label: item.nama })),
+    [allJurusanRows],
+  );
+  const prodiSelectOptions = useMemo(
+    () => prodiOptionsForJurusan.map((item) => ({ value: item.id, label: item.nama, group: item.jurusanNama })),
+    [prodiOptionsForJurusan],
+  );
+  // Yang dikirim ke backend: prodi terpilih, plus jurusan yang memang tidak punya prodi aktif
+  // (supaya jurusan itu tetap tercatat, bukan hilang).
+  const unitProdiIdsToSend =
+    asal === 'Jurusan'
+      ? [
+          ...selectedProdiIds,
+          ...selectedJurusanNodes.filter((jurusan) => prodiAktifOf(jurusan).length === 0).map((jurusan) => jurusan.id),
+        ]
+      : [];
   const asalOptions = asal === 'Jurusan' ? allJurusanOptions : allUnitOptions;
   const masterRuangLingkupOpts = masterRuangLingkupRows.map((item) => item.nama_ruang_lingkup);
   const allRlOptions = Array.from(new Set(masterRuangLingkupOpts));
@@ -443,52 +491,46 @@ export default function InternalAjukanKerjasamaForm({
     };
   }, [initialMasterUnitProdiTree]);
 
+  // Jurusan/prodi hanya berlaku untuk asal 'Jurusan'; pindah ke 'Unit' mengosongkannya.
   useEffect(() => {
-    if (masterUnitProdiTree.length === 0) {
-      return;
-    }
-
     if (asal !== 'Jurusan') {
-      if (selectedJurusanId !== null) {
-        setSelectedJurusanId(null);
-      }
-      if (selectedProdiId !== null) {
-        setSelectedProdiId(null);
-      }
-      return;
+      setSelectedJurusanIds((prev) => (prev.length > 0 ? [] : prev));
+      setSelectedProdiIds((prev) => (prev.length > 0 ? [] : prev));
     }
+  }, [asal]);
 
-    if (!selectedJurusanNode) {
-      if (initialData?.selectedProdiId) {
-        return;
-      }
-
-      if (selectedProdiId !== null) {
-        setSelectedProdiId(null);
-      }
-      return;
-    }
-
-    const prodiStillAvailable = prodiOptionsForJurusan.some((item) => item.id === selectedProdiId);
-    if (!prodiStillAvailable && selectedProdiId !== null) {
-      setSelectedProdiId(null);
-    }
-  }, [asal, initialData?.selectedProdiId, masterUnitProdiTree.length, prodiOptionsForJurusan, selectedJurusanNode, selectedJurusanId, selectedProdiId]);
-
+  // Pilihan tersimpan (mode edit) hanya membawa id unit/prodi: turunkan jurusannya dari induk tiap
+  // prodi begitu master data termuat. Id yang ternyata sebuah jurusan (jurusan tanpa prodi) menjadi
+  // pilihan jurusan, bukan pilihan prodi.
   useEffect(() => {
-    if (asal !== 'Jurusan' || !initialData?.selectedProdiId || masterUnitProdiTree.length === 0) {
+    if (asal !== 'Jurusan' || allJurusanRows.length === 0) {
+      return;
+    }
+    if (selectedProdiIds.length === 0 || selectedJurusanIds.length > 0) {
       return;
     }
 
-    const parent = masterUnitProdiTree.find(
-      (item) => item.jenis_node === 'unit' && item.kategori_unit === 'jurusan'
-        && (item.children ?? []).some((child) => child.id === initialData.selectedProdiId),
-    );
-
-    if (parent) {
-      setSelectedJurusanId(parent.id);
+    const jurusanLangsung = selectedProdiIds.filter((id) => allJurusanRows.some((item) => item.id === id));
+    const prodiIds = selectedProdiIds.filter((id) => !jurusanLangsung.includes(id));
+    const jurusanDariProdi = allJurusanRows
+      .filter((item) => (item.children ?? []).some((child) => prodiIds.includes(child.id)))
+      .map((item) => item.id);
+    const jurusanIds = Array.from(new Set([...jurusanDariProdi, ...jurusanLangsung]));
+    if (jurusanIds.length === 0) {
+      return;
     }
-  }, [asal, initialData?.selectedProdiId, masterUnitProdiTree]);
+
+    setSelectedJurusanIds(jurusanIds);
+    setSelectedProdiIds(prodiIds);
+    setFormData((prev) => ({
+      ...prev,
+      unitPelaksana: jurusanIds
+        .map((id) => allJurusanRows.find((item) => item.id === id)?.nama)
+        .filter(Boolean)
+        .join(', '),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asal, masterUnitProdiTree, selectedProdiIds, selectedJurusanIds.length]);
 
   useEffect(() => {
     if (initialData) {
@@ -498,8 +540,8 @@ export default function InternalAjukanKerjasamaForm({
       }
 
       setFormData({ ...initialForm, ...initialData });
-      setSelectedJurusanId(initialData.selectedJurusanId ?? null);
-      setSelectedProdiId(initialData.selectedProdiId ?? null);
+      setSelectedJurusanIds(initialData.selectedJurusanIds ?? (initialData.selectedJurusanId ? [initialData.selectedJurusanId] : []));
+      setSelectedProdiIds(initialData.selectedProdiIds ?? (initialData.selectedProdiId ? [initialData.selectedProdiId] : []));
       setExistingFileAttachments(initialFileAttachments ?? []);
       setDokumen([]);
       setDokumenPendukung([]);
@@ -685,8 +727,14 @@ export default function InternalAjukanKerjasamaForm({
       const toAdd: { file: File; dataUrl?: string }[] = [];
 
       for (const file of files) {
+        // File utama (MoU/MoA/IA) wajib Word; PDF dan format lain tidak diterima.
+        if (!/\.docx?$/i.test(file.name)) {
+          setDokumenError(`${file.name}: File utama harus berformat Word (.doc atau .docx).`);
+          event.target.value = '';
+          return prev;
+        }
         const validationError = validateSelectedFile(file, {
-          accept: '.pdf,.doc,.docx',
+          accept: '.doc,.docx',
           maxSizeBytes: MAX_FILE_SIZE,
         });
         if (validationError) {
@@ -742,8 +790,14 @@ export default function InternalAjukanKerjasamaForm({
       const toAdd: { file: File; dataUrl?: string }[] = [];
 
       for (const file of files) {
+        // Dokumen pendukung (TOR/KAK/Proposal/Laporan) juga wajib Word; PDF dan format lain ditolak.
+        if (!/\.docx?$/i.test(file.name)) {
+          setDokumenPendukungError(`${file.name}: Dokumen pendukung harus berformat Word (.doc atau .docx).`);
+          event.target.value = '';
+          return prev;
+        }
         const validationError = validateSelectedFile(file, {
-          accept: '.pdf,.doc,.docx',
+          accept: '.doc,.docx',
           maxSizeBytes: MAX_FILE_SIZE,
         });
         if (validationError) {
@@ -796,6 +850,29 @@ export default function InternalAjukanKerjasamaForm({
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Ganti pilihan jurusan: prodi yang induknya sudah tidak dipilih ikut dibuang, dan teks
+  // "unit pelaksana" mengikuti daftar jurusan terpilih.
+  const handleJurusanChange = useCallback(
+    (nextIds: number[]) => {
+      const prodiTersedia = new Set(
+        nextIds.flatMap((id) => {
+          const jurusan = allJurusanRows.find((item) => item.id === id);
+          return jurusan ? prodiAktifOf(jurusan).map((child) => child.id) : [];
+        }),
+      );
+      setSelectedJurusanIds(nextIds);
+      setSelectedProdiIds((prev) => prev.filter((id) => prodiTersedia.has(id)));
+      setFormData((prev) => ({
+        ...prev,
+        unitPelaksana: nextIds
+          .map((id) => allJurusanRows.find((item) => item.id === id)?.nama)
+          .filter(Boolean)
+          .join(', '),
+      }));
+    },
+    [allJurusanRows],
+  );
+
   const buildFileAttachments = () => {
     return [...dokumen, ...dokumenPendukung].map((item) => ({
       name: item.file.name,
@@ -814,6 +891,16 @@ export default function InternalAjukanKerjasamaForm({
 
     if (selectedJenisKerjasama.length === 0) {
       setSubmitError('Pilih minimal 1 jenis kerjasama.');
+      return;
+    }
+
+    if (asal === 'Jurusan' && selectedJurusanIds.length === 0) {
+      setSubmitError('Pilih minimal 1 jurusan.');
+      return;
+    }
+
+    if (asal === 'Jurusan' && prodiOptionsForJurusan.length > 0 && selectedProdiIds.length === 0) {
+      setSubmitError('Pilih minimal 1 prodi.');
       return;
     }
 
@@ -851,7 +938,9 @@ export default function InternalAjukanKerjasamaForm({
             selectedRuangLingkup,
             dokumen: allDokumen.map((item) => item.file),
             dokumenAttachments: allDokumen,
-            selectedProdiId,
+            selectedProdiId: unitProdiIdsToSend[0] ?? null,
+            selectedProdiIds: unitProdiIdsToSend,
+            selectedJurusanIds,
             existingFileAttachments,
           }));
 
@@ -878,6 +967,10 @@ export default function InternalAjukanKerjasamaForm({
           mitraPicJabatan: formData.jabatanKontak.trim() || undefined,
           mitraPicEmail: formData.emailKontak.trim() || undefined,
           mitraPicTelepon: formData.teleponKontak.trim() || undefined,
+          picPolibatamNama: formData.picPolibatamNama.trim() || undefined,
+          picPolibatamJabatan: formData.picPolibatamJabatan.trim() || undefined,
+          picPolibatamEmail: formData.picPolibatamEmail.trim() || undefined,
+          picPolibatamTelepon: formData.picPolibatamTelepon.trim() || undefined,
           // Jika deskripsi diisi, kirimkan deskripsi ke backend. Jika tidak, kirimkan undefined agar backend bisa mengosongkan deskripsi.
           deskripsiPengajuan: formData.deskripsi.trim().slice(0, 100) || undefined,
           manfaat: formData.deskripsi.trim() || undefined,
@@ -888,7 +981,9 @@ export default function InternalAjukanKerjasamaForm({
           mitraTingkatPerusahaan: formData.tingkatPerusahaan.trim() || undefined,
           jenisDokumen: jenisKerjasama,
           namaUnitProdi: formData.unitPelaksana,
-          unitProdiId: selectedProdiId,
+          unitProdiId: unitProdiIdsToSend[0] ?? null,
+          unitProdiIds: unitProdiIdsToSend,
+          jurusanIds: asal === 'Jurusan' ? selectedJurusanIds : [],
           kategoriPengajuan: 'Internal',
           tanggalMulai: formData.tanggalMulai,
           tanggalBerakhir: formData.tanggalBerakhir,
@@ -920,8 +1015,8 @@ export default function InternalAjukanKerjasamaForm({
       setAsal('Jurusan');
       setSelectedRuangLingkup([]);
       setSelectedMitraId(null);
-      setSelectedJurusanId(null);
-      setSelectedProdiId(null);
+      setSelectedJurusanIds([]);
+      setSelectedProdiIds([]);
       setDokumen([]);
       setDokumenPendukung([]);
       setExistingFileAttachments([]);
@@ -1255,7 +1350,8 @@ export default function InternalAjukanKerjasamaForm({
                     setAsal('Jurusan');
                     setJuOpen(false);
                     handleChange('unitPelaksana', '');
-                    setSelectedProdiId(null);
+                    setSelectedProdiIds([]);
+                    setSelectedJurusanIds([]);
                   }}
                   className={`rounded-lg border px-4 py-2 text-[12px] font-semibold transition ${
                     asal === 'Jurusan'
@@ -1271,7 +1367,8 @@ export default function InternalAjukanKerjasamaForm({
                     setAsal('Unit');
                     setJuOpen(false);
                     handleChange('unitPelaksana', '');
-                    setSelectedProdiId(null);
+                    setSelectedProdiIds([]);
+                    setSelectedJurusanIds([]);
                   }}
                   className={`rounded-lg border px-4 py-2 text-[12px] font-semibold transition ${
                     asal === 'Unit'
@@ -1286,50 +1383,36 @@ export default function InternalAjukanKerjasamaForm({
                 <div className="space-y-3">
                   <div>
                     <label className="mb-1 block text-[12px] font-semibold text-slate-700">Jurusan</label>
-                    <select
-                      value={jurusanSelectValue}
-                      onChange={(e) => {
-                        const nextId = e.target.value ? Number(e.target.value) : null;
-                        setSelectedJurusanId(nextId);
-                        setSelectedProdiId(null);
-                        const nextJurusan = allJurusanRows.find((item) => item.id === nextId);
-                        handleChange('unitPelaksana', nextJurusan?.nama ?? '');
-                      }}
-                      className="input-field h-10 w-full rounded-lg px-3 text-[12px]"
-                      required
-                    >
-                      <option value="">Pilih jurusan</option>
-                      {allJurusanRows.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.nama}
-                        </option>
-                      ))}
-                    </select>
+                    <MultiSelectDropdown
+                      options={jurusanSelectOptions}
+                      selected={selectedJurusanIds}
+                      onChange={handleJurusanChange}
+                      placeholder="Pilih jurusan"
+                      searchPlaceholder="Cari jurusan..."
+                      ariaLabel="Pilih jurusan"
+                      textClassName="text-[12px]"
+                    />
                   </div>
 
                   <div>
                     <label className="mb-1 block text-[12px] font-semibold text-slate-700">Prodi</label>
-                    <select
-                      value={selectedProdiId ?? ''}
-                      onChange={(e) => setSelectedProdiId(e.target.value ? Number(e.target.value) : null)}
-                      className="input-field h-10 w-full rounded-lg px-3 text-[12px]"
-                      disabled={!selectedJurusanNode || prodiOptionsForJurusan.length === 0}
-                      required
-                    >
-                      <option value="">
-                        {!selectedJurusanNode
+                    <MultiSelectDropdown
+                      options={prodiSelectOptions}
+                      selected={selectedProdiIds}
+                      onChange={setSelectedProdiIds}
+                      disabled={selectedJurusanIds.length === 0 || prodiOptionsForJurusan.length === 0}
+                      placeholder={
+                        selectedJurusanIds.length === 0
                           ? '-- Pilih jurusan terlebih dahulu --'
                           : prodiOptionsForJurusan.length === 0
                             ? '-- Tidak ada prodi untuk jurusan ini --'
-                            : 'Pilih prodi'}
-                      </option>
-                      {prodiOptionsForJurusan.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.nama}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedProdiOption && <p className="mt-1 text-[10px] text-slate-500">Prodi terpilih: {selectedProdiOption.nama}</p>}
+                            : 'Pilih prodi'
+                      }
+                      searchPlaceholder="Cari prodi..."
+                      ariaLabel="Pilih prodi"
+                      textClassName="text-[12px]"
+                    />
+                    {selectedProdiIds.length > 0 && <p className="mt-1 text-[10px] text-slate-500">{selectedProdiIds.length} prodi terpilih</p>}
                   </div>
                 </div>
               ) : (
@@ -1349,14 +1432,16 @@ export default function InternalAjukanKerjasamaForm({
                             onClick={(e) => {
                               e.stopPropagation();
                               handleChange('unitPelaksana', '');
-                              setSelectedProdiId(null);
+                              setSelectedProdiIds([]);
+                              setSelectedJurusanIds([]);
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 handleChange('unitPelaksana', '');
-                                setSelectedProdiId(null);
+                                setSelectedProdiIds([]);
+                                setSelectedJurusanIds([]);
                               }
                             }}
                             className="cursor-pointer hover:opacity-75"
@@ -1383,7 +1468,8 @@ export default function InternalAjukanKerjasamaForm({
                                   type="button"
                                   onClick={() => {
                                     handleChange('unitPelaksana', option);
-                                    setSelectedProdiId(null);
+                                    setSelectedProdiIds([]);
+                                    setSelectedJurusanIds([]);
                                     setJuOpen(false);
                                   }}
                                   className={`flex flex-1 items-center justify-between rounded-lg px-3 py-2 text-left text-[12px] ${
@@ -1555,6 +1641,41 @@ export default function InternalAjukanKerjasamaForm({
           </div>
         </section>
 
+        {showKontakPolibatam && (
+        <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h2 className="text-[13.5px] font-bold text-slate-900">Kontak Person Polibatam</h2>
+          <p className="mb-4 text-[10px] text-slate-500">PIC dari pihak Polibatam yang mengajukan kerja sama ini</p>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">Nama Lengkap</label>
+              <input value={formData.picPolibatamNama} onChange={(e) => handleChange('picPolibatamNama', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]" placeholder="Nama PIC Polibatam" required={!initialData} />
+            </div>
+            <div>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">Jabatan</label>
+              <input value={formData.picPolibatamJabatan} onChange={(e) => handleChange('picPolibatamJabatan', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]" placeholder="Jabatan di Polibatam" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">Email</label>
+              <input type="email" value={formData.picPolibatamEmail} onChange={(e) => handleChange('picPolibatamEmail', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]" placeholder="email@polibatam.ac.id" required={!initialData} />
+            </div>
+            <div>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">WhatsApp</label>
+              <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-100">
+                <span className="flex shrink-0 items-center border-r border-slate-200 bg-slate-100 px-2.5 text-[11px] font-semibold text-slate-600">
+                  +62
+                </span>
+                <input value={formData.picPolibatamTelepon} onChange={(e) => handleChange('picPolibatamTelepon', e.target.value)} className="h-10 flex-1 bg-transparent px-3 text-[12px] outline-none" placeholder="812 3457 6789" required={!initialData} />
+              </div>
+              <p className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-emerald-600">
+                <MessageCircle size={12} className="shrink-0" />
+                Pastikan nomor ini aktif di WhatsApp agar mudah dihubungi
+              </p>
+            </div>
+          </div>
+        </section>
+        )}
+
         <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <h2 className="text-[13.5px] font-bold text-slate-900">{appearanceSettings.sectionDokumenTitle}</h2>
           <p className="mb-4 text-[10px] text-slate-500">{appearanceSettings.sectionDokumenSubtitle}</p>
@@ -1683,7 +1804,7 @@ export default function InternalAjukanKerjasamaForm({
                 {requiresDokumenPendukung && <span className="ml-1 text-rose-500">*</span>}
               </p>
               <p className="-mt-2 text-[11px] text-slate-500">
-                Unggah berkas MoU/MoA/IA-nya di sini. TOR, KAK, atau proposal diunggah di bagian Dokumen Pendukung.
+                Unggah berkas MoU/MoA/IA-nya di sini dalam format Word (.doc/.docx). TOR, KAK, atau proposal diunggah di bagian Dokumen Pendukung.
               </p>
 
               {existingFileAttachments.length > 0 && (
@@ -1715,7 +1836,7 @@ export default function InternalAjukanKerjasamaForm({
                 <input
                   type="file"
                   multiple
-                  accept=".pdf,.doc,.docx"
+                  accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   onChange={handleFileUpload}
                   className="hidden"
                 />
@@ -1726,7 +1847,7 @@ export default function InternalAjukanKerjasamaForm({
                   <p className="text-[12px] font-semibold text-slate-800">Klik untuk upload file utama</p>
                   <p className="mt-1 text-[10px] text-slate-400">atau drag &amp; drop file ke sini</p>
                   <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
-                    {['PDF', 'DOC', 'DOCX'].map((fmt) => (
+                    {['DOC', 'DOCX'].map((fmt) => (
                       <span key={fmt} className="rounded-md bg-[#173B82]/8 px-2 py-0.5 text-[10.5px] font-semibold text-[#173B82]">{fmt}</span>
                     ))}
                   </div>
@@ -1788,7 +1909,7 @@ export default function InternalAjukanKerjasamaForm({
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.doc,.docx"
+                    accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     onChange={handleDokumenPendukungUpload}
                     className="hidden"
                   />
@@ -1797,7 +1918,7 @@ export default function InternalAjukanKerjasamaForm({
                       <Upload size={18} />
                     </div>
                     <p className="text-[12px] font-semibold text-slate-800">Upload TOR / KAK / Proposal / Laporan Kegiatan</p>
-                    <p className="mt-1 text-[10px] text-slate-400">PDF, DOC, atau DOCX — maks. 10 MB</p>
+                    <p className="mt-1 text-[10px] text-slate-400">DOC atau DOCX — maks. 10 MB</p>
                   </div>
                 </label>
 

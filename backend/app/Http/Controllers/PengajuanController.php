@@ -10,6 +10,7 @@ use App\Models\MasterMitra;
 use App\Services\MasterMitraResolver;
 use App\Models\MasterRuangLingkup;
 use App\Models\MasterUnitProdi;
+use App\Support\UnitProdiSelection;
 use App\Models\Pengajuan;
 use App\Models\User;
 use App\Services\CivitasStructureService;
@@ -232,12 +233,10 @@ class PengajuanController extends Controller
             return;
         }
 
-        $unitName = null;
-        if ($pengajuan->unit_prodi_id) {
-            $unitName = MasterUnitProdi::query()
-                ->where('id', $pengajuan->unit_prodi_id)
-                ->value('nama');
-        }
+        $unitName = MasterUnitProdi::query()
+            ->whereIn('id', $pengajuan->unitProdiIdsUrut())
+            ->pluck('nama')
+            ->implode(', ') ?: null;
 
         $mitraName = trim((string) ($pengajuan->nama_mitra ?? ''));
         if ($mitraName === '' && $pengajuan->mitra_id) {
@@ -419,10 +418,20 @@ class PengajuanController extends Controller
             $nomorPengajuan = 'PGJ-' . $pengajuan->id;
         }
 
+        // Dokumen milik pengajuan INI dicari lewat sumber_pengajuan_id. Pencocokan lewat nomor pengajuan
+        // hanya untuk dokumen lama yang belum punya sumber dan masih aktif: nomor PMH bisa dipakai ulang
+        // (mis. pengajuan terakhir dihapus permanen, lalu pengajuan baru mendapat nomor yang sama), jadi
+        // dokumen bekas pengajuan lain — terutama yang sudah di Sampah — TIDAK boleh dipakai ulang, kalau
+        // tidak pengajuan baru "tertelan" ke dokumen terhapus dan tidak pernah muncul di Rekap Data.
         $existingDokumen = DokumenKerjasama::query()
             ->where('sumber_pengajuan_id', $pengajuan->id)
-            ->orWhere('no_permohonan', $nomorPengajuan)
-            ->first();
+            ->first()
+            ?? DokumenKerjasama::query()
+                ->where('no_permohonan', $nomorPengajuan)
+                ->whereNull('sumber_pengajuan_id')
+                ->whereNull('dihapus_admin_pada')
+                ->whereNull('dihapus_user_pada')
+                ->first();
 
         $requestedNomorDokumen = trim((string) $request->input('nomor_dokumen', ''));
         $existingNomorDokumen = trim((string) ($existingDokumen?->nomor_dokumen ?? ''));
@@ -505,10 +514,21 @@ class PengajuanController extends Controller
             'snap_jenis_mitra' => $snapJenisMitra !== '' ? $snapJenisMitra : null,
             'snap_bidang_usaha' => $snapBidangUsaha !== '' ? $snapBidangUsaha : null,
             'snap_tingkat_perusahaan' => $snapTingkatPerusahaan !== '' ? $snapTingkatPerusahaan : null,
+            'snap_pic_polibatam_nama' => trim((string) ($pengajuan->pic_polibatam_nama ?? '')) ?: null,
+            'snap_pic_polibatam_jabatan' => trim((string) ($pengajuan->pic_polibatam_jabatan ?? '')) ?: null,
+            'snap_pic_polibatam_email' => trim((string) ($pengajuan->pic_polibatam_email ?? '')) ?: null,
+            'snap_pic_polibatam_whatsapp' => trim((string) ($pengajuan->pic_polibatam_whatsapp ?? '')) ?: null,
             'dibuat_oleh_user_id' => $request->user()?->id,
             'file' => $primaryPath,
             'keterangan' => trim((string) ($pengajuan->deskripsi_pengajuan ?? '')),
         ];
+
+        // Pengajuan difinalkan (lagi) = dokumennya harus tampil di Rekap Data, termasuk bila dokumen
+        // lamanya pernah dihapus ke Sampah.
+        if ($existingDokumen) {
+            $dokumenPayload['dihapus_admin_pada'] = null;
+            $dokumenPayload['dihapus_user_pada'] = null;
+        }
 
         if ($existingDokumen) {
             $existingDokumen->update($dokumenPayload);
@@ -516,6 +536,8 @@ class PengajuanController extends Controller
         } else {
             $dokumen = DokumenKerjasama::create($dokumenPayload);
         }
+
+        $dokumen->syncUnitProdi($pengajuan->unitProdiIdsUrut());
 
         if ($this->hasDokumenFileTable()) {
             DokumenFile::query()->where('dokumen_id', $dokumen->id)->delete();
@@ -761,11 +783,44 @@ class PengajuanController extends Controller
             ];
         }
 
-        $pengajuan->pengajuanFiles()->delete();
+        // Berkas revisi dari admin bukan lampiran pengusul — jangan ikut terhapus saat pengusul
+        // mengirim ulang lampirannya.
+        $pengajuan->pengajuanFiles()
+            ->where(fn ($q) => $q->whereNull('peran_berkas')->orWhere('peran_berkas', '!=', 'dokumen_revisi'))
+            ->delete();
 
         if (! empty($payload)) {
             $pengajuan->pengajuanFiles()->createMany($payload);
         }
+    }
+
+    /**
+     * Berkas revisi yang dilampirkan admin saat meminta revisi (peran 'dokumen_revisi'), supaya
+     * pengusul (internal/mitra) bisa mengunduhnya lalu mengunggah perbaikannya. Satu berkas;
+     * unggahan baru menggantikan yang lama. Validasi format (.doc/.docx) ada di update().
+     */
+    private function syncRevisiFiles(Pengajuan $pengajuan, Request $request): void
+    {
+        if (! $this->hasPengajuanFileTable() || ! $request->has('revisi_file_attachments')) {
+            return;
+        }
+
+        $attachment = collect($request->input('revisi_file_attachments'))->first(fn ($item) => is_array($item));
+        if (! $attachment) {
+            return;
+        }
+
+        $path = $this->persistDataUrlAttachment($attachment) ?? $this->normalizeAttachmentPath($attachment);
+
+        $pengajuan->pengajuanFiles()->where('peran_berkas', 'dokumen_revisi')->delete();
+        $pengajuan->pengajuanFiles()->create([
+            'peran_berkas' => 'dokumen_revisi',
+            'nama_file' => trim((string) $attachment['name']),
+            'path_file' => $path,
+            'mime_type' => isset($attachment['type']) && is_string($attachment['type']) ? $attachment['type'] : null,
+            'ukuran_file_bytes' => isset($attachment['size']) && is_numeric($attachment['size']) ? (int) $attachment['size'] : null,
+            'diunggah_oleh_user_id' => $request->user()?->id,
+        ]);
     }
 
     private function syncAccFiles(Pengajuan $pengajuan, Request $request): void
@@ -1079,7 +1134,7 @@ class PengajuanController extends Controller
                     }
 
                     if ($scopedUnitProdiIds) {
-                        $builder->orWhereIn('unit_prodi_id', $scopedUnitProdiIds);
+                        $builder->orWhere(fn ($q) => $q->dalamUnitProdi($scopedUnitProdiIds));
                     }
                 });
             }
@@ -1087,7 +1142,8 @@ class PengajuanController extends Controller
 
         if ($this->shouldLoadPengajuanRelations()) {
             $query->with([
-                'unitProdi:id,nama,jenis_node,kategori_unit',
+                'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
+                'unitProdiItems:id,nama,jenis_node,kategori_unit,parent_id',
                 'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra,nama_kontak_utama,jabatan_kontak_utama,email_kontak_utama,telepon_kontak_utama',
                 'userPengusul:id,name,username',
                 'dokumenFiles',
@@ -1179,7 +1235,7 @@ class PengajuanController extends Controller
                 $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
                 $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
                 $isInStructuralScope = $scopedUnitProdiIds
-                    && in_array($pengajuan->unit_prodi_id, $scopedUnitProdiIds, false);
+                    && $pengajuan->termasukUnitProdi($scopedUnitProdiIds);
             }
 
             if (!$isOwner && !$isDistribusi && !$isInStructuralScope) {
@@ -1192,7 +1248,8 @@ class PengajuanController extends Controller
 
         if ($this->shouldLoadPengajuanRelations()) {
             $pengajuan->load([
-                'unitProdi:id,nama,jenis_node,kategori_unit',
+                'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
+                'unitProdiItems:id,nama,jenis_node,kategori_unit,parent_id',
                 'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra,nama_kontak_utama,jabatan_kontak_utama,email_kontak_utama,telepon_kontak_utama',
                 'userPengusul:id,name,username',
                 'dokumenFiles',
@@ -1244,7 +1301,12 @@ class PengajuanController extends Controller
             'jabatan_pengusul' => ['nullable', 'string', 'max:150'],
             'email_pengusul' => ['nullable', 'email', 'max:255'],
             'whatsapp_pengusul' => ['nullable', 'string', 'max:50'],
+            'pic_polibatam_nama' => ['nullable', 'string', 'max:200'],
+            'pic_polibatam_jabatan' => ['nullable', 'string', 'max:150'],
+            'pic_polibatam_email' => ['nullable', 'email', 'max:255'],
+            'pic_polibatam_whatsapp' => ['nullable', 'string', 'max:50'],
             'unit_prodi_id' => ['nullable', 'integer', 'exists:master_unit_prodi,id'],
+            ...UnitProdiSelection::rules(),
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
             'nama_mitra' => ['nullable', 'string', 'max:255'],
             'jenis_mitra' => ['nullable', 'string', 'max:150'],
@@ -1273,6 +1335,7 @@ class PengajuanController extends Controller
 
         $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
         $validated['ruang_lingkup_ids'] = $ruangLingkupIds;
+        $unitProdiIds = UnitProdiSelection::extract($validated);
 
         // Catat siapa yang membuat pengajuan ini dari sesi login, bukan dari input klien
         // (supaya nanti bisa dibedakan pengajuan yang dibuat admin vs internal vs eksternal).
@@ -1305,6 +1368,10 @@ class PengajuanController extends Controller
         try {
             $pengajuan = Pengajuan::create($validated);
 
+            if ($unitProdiIds !== null) {
+                $pengajuan->syncUnitProdi($unitProdiIds);
+            }
+
             // Set tahapan awal "Pengajuan Awal" secara otomatis
             if ($this->hasPengajuanColumn('tahapan_stage')) {
                 $pengajuan->update([
@@ -1334,7 +1401,8 @@ class PengajuanController extends Controller
 
         if ($this->shouldLoadPengajuanRelations()) {
             $pengajuan->load([
-                'unitProdi:id,nama,jenis_node,kategori_unit',
+                'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
+                'unitProdiItems:id,nama,jenis_node,kategori_unit,parent_id',
                 'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra,nama_kontak_utama,jabatan_kontak_utama,email_kontak_utama,telepon_kontak_utama',
                 'dokumenFiles',
             ]);
@@ -1475,7 +1543,12 @@ class PengajuanController extends Controller
             'jabatan_pengusul' => ['nullable', 'string', 'max:150'],
             'email_pengusul' => ['nullable', 'email', 'max:255'],
             'whatsapp_pengusul' => ['nullable', 'string', 'max:50'],
+            'pic_polibatam_nama' => ['nullable', 'string', 'max:200'],
+            'pic_polibatam_jabatan' => ['nullable', 'string', 'max:150'],
+            'pic_polibatam_email' => ['nullable', 'email', 'max:255'],
+            'pic_polibatam_whatsapp' => ['nullable', 'string', 'max:50'],
             'unit_prodi_id' => ['nullable', 'integer', 'exists:master_unit_prodi,id'],
+            ...UnitProdiSelection::rules(),
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
             'nama_mitra' => ['nullable', 'string', 'max:255'],
             'jenis_mitra' => ['nullable', 'string', 'max:150'],
@@ -1511,7 +1584,27 @@ class PengajuanController extends Controller
             'email_terverifikasi_pada' => ['nullable', 'date'],
             'distribusi_user_ids' => ['nullable', 'array'],
             'distribusi_user_ids.*' => ['integer', 'exists:users,id'],
+            // Berkas revisi dari admin (mis. draf yang sudah dicoret-coret): hanya Word, satu file.
+            'revisi_file_attachments' => ['nullable', 'array', 'max:1'],
+            'revisi_file_attachments.*.name' => ['required', 'string', 'max:255', 'regex:/\.docx?$/i'],
+            'revisi_file_attachments.*.url' => ['required', 'string'],
+            'revisi_file_attachments.*.size' => ['nullable', 'integer', 'max:10485760'],
+        ], [
+            'revisi_file_attachments.*.name.regex' => 'File revisi harus berformat Word (.doc atau .docx).',
+            'revisi_file_attachments.*.size.max' => 'File revisi maksimal 10 MB.',
         ]);
+        unset($validated['revisi_file_attachments']);
+
+        // Berkas final (ACC) yang diunggah sebagai file wajib PDF; tautan (bukan data URL) tidak dicek.
+        foreach ((array) $request->input('acc_file_attachments', []) as $index => $accFile) {
+            if (is_array($accFile)
+                && str_starts_with(trim((string) ($accFile['url'] ?? '')), 'data:')
+                && ! preg_match('/\.pdf$/i', trim((string) ($accFile['name'] ?? '')))) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    "acc_file_attachments.{$index}.name" => 'Berkas final harus berformat PDF.',
+                ]);
+            }
+        }
 
         if (! $isAdmin) {
             // Field keputusan/administrasi tetap milik admin — diabaikan kalau dikirim pengusul.
@@ -1533,6 +1626,8 @@ class PengajuanController extends Controller
         if (array_key_exists('jenis_dokumen', $validated)) {
             $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
         }
+
+        $unitProdiIds = UnitProdiSelection::extract($validated, $pengajuan->unit_prodi_id);
 
         if ($request->has('ruang_lingkup_ids')) {
             $validated['ruang_lingkup_ids'] = $ruangLingkupIds;
@@ -1573,7 +1668,7 @@ class PengajuanController extends Controller
         $statusBaru = (string) ($validated[$statusColumn] ?? $statusLama);
 
         try {
-            DB::transaction(function () use ($pengajuan, $validated, $statusBaru, $statusLama, $request, $logComment, $isAdmin, $tokenUpdatedAt) {
+            DB::transaction(function () use ($pengajuan, $validated, $unitProdiIds, $statusBaru, $statusLama, $request, $logComment, $isAdmin, $tokenUpdatedAt) {
                 if ($tokenUpdatedAt !== null) {
                     $terkunci = Pengajuan::whereKey($pengajuan->id)->lockForUpdate()->first();
                     if (! $terkunci || $this->isPengajuanStale($terkunci, $tokenUpdatedAt)) {
@@ -1582,6 +1677,10 @@ class PengajuanController extends Controller
                 }
 
                 $pengajuan->update($validated);
+
+                if ($unitProdiIds !== null) {
+                    $pengajuan->syncUnitProdi($unitProdiIds);
+                }
 
                 // Write to pengajuan_log when status changes.
                 if ($statusBaru !== $statusLama) {
@@ -1612,6 +1711,7 @@ class PengajuanController extends Controller
                     try {
                         DB::transaction(function () use ($pengajuan, $request) {
                             $this->syncAccFiles($pengajuan, $request);
+                            $this->syncRevisiFiles($pengajuan, $request);
                         });
                     } catch (\Throwable $ignored) {
                         // Do not fail main update when acc file sync fails.
@@ -1691,7 +1791,8 @@ class PengajuanController extends Controller
         // would map namaUnitProdi / namaMitra to '-', overwriting existing state.
         if ($freshPengajuan && $this->shouldLoadPengajuanRelations()) {
             $freshPengajuan->load([
-                'unitProdi:id,nama,jenis_node,kategori_unit',
+                'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
+                'unitProdiItems:id,nama,jenis_node,kategori_unit,parent_id',
                 'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra',
                 'dokumenFiles',
             ]);

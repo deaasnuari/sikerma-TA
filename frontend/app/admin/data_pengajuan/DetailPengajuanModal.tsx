@@ -4,6 +4,8 @@ import { X, FileText, CheckCircle2, Clock3, XCircle, ExternalLink, Paperclip, Do
 import type { PengajuanItem, PengajuanStatus } from '@/services/adminPengajuanService';
 import CatatanAdminPanel from '@/components/CatatanAdminPanel';
 import DokumenPerpanjanganSection from '@/components/DokumenPerpanjanganSection';
+import FileRevisiBox from '@/components/FileRevisiBox';
+import { buildPesanWhatsAppPengajuan } from '@/lib/whatsappPesan';
 
 interface Props {
   item: PengajuanItem;
@@ -19,9 +21,15 @@ function normalizeWhatsAppNumber(value?: string | null): string {
   return digits;
 }
 
-function buildWhatsAppUrl(value?: string | null): string | null {
+function buildWhatsAppUrl(value?: string | null, pesan?: string): string | null {
   const normalized = normalizeWhatsAppNumber(value);
-  return normalized ? `https://wa.me/${normalized}` : null;
+  return normalized ? `https://wa.me/${normalized}${pesan ? `?text=${encodeURIComponent(pesan)}` : ''}` : null;
+}
+
+// Nomor PIC Polibatam disimpan tanpa kode negara (form-nya sudah memberi awalan +62), mis. "812 3457 6789".
+function buildPolibatamWhatsAppUrl(value?: string | null, pesan?: string): string | null {
+  const local = (value || '').replace(/\D/g, '').replace(/^62/, '').replace(/^0+/, '');
+  return local ? `https://wa.me/62${local}${pesan ? `?text=${encodeURIComponent(pesan)}` : ''}` : null;
 }
 
 const statusConfig: Record<PengajuanStatus, { className: string; icon: React.ReactNode; label: string }> = {
@@ -108,7 +116,8 @@ export default function DetailPengajuanModal({ item, onClose }: Props) {
     ? (item.finalFilePath.startsWith('http') ? item.finalFilePath : `http://127.0.0.1:8000/storage/${item.finalFilePath.replace(/^\/+/, '')}`)
     : null;
 
-  const picWaUrl = buildWhatsAppUrl(item.whatsappPengusul);
+  const picWaUrl = buildWhatsAppUrl(item.whatsappPengusul, buildPesanWhatsAppPengajuan(item, item.mitraPicNama));
+  const picPolibatamWaUrl = buildPolibatamWhatsAppUrl(item.picPolibatamTelepon, buildPesanWhatsAppPengajuan(item, item.picPolibatamNama));
 
   return (
     <div
@@ -170,8 +179,11 @@ export default function DetailPengajuanModal({ item, onClose }: Props) {
           )}
 
           <div className="mb-2 text-[10px] text-slate-500">Pengusul: {item.namaPengusul}</div>
+          {item.picPolibatamNama && (
+            <div className="mb-2 text-[10px] text-slate-500">PIC Polibatam: {[item.picPolibatamNama, item.picPolibatamJabatan, item.picPolibatamEmail, item.picPolibatamTelepon ? `+62 ${item.picPolibatamTelepon}` : ''].filter(Boolean).join(' · ')}</div>
+          )}
           <div className="mb-2 text-[10px] text-slate-500">Mitra: {item.namaMitra}</div>
-          <div className="mb-2 text-[10px] text-slate-500">Jurusan/Unit: {item.namaUnitProdi}</div>
+          <div className="mb-2 text-[10px] text-slate-500">Jurusan/Prodi/Unit: {item.namaUnitProdi}</div>
           <div className="mb-2 text-[10px] text-slate-500">Ruang Lingkup: {item.ruangLingkup?.join(', ') || '-'}</div>
           <div className="mb-2 text-[10px] text-slate-500">Review: {item.reviewComment || reviewCopy[item.statusPengajuan]}</div>
           <div className="mb-2 text-[10px] text-slate-500">Catatan Revisi: {item.catatanRevisi || '-'}</div>
@@ -197,18 +209,52 @@ export default function DetailPengajuanModal({ item, onClose }: Props) {
           <div className="mt-4 rounded-lg border border-slate-200 p-3">
             <p className="text-[10px] font-semibold text-slate-700 mb-2">Kontak PIC</p>
             <p className="text-[10px] text-slate-600 mb-2">WhatsApp PIC: {item.whatsappPengusul || '-'}</p>
-            {picWaUrl && (
+            {picWaUrl ? (
               <a
                 href={picWaUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-[10px] font-semibold text-green-700 hover:bg-green-100"
               >
-                Hubungi PIC via WhatsApp
+                Hubungi PIC Mitra via WhatsApp
                 <ExternalLink size={12} />
               </a>
+            ) : (
+              <button
+                type="button"
+                disabled
+                title="Nomor WhatsApp belum diisi"
+                className="inline-flex cursor-not-allowed items-center gap-1 rounded-lg border border-gray-200 bg-gray-100 px-3 py-1.5 text-[10px] font-semibold text-gray-500"
+              >
+                Hubungi PIC Mitra via WhatsApp · nomor belum diisi
+              </button>
+            )}
+            <p className="mb-2 mt-3 text-[10px] text-slate-600">
+              WhatsApp PIC Polibatam: {item.picPolibatamTelepon ? `${item.picPolibatamNama ? `${item.picPolibatamNama} · ` : ''}+62 ${item.picPolibatamTelepon}` : '-'}
+            </p>
+            {picPolibatamWaUrl ? (
+              <a
+                href={picPolibatamWaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-[10px] font-semibold text-green-700 hover:bg-green-100"
+              >
+                Hubungi PIC Polibatam via WhatsApp
+                <ExternalLink size={12} />
+              </a>
+            ) : (
+              <button
+                type="button"
+                disabled
+                title="Nomor WhatsApp belum diisi"
+                className="inline-flex cursor-not-allowed items-center gap-1 rounded-lg border border-gray-200 bg-gray-100 px-3 py-1.5 text-[10px] font-semibold text-gray-500"
+              >
+                Hubungi PIC Polibatam via WhatsApp · nomor belum diisi
+              </button>
             )}
           </div>
+
+          <FileRevisiBox files={item.revisiFiles} forPengusul={false} />
 
           {/* Dokumen Pengajuan Awal */}
           {(() => {

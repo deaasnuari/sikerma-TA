@@ -5,6 +5,7 @@ import { X, FileText, User, Building2, CalendarDays, Tag, CheckCircle2, Clock3, 
 import type { PengajuanItem, PengajuanStatus } from '@/services/adminPengajuanService';
 import { pengajuanDokumenBadge } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
+import FileRevisiBox from '@/components/FileRevisiBox';
 import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
 
 interface Props {
@@ -121,7 +122,10 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
             <div className="grid gap-3 sm:grid-cols-2">
               <InfoRow icon={<Building2 size={15} />} label="Mitra" value={item.namaMitra} />
               <InfoRow icon={<User size={15} />} label="Pengusul" value={item.namaPengusul} />
-              <InfoRow icon={<Tag size={15} />} label="Jurusan / Unit" value={item.namaUnitProdi} />
+              {item.picPolibatamNama && (
+                <InfoRow icon={<User size={15} />} label="PIC Polibatam" value={[item.picPolibatamNama, item.picPolibatamJabatan, item.picPolibatamEmail, item.picPolibatamTelepon ? `+62 ${item.picPolibatamTelepon}` : ''].filter(Boolean).join(' · ')} />
+              )}
+              <InfoRow icon={<Tag size={15} />} label="Jurusan / Prodi / Unit" value={item.namaUnitProdi} />
               <InfoRow icon={<FileText size={15} />} label="Jenis Dokumen" value={item.jenisDokumen} />
               {item.tanggalMulai && (
                 <InfoRow icon={<CalendarDays size={15} />} label="Tanggal Mulai" value={item.tanggalMulai} />
@@ -173,6 +177,8 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
               </div>
             </section>
           )}
+
+          <FileRevisiBox files={item.revisiFiles} />
 
           {/* Dokumen Pengajuan Awal */}
           {fileEntries.filter((f) => !f.isAcc).length > 0 && (

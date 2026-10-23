@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ChevronDown, Download, FileText, Upload, X } from 'lucide-react';
 import { rekapJurusanOptions, rekapUnitOptions, type DokumenData, type DokumenTerkait } from '@/services/adminRekapDataService';
 import { getMasterUnitProdi, getMasterUnitProdiTree, type MasterUnitProdi } from '@/services/masterUnitProdiService';
@@ -9,6 +9,12 @@ import { getMasterRuangLingkup, type MasterRuangLingkup } from '@/services/maste
 import { getMasterNegara } from '@/services/masterNegaraService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 import { downloadTemplate, templateFilesByJenis } from '@/lib/templateDokumen';
+import MultiSelectDropdown from '@/components/MultiSelectDropdown';
+
+const HIDDEN_JURUSAN_ALIASES = new Set(['EL', 'TM', 'MB']);
+
+const prodiAktifOf = (jurusan: MasterUnitProdi) =>
+  (jurusan.children ?? []).filter((child) => child.jenis_node === 'prodi' && child.aktif);
 
 interface TambahDokumenModalProps {
   isOpen: boolean;
@@ -93,6 +99,7 @@ const emptyFormData: DokumenData = {
   asalKategori: 'Jurusan',
   unitKerja: '',
   prodiId: null,
+  prodiIds: [],
   ruangLingkup: [],
   ruangLingkupIds: [],
   judulKegiatan: '',
@@ -129,7 +136,7 @@ export default function TambahDokumenModal({
   const [rlOpen, setRlOpen] = useState(false);
   const [rlSearch, setRlSearch] = useState('');
   const [masterUnitProdiTree, setMasterUnitProdiTree] = useState<MasterUnitProdi[]>([]);
-  const [selectedJurusanId, setSelectedJurusanId] = useState<number | null>(null);
+  const [selectedJurusanIds, setSelectedJurusanIds] = useState<number[]>([]);
 
   const isEditMode = initialData !== null;
   const existingDokumen: DokumenTerkait[] = formData.dokumenTerkait ?? [];
@@ -147,16 +154,46 @@ export default function TambahDokumenModal({
     ? defaultTemplateDokumenMap[formData.jenisDokumen as TemplateKey]
     : null;
 
-  const hiddenJurusanAliases = new Set(['EL', 'TM', 'MB']);
-  const allJurusanRows = masterUnitProdiTree.filter(
-    (item) =>
-      item.jenis_node === 'unit' &&
-      item.kategori_unit === 'jurusan' &&
-      item.aktif &&
-      !hiddenJurusanAliases.has(item.nama.trim().toUpperCase()),
+  const allJurusanRows = useMemo(
+    () =>
+      masterUnitProdiTree.filter(
+        (item) =>
+          item.jenis_node === 'unit' &&
+          item.kategori_unit === 'jurusan' &&
+          item.aktif &&
+          !HIDDEN_JURUSAN_ALIASES.has(item.nama.trim().toUpperCase()),
+      ),
+    [masterUnitProdiTree],
   );
-  const selectedJurusanNode = allJurusanRows.find((item) => item.id === selectedJurusanId) ?? null;
-  const prodiOptionsForJurusan = (selectedJurusanNode?.children ?? []).filter((child) => child.jenis_node === 'prodi' && child.aktif);
+  const selectedProdiIds = formData.prodiIds ?? [];
+  const selectedJurusanNodes = useMemo(
+    () =>
+      selectedJurusanIds
+        .map((id) => allJurusanRows.find((item) => item.id === id))
+        .filter((item): item is NonNullable<typeof item> => Boolean(item)),
+    [selectedJurusanIds, allJurusanRows],
+  );
+  // Prodi dari SEMUA jurusan terpilih, dikelompokkan per jurusan di dropdown.
+  const prodiOptionsForJurusan = useMemo(
+    () => selectedJurusanNodes.flatMap((jurusan) => prodiAktifOf(jurusan).map((child) => ({ ...child, jurusanNama: jurusan.nama }))),
+    [selectedJurusanNodes],
+  );
+  const jurusanSelectOptions = useMemo(
+    () => allJurusanRows.map((item) => ({ value: item.id, label: item.nama })),
+    [allJurusanRows],
+  );
+  const prodiSelectOptions = useMemo(
+    () => prodiOptionsForJurusan.map((item) => ({ value: item.id, label: item.nama, group: item.jurusanNama })),
+    [prodiOptionsForJurusan],
+  );
+  // Yang disimpan: prodi terpilih, plus jurusan yang memang tidak punya prodi aktif (supaya tetap tercatat).
+  const unitProdiIdsToSend =
+    formData.asalKategori === 'Jurusan'
+      ? [
+          ...selectedProdiIds,
+          ...selectedJurusanNodes.filter((jurusan) => prodiAktifOf(jurusan).length === 0).map((jurusan) => jurusan.id),
+        ]
+      : [];
   const masterRuangLingkupOpts = Array.from(new Set(masterRuangLingkupRows.map((item) => item.nama_ruang_lingkup)));
   const filteredRlOptions = masterRuangLingkupOpts.filter((opt) => opt.toLowerCase().includes(rlSearch.trim().toLowerCase()));
 
@@ -171,28 +208,42 @@ export default function TambahDokumenModal({
     setSelectedFile(null);
     setSelectedFilePendukung(null);
     setDocumentMode(initialData?.dokumenTerkait?.length ? 'keep' : 'replace');
-    setSelectedJurusanId(null);
+    setSelectedJurusanIds([]);
     setRlSearch('');
   }, [initialData, isOpen]);
 
-  // Kalau edit mode dan dokumennya nyangkut ke Prodi, cari Jurusan induknya di tree supaya
-  // dropdown Jurusan → Prodi ke-prefill dengan benar (bukan cuma kosong).
+  // Mode edit: data hanya membawa id unit/prodi tersimpan. Turunkan jurusannya dari induk tiap prodi
+  // begitu master data termuat; id yang ternyata sebuah jurusan (jurusan tanpa prodi) jadi pilihan jurusan.
   useEffect(() => {
-    if (!isOpen || !initialData?.prodiId || masterUnitProdiTree.length === 0) {
+    if (!isOpen || formData.asalKategori !== 'Jurusan' || allJurusanRows.length === 0) {
+      return;
+    }
+    const tersimpan = formData.prodiIds ?? [];
+    if (tersimpan.length === 0 || selectedJurusanIds.length > 0) {
       return;
     }
 
-    const parent = masterUnitProdiTree.find(
-      (item) =>
-        item.jenis_node === 'unit' &&
-        item.kategori_unit === 'jurusan' &&
-        (item.children ?? []).some((child) => child.id === initialData.prodiId)
-    );
-
-    if (parent) {
-      setSelectedJurusanId(parent.id);
+    const jurusanLangsung = tersimpan.filter((id) => allJurusanRows.some((item) => item.id === id));
+    const prodiIds = tersimpan.filter((id) => !jurusanLangsung.includes(id));
+    const jurusanDariProdi = allJurusanRows
+      .filter((item) => (item.children ?? []).some((child) => prodiIds.includes(child.id)))
+      .map((item) => item.id);
+    const jurusanIds = Array.from(new Set([...jurusanDariProdi, ...jurusanLangsung]));
+    if (jurusanIds.length === 0) {
+      return;
     }
-  }, [isOpen, initialData, masterUnitProdiTree]);
+
+    setSelectedJurusanIds(jurusanIds);
+    setFormData((prev) => ({
+      ...prev,
+      prodiIds,
+      unitKerja: jurusanIds
+        .map((id) => allJurusanRows.find((item) => item.id === id)?.nama)
+        .filter(Boolean)
+        .join(', '),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, formData.asalKategori, formData.prodiIds, allJurusanRows, selectedJurusanIds.length]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -272,6 +323,36 @@ export default function TambahDokumenModal({
     };
   }, [formData.namaMitra, isOpen]);
 
+  // Ganti pilihan jurusan: prodi yang induknya sudah tidak dipilih ikut dibuang, dan teks unit
+  // mengikuti daftar jurusan terpilih.
+  const handleJurusanChange = useCallback(
+    (nextIds: number[]) => {
+      const prodiTersedia = new Set(
+        nextIds.flatMap((id) => {
+          const jurusan = allJurusanRows.find((item) => item.id === id);
+          return jurusan ? prodiAktifOf(jurusan).map((child) => child.id) : [];
+        }),
+      );
+      setSelectedJurusanIds(nextIds);
+      setFormData((prev) => ({
+        ...prev,
+        prodiId: null,
+        prodiIds: (prev.prodiIds ?? []).filter((id) => prodiTersedia.has(id)),
+        unitKerja: nextIds
+          .map((id) => allJurusanRows.find((item) => item.id === id)?.nama)
+          .filter(Boolean)
+          .join(', '),
+      }));
+      setErrors((prev) => ({ ...prev, unitKerja: undefined }));
+    },
+    [allJurusanRows],
+  );
+
+  const handleProdiChange = useCallback((nextIds: number[]) => {
+    setFormData((prev) => ({ ...prev, prodiId: null, prodiIds: nextIds }));
+    setErrors((prev) => ({ ...prev, unitKerja: undefined }));
+  }, []);
+
   if (!isOpen) {
     return null;
   }
@@ -294,8 +375,10 @@ export default function TambahDokumenModal({
     if (!isEditMode && !formData.namaPIC.trim()) newErrors.namaPIC = 'Nama PIC wajib diisi';
     if (!isEditMode && (!formData.kategoriMitra || formData.kategoriMitra === 'Pilih Kategori')) newErrors.kategoriMitra = 'Kategori mitra wajib dipilih';
     if (!formData.unitKerja || formData.unitKerja === 'Pilih Jurusan' || formData.unitKerja === 'Pilih Unit') newErrors.unitKerja = `${formData.asalKategori} wajib dipilih`;
-    // Sama seperti form Pengajuan: kalau asal dari Jurusan, Prodi di bawahnya wajib dipilih juga.
-    if (formData.asalKategori === 'Jurusan' && selectedJurusanNode && prodiOptionsForJurusan.length > 0 && !formData.prodiId) {
+    // Sama seperti form Pengajuan: minimal satu jurusan; kalau jurusannya punya prodi, minimal satu prodi juga.
+    if (formData.asalKategori === 'Jurusan' && selectedJurusanIds.length === 0) {
+      newErrors.unitKerja = 'Jurusan wajib dipilih';
+    } else if (formData.asalKategori === 'Jurusan' && prodiOptionsForJurusan.length > 0 && selectedProdiIds.length === 0) {
       newErrors.unitKerja = 'Prodi wajib dipilih';
     }
     if (!formData.status || formData.status === 'Pilih Status') newErrors.status = 'Status wajib dipilih';
@@ -339,7 +422,7 @@ export default function TambahDokumenModal({
           urutan: nextId,
           jenis: formData.jenisDokumen,
           tanggal: formData.tanggalMulai,
-          unitName: formData.unitKerja,
+          unitName: selectedJurusanNodes[0]?.nama ?? formData.unitKerja,
         });
       } catch {
         nomorDokumen = nextId.toString().padStart(2, '0');
@@ -378,7 +461,9 @@ export default function TambahDokumenModal({
         nomorDokumen,
         dokumenTerkait,
         dokumenPendukung,
-        prodiId: formData.asalKategori === 'Jurusan' ? formData.prodiId : null,
+        prodiId: unitProdiIdsToSend[0] ?? null,
+        prodiIds: unitProdiIdsToSend,
+        jurusanIds: formData.asalKategori === 'Jurusan' ? selectedJurusanIds : [],
       });
     }
     setFormData(emptyFormData);
@@ -867,8 +952,8 @@ export default function TambahDokumenModal({
                         onChange={() => {
                           handleInputChange('asalKategori', item);
                           handleInputChange('unitKerja', '');
-                          setSelectedJurusanId(null);
-                          setFormData((prev) => ({ ...prev, prodiId: null }));
+                          setSelectedJurusanIds([]);
+                          setFormData((prev) => ({ ...prev, prodiId: null, prodiIds: [] }));
                         }}
                         className="sr-only"
                       />
@@ -881,39 +966,36 @@ export default function TambahDokumenModal({
 
             {formData.asalKategori === 'Jurusan' ? (
               <div className="space-y-3">
-                <Field label="Pilih Jurusan *" error={errors.unitKerja}>
-                  <select
-                    value={selectedJurusanId ?? ''}
-                    onChange={(e) => {
-                      const nextId = e.target.value ? Number(e.target.value) : null;
-                      setSelectedJurusanId(nextId);
-                      setFormData((prev) => ({ ...prev, prodiId: null }));
-                      const nextJurusan = allJurusanRows.find((item) => item.id === nextId);
-                      handleInputChange('unitKerja', nextJurusan?.nama ?? '');
-                    }}
-                    className={`input-field h-11 w-full bg-white px-4 text-sm text-gray-700 ${errors.unitKerja ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}
-                  >
-                    <option value="">Pilih jurusan</option>
-                    {allJurusanRows.map((item) => (
-                      <option key={item.id} value={item.id}>{item.nama}</option>
-                    ))}
-                  </select>
+                <Field label="Pilih Jurusan *" error={errors.unitKerja} asDiv>
+                  <MultiSelectDropdown
+                    options={jurusanSelectOptions}
+                    selected={selectedJurusanIds}
+                    onChange={handleJurusanChange}
+                    placeholder="Pilih jurusan (bisa lebih dari satu)"
+                    searchPlaceholder="Cari jurusan..."
+                    ariaLabel="Pilih jurusan"
+                    textClassName="text-sm"
+                  />
                 </Field>
 
-                {selectedJurusanNode && prodiOptionsForJurusan.length > 0 && (
-                  <Field label="Prodi *" error={errors.unitKerja}>
-                    <select
-                      value={formData.prodiId ?? ''}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, prodiId: e.target.value ? Number(e.target.value) : null }))}
-                      className={`input-field h-11 w-full bg-white px-4 text-sm text-gray-700 ${errors.unitKerja ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}
-                    >
-                      <option value="">Pilih prodi</option>
-                      {prodiOptionsForJurusan.map((item) => (
-                        <option key={item.id} value={item.id}>{item.nama}</option>
-                      ))}
-                    </select>
-                  </Field>
-                )}
+                <Field label={`Prodi${prodiOptionsForJurusan.length > 0 ? ' *' : ''}`} error={errors.unitKerja} asDiv>
+                  <MultiSelectDropdown
+                    options={prodiSelectOptions}
+                    selected={selectedProdiIds}
+                    onChange={handleProdiChange}
+                    disabled={selectedJurusanIds.length === 0 || prodiOptionsForJurusan.length === 0}
+                    placeholder={
+                      selectedJurusanIds.length === 0
+                        ? '-- Pilih jurusan terlebih dahulu --'
+                        : prodiOptionsForJurusan.length === 0
+                          ? '-- Tidak ada prodi untuk jurusan ini --'
+                          : 'Pilih prodi (bisa lebih dari satu)'
+                    }
+                    searchPlaceholder="Cari prodi..."
+                    ariaLabel="Pilih prodi"
+                    textClassName="text-sm"
+                  />
+                </Field>
               </div>
             ) : (
               <Field label="Pilih Unit *" error={errors.unitKerja}>
@@ -1143,13 +1225,16 @@ export default function TambahDokumenModal({
   );
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+// asDiv: untuk isi yang punya banyak tombol (mis. dropdown pilih banyak). Di dalam <label>, klik pada
+// tombol ikut diteruskan ke kontrol pertama label tersebut sehingga pilihan saling membatalkan.
+function Field({ label, error, children, asDiv = false }: { label: string; error?: string; children: React.ReactNode; asDiv?: boolean }) {
+  const Wrapper = asDiv ? 'div' : 'label';
   return (
-    <label className="block">
+    <Wrapper className="block">
       <span className="mb-2 block text-sm font-semibold text-gray-900">{label}</span>
       {children}
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
-    </label>
+    </Wrapper>
   );
 }
 

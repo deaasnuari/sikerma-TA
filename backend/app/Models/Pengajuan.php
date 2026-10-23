@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasMultiUnitProdi;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,11 @@ use App\Casts\PgArrayCast;
 
 class Pengajuan extends Model
 {
+    use HasMultiUnitProdi;
+
+    protected string $unitProdiPivotTable = 'pengajuan_unit_prodi';
+    protected string $unitProdiPivotForeignKey = 'pengajuan_id';
+
     protected $table = 'pengajuan_v2';
 
     protected $fillable = [
@@ -42,6 +48,10 @@ class Pengajuan extends Model
         'jabatan_pengusul',
         'email_pengusul',
         'whatsapp_pengusul',
+        'pic_polibatam_nama',
+        'pic_polibatam_jabatan',
+        'pic_polibatam_email',
+        'pic_polibatam_whatsapp',
         'unit_prodi_id',
         'mitra_id',
         'judul_pengajuan',

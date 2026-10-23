@@ -70,7 +70,7 @@ export default function MonitoringdanstatusPage() {
 
   // Filter tambahan mengikuti pola yang sama dengan halaman Rekap Data.
   const [filterJenis, setFilterJenis] = useState('Semua Jenis');
-  const [filterUnit, setFilterUnit] = useState('Semua Jurusan/unit');
+  const [filterUnit, setFilterUnit] = useState('Semua Jurusan/Prodi/Unit');
   const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
   const [filterTingkatPerusahaan, setFilterTingkatPerusahaan] = useState('Semua Tingkat Perusahaan');
   const [filterTahun, setFilterTahun] = useState<string | null>(null);
@@ -237,7 +237,7 @@ export default function MonitoringdanstatusPage() {
   // Nama dari data monitoring yang ter-load tapi tidak cocok ke Jurusan/Prodi/Unit Kerja aktif
   // mana pun (unit lama/nonaktif) — ditampilkan di grup "Lainnya" biar tetap bisa difilter.
   const unitGroups = useMemo(() => {
-    const docDerived = getMonitoringUnitOptions(monitoringData).filter((o) => o !== 'Semua Jurusan/unit');
+    const docDerived = getMonitoringUnitOptions(monitoringData).filter((o) => o !== 'Semua Jurusan/Prodi/Unit');
     const known = new Set([...masterJurusanOptions, ...masterProdiOptions, ...masterUnitKerjaOptions]);
     const lainnya = docDerived.filter((nama) => !known.has(nama));
 
@@ -501,7 +501,7 @@ export default function MonitoringdanstatusPage() {
           <GroupedFilterSelect
             value={filterUnit}
             onChange={setFilterUnit}
-            allLabel="Semua Jurusan/unit"
+            allLabel="Semua Jurusan/Prodi/Unit"
             buttonClassName="rounded-lg border border-gray-300 bg-white px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors focus:border-[#1E376C] flex items-center justify-between gap-2 min-w-[200px]"
             groups={[
               { label: 'Jurusan', options: unitGroups.jurusan },

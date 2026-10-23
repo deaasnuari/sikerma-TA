@@ -37,6 +37,7 @@ import DokumenPerpanjanganSection from '@/components/DokumenPerpanjanganSection'
 import { parseTanggal } from '@/lib/parseTanggal';
 import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
 import { getRenewalRequests } from '@/services/adminRenewalRequestService';
+import FileRevisiBox from '@/components/FileRevisiBox';
 import {
   getExternalPengajuanData,
   getExternalPengajuanUpdateEventName,
@@ -61,6 +62,7 @@ interface KerjasamaItem {
   whatsappPengusul: string;
   ruangLingkup: string[];
   fileAttachments: { name: string; url: string; isAcc?: boolean }[];
+  revisiFiles?: { name: string; url: string }[];
   finalFileName?: string | null;
   finalFilePath?: string | null;
   status: 'Menunggu' | 'Diproses' | 'Revisi' | 'Aktif' | 'Berakhir';
@@ -135,6 +137,7 @@ function mapPengajuanToItem(item: PengajuanItem): KerjasamaItem {
             .map((name) => name.trim())
             .filter(Boolean)
             .map((name) => ({ name, url: '', isAcc: false })),
+    revisiFiles: item.revisiFiles,
     finalFileName: item.finalFileName ?? null,
     finalFilePath: item.finalFilePath ?? null,
     status: statusMap[item.statusPengajuan] ?? 'Menunggu',
@@ -386,7 +389,7 @@ export default function DaftarKerjasamaEksternalPage() {
   }, [data]);
 
   const handleExport = () => {
-    const headers = ['No. Dokumen', 'Nama Mitra', 'Jenis Mitra', 'Tingkat Perusahaan', 'Jenis', 'Jurusan/Unit', 'Tanggal Mulai', 'Berlaku Hingga', 'Tahun', 'Status'];
+    const headers = ['No. Dokumen', 'Nama Mitra', 'Jenis Mitra', 'Tingkat Perusahaan', 'Jenis', 'Jurusan/Prodi/Unit', 'Tanggal Mulai', 'Berlaku Hingga', 'Tahun', 'Status'];
     const rows = filteredItems.map((item) => [
       item.noDokumen,
       item.namaMitra,
@@ -572,7 +575,7 @@ export default function DaftarKerjasamaEksternalPage() {
                 <th className="px-4 py-3">No. Dokumen</th>
                 <th className="px-4 py-3">Mitra</th>
                 <th className="px-4 py-3">Jenis</th>
-                <th className="px-4 py-3">Jurusan/Unit</th>
+                <th className="px-4 py-3">Jurusan/Prodi/Unit</th>
                 <th className="px-4 py-3">Masa Berlaku</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="sticky right-0 bg-slate-50 px-4 py-3 text-center shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.15)]">Aksi</th>
@@ -792,7 +795,7 @@ export default function DaftarKerjasamaEksternalPage() {
                   <InfoRow icon={<Tag size={15} />} label="Jenis Mitra" value={detailItem.jenisMitra} />
                   <InfoRow icon={<Tag size={15} />} label="Tingkat Perusahaan" value={detailItem.tingkatPerusahaan} />
                   <InfoRow icon={<User size={15} />} label="Pengusul" value={detailItem.namaPengusul} />
-                  <InfoRow icon={<Tag size={15} />} label="Jurusan / Unit" value={detailItem.unit} />
+                  <InfoRow icon={<Tag size={15} />} label="Jurusan / Prodi / Unit" value={detailItem.unit} />
                   <InfoRow icon={<FileText size={15} />} label="Jenis Dokumen" value={detailItem.jenis} />
                   <InfoRow icon={<CalendarDays size={15} />} label="Tanggal Mulai" value={detailItem.tanggalMulai} />
                   <InfoRow icon={<CalendarDays size={15} />} label="Tanggal Berakhir" value={detailItem.berlakuHingga} />
@@ -821,6 +824,8 @@ export default function DaftarKerjasamaEksternalPage() {
                   <InfoRow icon={<User size={15} />} label="Whatsapp" value={detailItem.whatsappPengusul} />
                 </div>
               </section>
+
+              <FileRevisiBox files={detailItem.revisiFiles} />
 
               {/* Dokumen Pengajuan Awal */}
               {detailItem.fileAttachments.filter((f) => !f.isAcc).length > 0 && (

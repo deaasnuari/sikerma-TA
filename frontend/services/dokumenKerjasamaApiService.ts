@@ -85,6 +85,14 @@ type ApiDokumenRow = {
     jenis_node?: string | null;
     parent?: { id: number; nama: string; jenis_node?: string | null; kategori_unit?: string | null } | null;
   } | null;
+  // Semua jurusan/prodi dokumen ini (pilihan majemuk). unit_prodi di atas = yang utama.
+  unit_prodi_items?: {
+    id: number;
+    nama: string;
+    kategori_unit?: string | null;
+    jenis_node?: string | null;
+    parent?: { id: number; nama: string; jenis_node?: string | null; kategori_unit?: string | null } | null;
+  }[] | null;
   file?: string | null;
   alasan_arsip?: string | null;
   follow_up?: string | null;
@@ -94,6 +102,10 @@ type ApiDokumenRow = {
   // Snapshot data pengajuan (tersimpan saat disetujui, aman dari penghapusan pengajuan)
   snap_nama_mitra?: string | null;
   snap_whatsapp_pengusul?: string | null;
+  snap_pic_polibatam_nama?: string | null;
+  snap_pic_polibatam_jabatan?: string | null;
+  snap_pic_polibatam_email?: string | null;
+  snap_pic_polibatam_whatsapp?: string | null;
   snap_nama_pengusul?: string | null;
   snap_email_pengusul?: string | null;
   snap_jenis_mitra?: string | null;
@@ -111,6 +123,8 @@ type ApiDokumenRow = {
     nomor_pengajuan: string;
     nama_pengusul: string;
     whatsapp_pengusul?: string;
+    pic_polibatam_nama?: string | null;
+    pic_polibatam_whatsapp?: string | null;
     nama_mitra?: string | null;
     user_pengusul_id?: number | null;
     user_pengusul?: { id: number; role: string } | null;
@@ -290,27 +304,39 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
         kategoriUnitRaw ? 'Unit' : undefined;
 
       //jurusanNama, prodiNama, unitKerjaNama diambil dari unit_prodi (jika ada) sesuai jenis_node dan kategori_unit  
-      const jenisNode = row.unit_prodi?.jenis_node?.toLowerCase();
-      let jurusanNama: string | undefined;
-      let prodiNama: string | undefined;
-      let unitKerjaNama: string | undefined;
-      if (jenisNode === 'prodi') {
-        prodiNama = row.unit_prodi?.nama || undefined;
-        jurusanNama = row.unit_prodi?.parent?.nama || undefined;
-      } else if (jenisNode === 'unit' && kategoriUnitRaw === 'jurusan') {
-        jurusanNama = row.unit_prodi?.nama || undefined;
-      } else if (row.unit_prodi?.nama) {
-        unitKerjaNama = row.unit_prodi.nama;
-      }
+      // Dokumen bisa punya beberapa jurusan/prodi (unit_prodi_items); kalau tidak ada, pakai node utamanya.
+      const unitItems = row.unit_prodi_items && row.unit_prodi_items.length > 0
+        ? row.unit_prodi_items
+        : row.unit_prodi ? [row.unit_prodi] : [];
+      const jurusanNames: string[] = [];
+      const prodiNames: string[] = [];
+      const unitKerjaNames: string[] = [];
+      const pushUnique = (list: string[], value?: string | null) => {
+        if (value && !list.includes(value)) list.push(value);
+      };
+      unitItems.forEach((item) => {
+        const itemJenisNode = item.jenis_node?.toLowerCase();
+        const itemKategori = item.kategori_unit?.toLowerCase() ?? '';
+        if (itemJenisNode === 'prodi') {
+          pushUnique(prodiNames, item.nama);
+          pushUnique(jurusanNames, item.parent?.nama);
+        } else if (itemJenisNode === 'unit' && itemKategori === 'jurusan') {
+          pushUnique(jurusanNames, item.nama);
+        } else {
+          pushUnique(unitKerjaNames, item.nama);
+        }
+      });
+      const jurusanNama = jurusanNames.length > 0 ? jurusanNames.join(', ') : undefined;
+      const prodiNama = prodiNames.length > 0 ? prodiNames.join(', ') : undefined;
+      const unitKerjaNama = unitKerjaNames.length > 0 ? unitKerjaNames.join(', ') : undefined;
 
-      // Durasi kerja sama dalam tahun (desimal 1 angka di belakang koma), dihitung dari selisih tanggal.
-      let durasiTahun: number | undefined;
+      // Durasi kerja sama dalam bulan (dibulatkan ke bilangan bulat), dihitung dari selisih tanggal.
+      let durasiBulan: number | undefined;
       if (row.tanggal_mulai && row.tanggal_berakhir) {
         const startMs = new Date(row.tanggal_mulai).getTime();
         const endMs = new Date(row.tanggal_berakhir).getTime();
         if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs >= startMs) {
-          const years = (endMs - startMs) / (1000 * 60 * 60 * 24 * 365.25);
-          durasiTahun = Math.round(years * 10) / 10;
+          durasiBulan = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24 * 30.4375));
         }
       }
 
@@ -343,7 +369,7 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       noDokumen: nomor,
       namaMitra: namaMitra || '-',
       jenis: mapJenis(row.jenis_dokumen),
-      unit: row.unit_prodi?.nama || '-',
+      unit: unitItems.length > 0 ? unitItems.map((item) => item.nama).join(', ') : '-',
       kategoriUnit,
       tanggalMulai: toDisplayDate(tanggalMulaiRaw),
       berlakuHingga: toDisplayDate(row.tanggal_berakhir),
@@ -364,6 +390,7 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       // (bisa Jurusan/Unit ATAU Prodi). jurusanUnitProdiId cuma terisi kalau node itu Prodi (anak
       // dari Jurusan) — dipakai form edit untuk prefill dropdown Jurusan → Prodi bertingkat.
       unitProdiId: row.unit_prodi?.id ?? undefined,
+      unitProdiIds: unitItems.length > 0 ? unitItems.map((item) => item.id) : undefined,
       jurusanUnitProdiId: row.unit_prodi?.jenis_node === 'prodi' ? (row.unit_prodi?.parent?.id ?? undefined) : undefined,
       alasanArsip: row.alasan_arsip || null,
       buktiPdf: dokumenTerkait.length > 0 ? dokumenTerkait[0].url : null,
@@ -389,6 +416,13 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       alamatMitra: row.mitra?.alamat || undefined,
       noTeleponMitra: row.mitra?.no_telepon_mitra || undefined,
       picMitra: row.mitra?.nama_kontak_utama || undefined,
+      // Tiga nomor WhatsApp berbeda untuk detail Rekap: kantor/umum mitra, PIC mitra, dan PIC Polibatam.
+      whatsappMitraUmum: row.mitra?.whatsapp_mitra || undefined,
+      whatsappPicMitra: row.pengajuan?.whatsapp_pengusul || row.snap_whatsapp_pengusul || undefined,
+      picPolibatamNama: row.snap_pic_polibatam_nama || row.pengajuan?.pic_polibatam_nama || undefined,
+      picPolibatamJabatan: row.snap_pic_polibatam_jabatan || undefined,
+      picPolibatamEmail: row.snap_pic_polibatam_email || undefined,
+      picPolibatamTelepon: row.snap_pic_polibatam_whatsapp || row.pengajuan?.pic_polibatam_whatsapp || undefined,
       jabatanPicMitra: row.mitra?.jabatan_kontak_utama || undefined,
       emailPicMitra: row.mitra?.email_kontak_utama || undefined,
       picJurusanUnit: row.pengajuan?.nama_pengusul || row.snap_nama_pengusul || undefined,
@@ -399,7 +433,7 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       luaranKerjaSama: row.luaran_kerja_sama || undefined,
       manfaatSebenarnya: row.manfaat || undefined,
       keteranganAsli: row.keterangan || undefined,
-      durasiTahun,
+      durasiBulan,
       jurusanNama,
       prodiNama,
       unitKerjaNama,
@@ -451,6 +485,8 @@ export async function updateDokumenKerjasamaById(
     judul_dokumen?: string | null;
     jenis_dokumen?: string;
     unit_prodi_id?: number;
+    unit_prodi_ids?: number[];
+    jurusan_ids?: number[];
     tanggal_mulai?: string | null;
     tanggal_berakhir?: string | null;
     status_siklus?: 'active' | 'expiring' | 'archived';
@@ -478,6 +514,8 @@ export async function createDokumenKerjasama(payload: {
   judul_dokumen?: string | null;
   jenis_dokumen: string;
   unit_prodi_id: number;
+  unit_prodi_ids?: number[];
+  jurusan_ids?: number[];
   mitra_id?: number | null;
   tanggal_mulai?: string | null;
   tanggal_berakhir?: string | null;

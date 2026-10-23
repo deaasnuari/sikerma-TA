@@ -94,12 +94,13 @@ export default function PengajuanBaruEksternalPage() {
       <InternalAjukanKerjasamaForm
         key={formResetKey}
         disableDraftPersistence
+        showKontakPolibatam={false}
         nomorPengajuanSource="eksternal"
         initialMasterUnitProdiTree={masterUnitProdiTreeForForm}
         initialMasterRuangLingkupRows={masterRuangLingkupRows}
         initialCustomNegaraOptions={masterNegaraRows.map((item) => item.nama_negara)}
         onCancel={() => router.push('/eksternal/daftar_kerjasama')}
-        onSubmitOverride={async ({ formData, selectedRuangLingkup, dokumenAttachments, selectedProdiId }) => {
+        onSubmitOverride={async ({ formData, selectedRuangLingkup, dokumenAttachments, selectedProdiId, selectedProdiIds, selectedJurusanIds }) => {
           const normalizedDokumen = normalizeUploadedDokumen(dokumenAttachments);
           const ruangLingkupIds = (selectedRuangLingkup || [])
             .map((name) => masterRuangLingkupRows.find((row) => row.nama_ruang_lingkup === name)?.id)
@@ -130,6 +131,8 @@ export default function PengajuanBaruEksternalPage() {
             jenisDokumen: formData.jenisKerjasama,
             namaUnitProdi: formData.unitPelaksana,
             unitProdiId: selectedProdiId,
+            unitProdiIds: selectedProdiIds,
+            jurusanIds: selectedJurusanIds,
             kategoriPengajuan: 'Eksternal',
             tanggalMulai: formData.tanggalMulai,
             tanggalBerakhir: formData.tanggalBerakhir,

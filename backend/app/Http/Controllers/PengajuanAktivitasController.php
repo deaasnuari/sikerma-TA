@@ -68,7 +68,7 @@ class PengajuanAktivitasController extends Controller
             $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
 
             if ($scopedUnitProdiIds) {
-                $query->orWhereIn('unit_prodi_id', $scopedUnitProdiIds);
+                $query->orWhere(fn ($q) => $q->dalamUnitProdi($scopedUnitProdiIds));
             }
         }
 
@@ -116,7 +116,7 @@ class PengajuanAktivitasController extends Controller
                     $builder->orWhere('dibuat_oleh_user_id', $user->id);
                 }
                 if ($scopedUnitProdiIds) {
-                    $builder->orWhereIn('unit_prodi_id', $scopedUnitProdiIds);
+                    $builder->orWhere(fn ($q) => $q->dalamUnitProdi($scopedUnitProdiIds));
                 }
             })
             ->pluck('id')->all();
@@ -152,7 +152,7 @@ class PengajuanAktivitasController extends Controller
                     return null;
                 }
                 $scopedUnitProdiIds = $this->scopedUnitProdiIds($request);
-                if ($scopedUnitProdiIds && in_array((int) $dokumen->unit_prodi_id, array_map('intval', $scopedUnitProdiIds), true)) {
+                if ($scopedUnitProdiIds && $dokumen->termasukUnitProdi($scopedUnitProdiIds)) {
                     return null;
                 }
             }

@@ -30,7 +30,7 @@ interface KerjasamaItem {
   manfaatSebenarnya?: string;
   manfaatKerjasama?: string;
   luaranKerjaSama?: string;
-  durasiTahun?: number;
+  durasiBulan?: number;
   jurusanNama?: string;
   prodiNama?: string;
   unitKerjaNama?: string;
@@ -322,12 +322,12 @@ function TabInformasi({ item }: { item: KerjasamaItem }) {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-[10px] text-gray-500">Jurusan/Unit</p>
+            <p className="text-[10px] text-gray-500">Jurusan/Prodi/Unit</p>
             <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{jurusanUnitDisplay}</p>
           </div>
           <div>
             <p className="text-[10px] text-gray-500">Durasi</p>
-            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{item.durasiTahun ? `${item.durasiTahun} tahun` : '-'}</p>
+            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{item.durasiBulan ? `${item.durasiBulan} bulan` : '-'}</p>
           </div>
         </div>
 

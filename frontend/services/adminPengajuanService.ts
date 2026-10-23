@@ -57,7 +57,16 @@ export interface PengajuanItem {
   mitraPicJabatan?: string;
   mitraPicEmail?: string;
   mitraPicTelepon?: string;
+  // PIC dari pihak Polibatam (bukan mitra).
+  picPolibatamNama?: string;
+  picPolibatamJabatan?: string;
+  picPolibatamEmail?: string;
+  picPolibatamTelepon?: string;
   unitProdiId?: number;
+  // Pilihan majemuk: unitProdiId di atas = yang utama (pertama). jurusanIds hanya dikirim saat
+  // submit supaya backend bisa memvalidasi tiap prodi memang anak dari salah satu jurusan itu.
+  unitProdiIds?: number[];
+  jurusanIds?: number[];
   namaUnitProdi: string;
   kategoriPengajuan?: 'Internal' | 'Eksternal';
   tanggalMulai?: string;
@@ -70,6 +79,9 @@ export interface PengajuanItem {
   statusPengajuan: PengajuanStatus;
   fileName?: string;
   fileAttachments?: PengajuanFileAttachment[];
+  // Berkas Word dari admin saat meminta revisi (peran_berkas 'dokumen_revisi'); sengaja dipisah dari
+  // fileAttachments supaya tidak tercampur dengan lampiran pengusul.
+  revisiFiles?: { name: string; url: string }[];
   // Dokumen perpanjangan milik kerja sama dari pengajuan ini (peran_berkas 'dokumen_perpanjangan').
   perpanjanganFiles?: { name: string; url: string }[];
   reviewComment?: string;
@@ -228,6 +240,10 @@ type ApiPengajuanRow = {
   jabatan_pengusul?: string | null;
   email_pengusul?: string | null;
   whatsapp_pengusul?: string | null;
+  pic_polibatam_nama?: string | null;
+  pic_polibatam_jabatan?: string | null;
+  pic_polibatam_email?: string | null;
+  pic_polibatam_whatsapp?: string | null;
   unit_prodi_id?: number | null;
   mitra_id?: number | null;
   jenis_mitra?: string | null;
@@ -253,6 +269,7 @@ type ApiPengajuanRow = {
     | 'final_approved';
   diajukan_pada?: string | null;
   unit_prodi?: { id: number; nama: string } | null;
+  unit_prodi_items?: { id: number; nama: string; jenis_node?: string | null; parent_id?: number | null }[] | null;
   user_pengusul?: { id: number; name: string; username?: string | null } | null;
   mitra?: { id: number; nama_mitra: string; kategori_mitra?: string | null; bidang_usaha?: string | null; tingkat_perusahaan?: string | null; negara?: string | null; alamat?: string | null; email_mitra?: string | null; whatsapp_mitra?: string | null; no_telepon_mitra?: string | null; nama_kontak_utama?: string | null; jabatan_kontak_utama?: string | null; email_kontak_utama?: string | null; telepon_kontak_utama?: string | null; } | string | null;
   // Legacy schema keys (from recent pulled backend)
@@ -423,7 +440,11 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
   }
 
   // Resolve file attachments: prefer pengajuan_file relation, then file_attachments JSON, then cache
-  const attachmentRows = row.pengajuan_files ?? row.dokumen_files;
+  const allAttachmentRows = row.pengajuan_files ?? row.dokumen_files;
+  const attachmentRows = allAttachmentRows?.filter((file) => file.peran_berkas !== 'dokumen_revisi');
+  const revisiFiles = (allAttachmentRows ?? [])
+    .filter((file) => file.peran_berkas === 'dokumen_revisi')
+    .map((file) => ({ name: file.nama_file, url: buildAttachmentUrl(file.path_file) }));
   const cachedAttachment = getAttachmentCacheEntry(row.id);
 
   const fallbackAttachments: PengajuanFileAttachment[] = Array.isArray(row.file_attachments)
@@ -506,8 +527,13 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
     mitraPicEmail: typeof row.mitra === 'object' && row.mitra !== null ? pickOptionalString(row.mitra.email_kontak_utama) : undefined,
     mitraPicTelepon: typeof row.mitra === 'object' && row.mitra !== null ? pickOptionalString(row.mitra.telepon_kontak_utama) : undefined,
     jenisDokumen: mapJenisDokumenFromApi(row.jenis_dokumen),
+    picPolibatamNama: pickOptionalString(row.pic_polibatam_nama),
+    picPolibatamJabatan: pickOptionalString(row.pic_polibatam_jabatan),
+    picPolibatamEmail: pickOptionalString(row.pic_polibatam_email),
+    picPolibatamTelepon: pickOptionalString(row.pic_polibatam_whatsapp),
     unitProdiId: row.unit_prodi_id ?? undefined,
-    namaUnitProdi: row.unit_prodi?.nama || row.jurusan || '-',
+    unitProdiIds: row.unit_prodi_items?.length ? row.unit_prodi_items.map((item) => item.id) : row.unit_prodi_id ? [row.unit_prodi_id] : undefined,
+    namaUnitProdi: row.unit_prodi_items?.length ? row.unit_prodi_items.map((item) => item.nama).join(', ') : row.unit_prodi?.nama || row.jurusan || '-',
     kategoriPengajuan:
       row.kategori_pengajuan === 'internal' || row.kategori === 'Internal'
         ? 'Internal'
@@ -521,6 +547,7 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
     statusPengajuan: mapStatusFromApi(statusApi),
     fileName: resolvedFileName,
     fileAttachments: resolvedAttachments,
+    revisiFiles: revisiFiles.length > 0 ? revisiFiles : undefined,
     perpanjanganFiles: (() => {
       const seen = new Set<string>();
       const hasil: { name: string; url: string }[] = [];
@@ -622,12 +649,17 @@ export async function savePengajuanRevisionApi(
   id: number,
   catatanRevisi: string,
   comment?: string,
-  updatedAt?: string
+  updatedAt?: string,
+  // Berkas Word opsional yang dilampirkan admin untuk dikerjakan ulang oleh pengusul.
+  revisiFile?: { name: string; url: string; type?: string; size?: number }
 ): Promise<PengajuanItem> {
   const response = await apiRequest<ApiSingleResponse<ApiPengajuanRow>>(`/pengajuan/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({
       ...(updatedAt ? { updated_at: updatedAt } : {}),
+      ...(revisiFile
+        ? { revisi_file_attachments: [{ name: revisiFile.name, url: revisiFile.url, type: revisiFile.type, size: revisiFile.size }] }
+        : {}),
       status_pengajuan: mapStatusToApi('Revisi'),
       status: mapStatusToApi('Revisi'),
       catatan: comment?.trim() || null,
@@ -694,7 +726,15 @@ export async function updatePengajuanItemApi(
   if (typeof updates.jabatanPengusul === 'string') payload.jabatan_pengusul = updates.jabatanPengusul;
   if (typeof updates.emailPengusul === 'string') payload.email_pengusul = updates.emailPengusul;
   if (typeof updates.whatsappPengusul === 'string') payload.whatsapp_pengusul = updates.whatsappPengusul;
+  if (typeof updates.picPolibatamNama === 'string') payload.pic_polibatam_nama = updates.picPolibatamNama || null;
+  if (typeof updates.picPolibatamJabatan === 'string') payload.pic_polibatam_jabatan = updates.picPolibatamJabatan || null;
+  if (typeof updates.picPolibatamEmail === 'string') payload.pic_polibatam_email = updates.picPolibatamEmail || null;
+  if (typeof updates.picPolibatamTelepon === 'string') payload.pic_polibatam_whatsapp = updates.picPolibatamTelepon || null;
   if (updates.unitProdiId !== undefined) payload.unit_prodi_id = updates.unitProdiId;
+  if (updates.unitProdiIds && updates.unitProdiIds.length > 0) {
+    payload.unit_prodi_ids = updates.unitProdiIds;
+    if (updates.jurusanIds && updates.jurusanIds.length > 0) payload.jurusan_ids = updates.jurusanIds;
+  }
   if (updates.mitraId !== undefined) payload.mitra_id = updates.mitraId;
   if (typeof updates.namaMitra === 'string') payload.nama_mitra = updates.namaMitra;
   if (updates.mitraKategori !== undefined) payload.jenis_mitra = updates.mitraKategori || null;
@@ -787,7 +827,14 @@ export async function submitPengajuanApi(
     mitra_jabatan_kontak_utama: data.mitraPicJabatan || null,
     mitra_email_kontak_utama: data.mitraPicEmail || null,
     mitra_telepon_kontak_utama: data.mitraPicTelepon || null,
+    pic_polibatam_nama: data.picPolibatamNama || null,
+    pic_polibatam_jabatan: data.picPolibatamJabatan || null,
+    pic_polibatam_email: data.picPolibatamEmail || null,
+    pic_polibatam_whatsapp: data.picPolibatamTelepon || null,
     unit_prodi_id: data.unitProdiId ?? null,
+    ...(data.unitProdiIds && data.unitProdiIds.length > 0
+      ? { unit_prodi_ids: data.unitProdiIds, ...(data.jurusanIds && data.jurusanIds.length > 0 ? { jurusan_ids: data.jurusanIds } : {}) }
+      : {}),
     kategori_pengajuan: (data.kategoriPengajuan || (source === 'eksternal' ? 'Eksternal' : 'Internal')).toLowerCase(),
     tanggal_mulai: data.tanggalMulai || null,
     tanggal_berakhir: data.tanggalBerakhir || null,
@@ -1257,7 +1304,7 @@ export function filterPengajuanData(
 
     const matchStatus = filterStatus === 'Semua Status' || item.statusPengajuan === filterStatus;
     const matchJurusan =
-      filterJurusan === 'Semua Jurusan/unit' ||
+      filterJurusan === 'Semua Jurusan/Prodi/Unit' ||
       filterJurusan === 'Semua Ruang Kerjasama' ||
       filterJurusan === 'Semua Kategori Kerjasama' ||
       item.namaUnitProdi === filterJurusan ||

@@ -119,7 +119,7 @@ class BerkasController extends Controller
             $svc = app(StructuralAccessService::class);
             $scoped = $svc->resolveScopedUnitProdiIds($svc->getUserStructuralAccess($user));
 
-            return $scoped && in_array($pengajuan->unit_prodi_id, $scoped, false);
+            return $scoped && $pengajuan->termasukUnitProdi($scoped);
         }
 
         return false;

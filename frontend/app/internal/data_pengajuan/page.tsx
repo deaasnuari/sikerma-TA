@@ -98,7 +98,7 @@ export default function InternalDataPengajuanPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterKategori, setFilterKategori] = useState<'Semua' | 'Jurusan' | 'Unit'>('Semua');
-  const [filterJurusan, setFilterJurusan] = useState('Semua Jurusan/unit');
+  const [filterJurusan, setFilterJurusan] = useState('Semua Jurusan/Prodi/Unit');
   const [pengajuanData, setPengajuanData] = useState<PengajuanItem[]>([]);
   const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const [reviewItem, setReviewItem] = useState<PengajuanItem | null>(null);
@@ -394,7 +394,7 @@ export default function InternalDataPengajuanPage() {
                 type="button"
                 onClick={() => {
                   setFilterKategori(kategori);
-                  setFilterJurusan('Semua Jurusan/unit');
+                  setFilterJurusan('Semua Jurusan/Prodi/Unit');
                 }}
                 className={`px-3 py-2 text-sm font-semibold transition ${
                   filterKategori === kategori
@@ -415,9 +415,9 @@ export default function InternalDataPengajuanPage() {
                 ? 'Semua Jurusan'
                 : filterKategori === 'Unit'
                   ? 'Semua Unit'
-                  : 'Semua Jurusan/unit'
+                  : 'Semua Jurusan/Prodi/Unit'
             }
-            allValue="Semua Jurusan/unit"
+            allValue="Semua Jurusan/Prodi/Unit"
             className="min-w-[220px]"
             buttonClassName="input-field flex min-w-[220px] items-center justify-between gap-2 px-3 py-2 text-sm text-gray-700 cursor-pointer"
             groups={
@@ -490,7 +490,7 @@ export default function InternalDataPengajuanPage() {
                         </span>
                       </div>
                       <div>
-                        <p className="text-xs text-slate-400">Jurusan / Unit</p>
+                        <p className="text-xs text-slate-400">Jurusan / Prodi / Unit</p>
                         <p className="font-semibold">{item.namaUnitProdi}</p>
                       </div>
                     </div>

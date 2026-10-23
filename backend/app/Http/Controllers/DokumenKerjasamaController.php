@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DokumenFile;
 use App\Models\DokumenLog;
 use App\Models\DokumenKerjasama;
+use App\Support\UnitProdiSelection;
 use App\Models\LaporanPelaksanaan;
 use App\Models\Pengajuan;
 use App\Models\PengajuanAktivitas;
@@ -173,11 +174,13 @@ class DokumenKerjasamaController extends Controller
     public function index(Request $request): Response
     {
         $query = DokumenKerjasama::query()->with([
-            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul,user_pengusul_id,final_approved_at',
+            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,pic_polibatam_nama,pic_polibatam_whatsapp,nama_mitra,email_pengusul,user_pengusul_id,final_approved_at',
             'pengajuan.userPengusul:id,role',
             // parent dimuat supaya Jurusan bisa diturunkan saat unitProdi-nya berupa Prodi (anak dari Jurusan).
             'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
             'unitProdi.parent:id,nama,jenis_node,kategori_unit',
+            'unitProdiItems:id,nama,jenis_node,kategori_unit,parent_id',
+            'unitProdiItems.parent:id,nama,jenis_node,kategori_unit',
             'mitra:id,nama_mitra,kode_mitra,kategori_mitra,bidang_usaha,tingkat_perusahaan,negara,email_mitra,email_kontak_utama,alamat,nama_kontak_utama,jabatan_kontak_utama,telepon_kontak_utama,whatsapp_mitra,no_telepon_mitra',
             'dokumenFiles' => function ($q) {
                 // pengajuan_awal = berkas yang diunggah pengusul saat mengajukan; ditampilkan terpisah
@@ -239,7 +242,7 @@ class DokumenKerjasamaController extends Controller
                 });
 
                 if ($scopedUnitProdiIds) {
-                    $builder->orWhereIn('unit_prodi_id', $scopedUnitProdiIds);
+                    $builder->orWhere(fn ($q) => $q->dalamUnitProdi($scopedUnitProdiIds));
                 }
             });
         } elseif ($normalizedRole === 'external') {
@@ -324,7 +327,7 @@ class DokumenKerjasamaController extends Controller
                 $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
                 $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
                 $isInStructuralScope = $scopedUnitProdiIds
-                    && in_array($dokumen_kerjasama->unit_prodi_id, $scopedUnitProdiIds, false);
+                    && $dokumen_kerjasama->termasukUnitProdi($scopedUnitProdiIds);
             }
 
             if (!$isOwner && !$isDistribusi && !$isInStructuralScope) {
@@ -336,9 +339,11 @@ class DokumenKerjasamaController extends Controller
         }
 
         $dokumen_kerjasama->load([
-            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul',
+            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,pic_polibatam_nama,pic_polibatam_whatsapp,nama_mitra,email_pengusul',
             'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
             'unitProdi.parent:id,nama,jenis_node,kategori_unit',
+            'unitProdiItems:id,nama,jenis_node,kategori_unit,parent_id',
+            'unitProdiItems.parent:id,nama,jenis_node,kategori_unit',
             'mitra:id,nama_mitra,kode_mitra,kategori_mitra,bidang_usaha,tingkat_perusahaan,negara,email_mitra,email_kontak_utama,alamat,nama_kontak_utama,jabatan_kontak_utama,telepon_kontak_utama,whatsapp_mitra,no_telepon_mitra',
         ]);
 
@@ -820,6 +825,7 @@ class DokumenKerjasamaController extends Controller
             ->with([
                 'mitra:id,nama_mitra,negara',
                 'unitProdi:id,nama',
+                'unitProdiItems:id,nama',
             ])
             ->select('id', 'jenis_dokumen', 'snap_nama_mitra', 'mitra_id', 'unit_prodi_id', 'ruang_lingkup_ids', 'keterangan')
             ->whereNull('dihapus_admin_pada')
@@ -842,7 +848,7 @@ class DokumenKerjasamaController extends Controller
 
             $namaMitra = $namaMitra ?: '-';
 
-            $unit   = $row->unitProdi?->nama ?? '-';
+            $unit   = $row->unitProdiItems->pluck('nama')->implode(', ') ?: ($row->unitProdi?->nama ?? '-');
             $negara = $row->mitra?->negara ?? null;
             $wilayah = (!$negara || strtolower(trim($negara)) === 'indonesia')
                 ? 'Dalam Negeri'
@@ -907,6 +913,7 @@ class DokumenKerjasamaController extends Controller
             'alasan_arsip' => ['nullable', 'string'],
             'sumber_pengajuan_id' => ['nullable', 'integer', 'exists:pengajuan_v2,id'],
             'unit_prodi_id' => ['nullable', 'integer', 'exists:master_unit_prodi,id'],
+            ...UnitProdiSelection::rules(),
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
             'dibuat_oleh_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'file' => ['required', 'string', 'max:255'],
@@ -915,9 +922,13 @@ class DokumenKerjasamaController extends Controller
         ]);
 
         $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
+        $unitProdiIds = UnitProdiSelection::extract($validated);
 
         try {
             $dokumen = DokumenKerjasama::create($validated);
+            if ($unitProdiIds !== null) {
+                $dokumen->syncUnitProdi($unitProdiIds);
+            }
         } catch (QueryException $exception) {
             return response([
                 'success' => false,
@@ -945,7 +956,8 @@ class DokumenKerjasamaController extends Controller
             'nama_dokumen' => ['required', 'string', 'max:255'],
             'judul_dokumen' => ['nullable', 'string', 'max:255'],
             'jenis_dokumen' => ['required', 'in:MOU,MOA,IA,LAINNYA'],
-            'unit_prodi_id' => ['required', 'integer', 'exists:master_unit_prodi,id'],
+            'unit_prodi_id' => ['required_without:unit_prodi_ids', 'nullable', 'integer', 'exists:master_unit_prodi,id'],
+            ...UnitProdiSelection::rules(),
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
             'manfaat' => ['nullable', 'string'],
             'luaran_kerja_sama' => ['nullable', 'string'],
@@ -962,9 +974,13 @@ class DokumenKerjasamaController extends Controller
         $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
         $validated['file'] = $validated['file'] ?? 'pending-upload';
         $validated['dibuat_oleh_user_id'] = $request->user()?->id;
+        $unitProdiIds = UnitProdiSelection::extract($validated);
 
         try {
             $dokumen = DokumenKerjasama::create($validated);
+            if ($unitProdiIds !== null) {
+                $dokumen->syncUnitProdi($unitProdiIds);
+            }
         } catch (QueryException $exception) {
             return response([
                 'success' => false,
@@ -973,7 +989,7 @@ class DokumenKerjasamaController extends Controller
             ], 422);
         }
 
-        $dokumen->load(['unitProdi:id,nama,jenis_node,kategori_unit', 'mitra:id,nama_mitra,kode_mitra']);
+        $dokumen->load(['unitProdi:id,nama,jenis_node,kategori_unit', 'unitProdiItems:id,nama,jenis_node,kategori_unit', 'mitra:id,nama_mitra,kode_mitra']);
 
         return response([
             'success' => true,
@@ -1006,6 +1022,7 @@ class DokumenKerjasamaController extends Controller
             'alasan_arsip' => ['nullable', 'string'],
             'sumber_pengajuan_id' => ['nullable', 'integer', 'exists:pengajuan_v2,id'],
             'unit_prodi_id' => ['nullable', 'integer', 'exists:master_unit_prodi,id'],
+            ...UnitProdiSelection::rules(),
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
             'dibuat_oleh_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'file' => ['sometimes', 'required', 'string', 'max:255'],
@@ -1017,8 +1034,13 @@ class DokumenKerjasamaController extends Controller
             $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
         }
 
+        $unitProdiIds = UnitProdiSelection::extract($validated, $dokumen_kerjasama->unit_prodi_id);
+
         try {
             $dokumen_kerjasama->update($validated);
+            if ($unitProdiIds !== null) {
+                $dokumen_kerjasama->syncUnitProdi($unitProdiIds);
+            }
         } catch (QueryException $exception) {
             return response([
                 'success' => false,
@@ -1124,6 +1146,8 @@ class DokumenKerjasamaController extends Controller
             ->with([
                 'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul,user_pengusul_id',
                 'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
+                'unitProdiItems:id,nama,jenis_node,kategori_unit,parent_id',
+                'unitProdiItems.parent:id,nama,jenis_node,kategori_unit',
                 'mitra:id,nama_mitra,kode_mitra,kategori_mitra',
                 // Supaya admin bisa buka & pastikan isi dokumennya dulu sebelum memulihkan atau
                 // menghapus permanen dari Sampah — sama seperti dokumen_final di Rekap Data.
@@ -1299,7 +1323,7 @@ class DokumenKerjasamaController extends Controller
             'notification_href' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $dokumen_kerjasama->loadMissing(['mitra:id,nama_mitra', 'unitProdi:id,nama', 'pengajuan:id,whatsapp_pengusul']);
+        $dokumen_kerjasama->loadMissing(['mitra:id,nama_mitra', 'unitProdi:id,nama', 'unitProdiItems:id,nama', 'pengajuan:id,whatsapp_pengusul']);
 
         $nomorDokumen = $dokumen_kerjasama->nomor_dokumen;
         $namaMitra = $dokumen_kerjasama->mitra?->nama_mitra
@@ -1307,7 +1331,7 @@ class DokumenKerjasamaController extends Controller
             ?: $dokumen_kerjasama->nama_dokumen;
         $nomorTelepon = $dokumen_kerjasama->pengajuan?->whatsapp_pengusul
             ?: $dokumen_kerjasama->snap_whatsapp_pengusul;
-        $unitNama = $dokumen_kerjasama->unitProdi?->nama;
+        $unitNama = $dokumen_kerjasama->unitProdiItems->pluck('nama')->implode(', ') ?: $dokumen_kerjasama->unitProdi?->nama;
         $lingkup = is_array($dokumen_kerjasama->ruang_lingkup_ids)
             ? implode(', ', array_map(static fn ($id) => (string) $id, $dokumen_kerjasama->ruang_lingkup_ids))
             : null;

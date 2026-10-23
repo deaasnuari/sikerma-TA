@@ -949,20 +949,14 @@ export default function Home() {
 
               <div className="space-y-5 text-[12.5px]">
                 {[
-                  { title: 'Kapokja Humas dan Kerjasama', nama: 'Ridwan P.', telp: '+62 852-6468-6864', email: null },
-                  { title: 'Kerjasama Luar Negeri / OIA', nama: 'Irkham', telp: '+62 813-6387-6244', email: 'oia@polibatam.ac.id' },
-                  { title: 'Kerjasama Dalam Negeri', nama: 'Dessy', telp: '+62 858-3554-1983', email: 'kerjasama@polibatam.ac.id' },
+                  { title: 'Kapokja Humas dan Kerjasama', nama: 'Ridwan P.', email: null },
+                  { title: 'Kerjasama Luar Negeri / OIA', nama: 'Irkham', email: 'oia@polibatam.ac.id' },
+                  { title: 'Kerjasama Dalam Negeri', nama: 'Dessy', email: 'kerjasama@polibatam.ac.id' },
                 ].map((kontak) => (
                   <div key={kontak.title}>
                     <h3 className="mb-2 text-[13px] font-bold text-white">{kontak.title}</h3>
                     <ul className="space-y-1 text-slate-100">
-                      <li>
-                        {kontak.nama} (
-                        <a href={`tel:${kontak.telp.replace(/[^+\d]/g, '')}`} className="hover:text-white">
-                          {kontak.telp}
-                        </a>
-                        )
-                      </li>
+                      <li>{kontak.nama}</li>
                       {kontak.email && (
                         <li>
                           <a href={`mailto:${kontak.email}`} className="text-cyan-200 underline-offset-2 hover:underline">

@@ -4,12 +4,18 @@ namespace App\Models;
 
 use App\Models\DokumenFile;
 use App\Support\KerjasamaStatus;
+use App\Models\Concerns\HasMultiUnitProdi;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class DokumenKerjasama extends Model
 {
+    use HasMultiUnitProdi;
+
+    protected string $unitProdiPivotTable = 'dokumen_kerjasama_unit_prodi';
+    protected string $unitProdiPivotForeignKey = 'dokumen_kerjasama_id';
+
     protected $table = 'dokumen_kerjasama';
 
     // status_efektif dihitung, BUKAN status_siklus mentah — lihat KerjasamaStatus untuk
@@ -44,6 +50,10 @@ class DokumenKerjasama extends Model
         'snap_jenis_mitra',
         'snap_bidang_usaha',
         'snap_tingkat_perusahaan',
+        'snap_pic_polibatam_nama',
+        'snap_pic_polibatam_jabatan',
+        'snap_pic_polibatam_email',
+        'snap_pic_polibatam_whatsapp',
         'dibuat_oleh_user_id',
         'file',
         'keterangan',

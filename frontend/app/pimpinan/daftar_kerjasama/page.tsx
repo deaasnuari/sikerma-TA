@@ -56,7 +56,7 @@ export default function PimpinanDaftarKerjasamaPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
-  const [filterUnit, setFilterUnit] = useState('Semua Jurusan/unit');
+  const [filterUnit, setFilterUnit] = useState('Semua Jurusan/Prodi/Unit');
   const [filterKategori, setFilterKategori] = useState('Semua Kategori');
   const [filterTahun, setFilterTahun] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
@@ -152,7 +152,7 @@ export default function PimpinanDaftarKerjasamaPage() {
         item.ruangLingkup.some((r) => r.toLowerCase().includes(keyword));
 
       const matchesStatus = filterStatus === 'Semua Status' || item.status === filterStatus;
-      const matchesUnit = filterUnit === 'Semua Jurusan/unit' || item.unit === filterUnit;
+      const matchesUnit = filterUnit === 'Semua Jurusan/Prodi/Unit' || item.unit === filterUnit;
       const matchesKategori = filterKategori === 'Semua Kategori' || item.jenisMitra === filterKategori;
       const matchesTahun = filterTahun === null || getTahun(item) === filterTahun;
 
@@ -245,7 +245,7 @@ export default function PimpinanDaftarKerjasamaPage() {
             <GroupedFilterSelect
               value={filterUnit}
               onChange={setFilterUnit}
-              allLabel="Semua Jurusan/unit"
+              allLabel="Semua Jurusan/Prodi/Unit"
               groups={[
                 { label: 'Jurusan', options: unitGroups.jurusan },
                 { label: 'Program Studi', options: unitGroups.prodi },

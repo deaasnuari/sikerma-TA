@@ -57,7 +57,7 @@ interface KerjasamaItem {
   judulKegiatan?: string;
   manfaatSebenarnya?: string;
   luaranKerjaSama?: string;
-  durasiTahun?: number;
+  durasiBulan?: number;
   jurusanNama?: string;
   prodiNama?: string;
   unitKerjaNama?: string;
@@ -96,7 +96,7 @@ function mapRekapToItem(d: RekapDokumen): KerjasamaItem {
     judulKegiatan: d.judulKegiatan,
     manfaatSebenarnya: d.manfaatSebenarnya,
     luaranKerjaSama: d.luaranKerjaSama,
-    durasiTahun: d.durasiTahun,
+    durasiBulan: d.durasiBulan,
     jurusanNama: d.jurusanNama,
     prodiNama: d.prodiNama,
     unitKerjaNama: d.unitKerjaNama,
@@ -170,7 +170,7 @@ export default function InternalRekapDataPage() {
   // Berakhir/Kadaluarsa harus diambil di titik ini (sama seperti admin/rekap_data).
   const [stats, setStats] = useState({ totalKerjasama: 0, totalAktif: 0, totalAkanBerakhir: 0, totalKadaluarsa: 0 });
   const [search, setSearch] = useState('');
-  const [filterJurusan, setFilterJurusan] = useState('Semua Jurusan/unit');
+  const [filterJurusan, setFilterJurusan] = useState('Semua Jurusan/Prodi/Unit');
   const [filterJenis, setFilterJenis] = useState('Semua Jenis');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterJenisMitra, setFilterJenisMitra] = useState('Semua Jenis Mitra');
@@ -273,7 +273,13 @@ export default function InternalRekapDataPage() {
         setAllPengajuan(allPengajuanData);
 
         if (rekapData.length > 0) {
-          setData(rekapData.map(mapRekapToItem));
+          // Terbaru di atas: urut waktu ACC final (atau dibuat), lalu ID — tidak bergantung urutan API.
+          const waktuMasuk = (row: (typeof rekapData)[number]) => {
+            const value = Date.parse(row.disetujuPada || row.dibuatPada || '');
+            return Number.isNaN(value) ? 0 : value;
+          };
+          const terbaruDulu = [...rekapData].sort((a, b) => waktuMasuk(b) - waktuMasuk(a) || (b.id ?? 0) - (a.id ?? 0));
+          setData(terbaruDulu.map(mapRekapToItem));
           setStats(getRekapStats(rekapData));
           return;
         }
@@ -349,7 +355,7 @@ export default function InternalRekapDataPage() {
         item.namaMitra.toLowerCase().includes(keyword) ||
         item.noDokumen.toLowerCase().includes(keyword);
 
-      const matchesJurusan = filterJurusan === 'Semua Jurusan/unit' || item.unit === filterJurusan;
+      const matchesJurusan = filterJurusan === 'Semua Jurusan/Prodi/Unit' || item.unit === filterJurusan;
       const matchesJenis = filterJenis === 'Semua Jenis' || item.jenis === filterJenis;
       const matchesStatus = filterStatus === 'Semua Status' || item.status === filterStatus;
       const matchesJenisMitra = filterJenisMitra === 'Semua Jenis Mitra' || item.jenisMitra === filterJenisMitra;
@@ -391,8 +397,8 @@ export default function InternalRekapDataPage() {
       'Luaran Kerja Sama',
       'Tanggal Awal Kerja Sama',
       'Tanggal Akhir Kerja Sama',
-      'Durasi (tahun)',
-      'Jurusan/Unit',
+      'Durasi (bulan)',
+      'Jurusan/Prodi/Unit',
       'Status Kerjasama',
       'Jenis',
     ];
@@ -414,7 +420,7 @@ export default function InternalRekapDataPage() {
         item.luaranKerjaSama || '-',
         item.tanggalMulai,
         item.berlakuHingga,
-        item.durasiTahun ?? '-',
+        item.durasiBulan ?? '-',
         jurusanUnitDisplay,
         item.status,
         item.jenis,
@@ -479,7 +485,7 @@ export default function InternalRekapDataPage() {
                   setFilterJurusan(next);
                   setCurrentPage(1);
                 }}
-                allLabel="Semua Jurusan/unit"
+                allLabel="Semua Jurusan/Prodi/Unit"
                 groups={[
                   { label: 'Jurusan', options: unitGroups.jurusan },
                   { label: 'Program Studi', options: unitGroups.prodi },
@@ -660,8 +666,8 @@ export default function InternalRekapDataPage() {
                 <th className="px-4 py-3">Luaran Kerja Sama</th>
                 <th className="px-4 py-3">Tanggal Awal Kerja Sama</th>
                 <th className="px-4 py-3">Tanggal Akhir Kerja Sama</th>
-                <th className="px-4 py-3">Durasi (tahun)</th>
-                <th className="px-4 py-3">Jurusan/Unit</th>
+                <th className="px-4 py-3">Durasi (bulan)</th>
+                <th className="px-4 py-3">Jurusan/Prodi/Unit</th>
                 <th className="px-4 py-3">Status Kerjasama</th>
                 <th className="px-4 py-3">Jenis</th>
                 <th className="px-4 py-3 text-center">Aksi</th>
@@ -705,7 +711,7 @@ export default function InternalRekapDataPage() {
                     <td className="px-4 py-3 max-w-[180px]"><p className="text-[10px] text-gray-600 line-clamp-2">{row.luaranKerjaSama || '-'}</p></td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.tanggalMulai}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.berlakuHingga}</td>
-                    <td className="px-4 py-3 text-center">{row.durasiTahun ?? '-'}</td>
+                    <td className="px-4 py-3 text-center">{row.durasiBulan ?? '-'}</td>
                     <td className="px-4 py-3">{jurusanUnitDisplay}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-3 py-1 text-[10px] font-semibold ${statusBadgeMap[row.status]}`}>

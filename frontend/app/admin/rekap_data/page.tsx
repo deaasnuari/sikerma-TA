@@ -35,6 +35,7 @@ import { generateNoDokumen } from '@/services/adminMonitoringService';
 import { getRenewalRequests, type RenewalRequestItem } from '@/services/adminRenewalRequestService';
 import { getPageNumbers } from '@/lib/pagination';
 import JenisBerkasBadge from '@/components/JenisBerkasBadge';
+import { buatUrlWhatsApp, buatUrlWhatsAppPolibatam, buildPesanWhatsAppDokumen } from '@/lib/whatsappPesan';
 
 //ini helper untuk resolve unit/prodi ID dari nama unit/prodi yang diketik manual di modal Tambah/Edit Dokumen
 async function resolveUnitProdiId(unitName: string, prodiId?: number | null): Promise<number | null> {
@@ -107,7 +108,7 @@ export default function RekapDataPage() {
   const [rekapData, setRekapData] = useState<RekapDokumen[]>([]);
   const [search, setSearch] = useState('');
   const [filterJenis, setFilterJenis] = useState('Semua Jenis');
-  const [filterUnit, setFilterUnit] = useState('Semua Jurusan/unit');
+  const [filterUnit, setFilterUnit] = useState('Semua Jurusan/Prodi/Unit');
   const [filterStatus, setFilterStatus] = useState('Semua Status');
   const [filterTahun, setFilterTahun] = useState<string | null>(null);
   const [filterBulan, setFilterBulan] = useState(semuaBulanLabel);
@@ -250,7 +251,7 @@ export default function RekapDataPage() {
   // (unit lama/nonaktif yang masih dipakai dokumen) — ditampilkan di grup "Lainnya" biar tetap
   // bisa difilter, bukan hilang begitu saja.
   const unitGroups = useMemo(() => {
-    const docDerived = getRekapUnitOptions(rekapData).filter((o) => o !== 'Semua Jurusan/unit');
+    const docDerived = getRekapUnitOptions(rekapData).filter((o) => o !== 'Semua Jurusan/Prodi/Unit');
     const known = new Set([...masterJurusanOptions, ...masterProdiOptions, ...masterUnitKerjaOptions]);
     const lainnya = docDerived.filter((nama) => !known.has(nama));
 
@@ -326,7 +327,7 @@ export default function RekapDataPage() {
       'Luaran Kerja Sama',
       'Tanggal Awal Kerja Sama',
       'Tanggal Akhir Kerja Sama',
-      'Durasi (dalam tahun)',
+      'Durasi (dalam bulan)',
       // Jurusan / Unit
       'Jurusan',
       'Prodi',
@@ -361,7 +362,7 @@ export default function RekapDataPage() {
       row.luaranKerjaSama || '',
       row.tanggalMulai,
       row.berlakuHingga,
-      row.durasiTahun ?? '',
+      row.durasiBulan ?? '',
       row.jurusanNama || '',
       row.prodiNama || '',
       row.unitKerjaNama || '',
@@ -597,7 +598,7 @@ export default function RekapDataPage() {
             <GroupedFilterSelect
               value={filterUnit}
               onChange={setFilterUnit}
-              allLabel="Semua Jurusan/unit"
+              allLabel="Semua Jurusan/Prodi/Unit"
               groups={[
                 { label: 'Jurusan', options: unitGroups.jurusan },
                 { label: 'Program Studi', options: unitGroups.prodi },
@@ -779,8 +780,8 @@ export default function RekapDataPage() {
                 <th rowSpan={2} className="px-4 py-3 align-middle">Luaran Kerja Sama</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Tanggal Awal Kerja Sama</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Tanggal Akhir Kerja Sama</th>
-                <th rowSpan={2} className="px-4 py-3 align-middle">Durasi (tahun)</th>
-                <th rowSpan={2} className="px-4 py-3 align-middle">Jurusan/Unit</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Durasi (bulan)</th>
+                <th rowSpan={2} className="px-4 py-3 align-middle">Jurusan/Prodi/Unit</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Status Kerjasama</th>
                 <th rowSpan={2} className="px-4 py-3 align-middle">Jenis</th>
                 
@@ -844,7 +845,7 @@ export default function RekapDataPage() {
                     <td className="px-4 py-3 max-w-[180px]"><p className="text-[10px] text-gray-600 line-clamp-2">{row.luaranKerjaSama || '-'}</p></td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.tanggalMulai}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{row.berlakuHingga}</td>
-                    <td className="px-4 py-3 text-center">{row.durasiTahun ?? '-'}</td>
+                    <td className="px-4 py-3 text-center">{row.durasiBulan ?? '-'}</td>
                     {/* Jurusan/Unit — satu kolom, isinya menyesuaikan pilihan Jurusan (+Prodi) atau Unit saat pengajuan */}
                     <td className="px-4 py-3">{jurusanUnitDisplay}</td>
                     {/* Status — klik untuk ke halaman Status dan Progres Kerja Sama, langsung buka
@@ -1100,7 +1101,7 @@ export default function RekapDataPage() {
                 <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
                   <User size={15} className="mt-0.5 shrink-0 text-[#1E376C]" />
                   <div>
-                    <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Jurusan / Unit</p>
+                    <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Jurusan / Prodi / Unit</p>
                     <p className="mt-0.5 text-[12px] font-semibold text-gray-800">
                       {detailItem.jurusanNama
                         ? `${detailItem.jurusanNama}${detailItem.prodiNama ? ` / ${detailItem.prodiNama}` : ''}`
@@ -1130,7 +1131,7 @@ export default function RekapDataPage() {
                   </div>
                   <div>
                     <p className="text-[10.5px] text-gray-500">Durasi</p>
-                    <p className="font-semibold text-gray-800">{detailItem.durasiTahun !== undefined ? `${detailItem.durasiTahun} tahun` : '-'}</p>
+                    <p className="font-semibold text-gray-800">{detailItem.durasiBulan !== undefined ? `${detailItem.durasiBulan} bulan` : '-'}</p>
                   </div>
                   <div>
                     <p className="text-[10.5px] text-gray-500">Tahun</p>
@@ -1151,23 +1152,67 @@ export default function RekapDataPage() {
                 )}
               </div>
 
-              {/* Kontak */}
-              {detailItem.whatsappNumber && detailItem.whatsappNumber !== '-' && (
-                <div className="flex items-start gap-3 rounded-xl border border-green-100 bg-green-50 px-4 py-3">
-                  <Phone size={15} className="mt-0.5 shrink-0 text-green-600" />
-                  <div>
-                    <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">WhatsApp</p>
-                    <a
-                      href={`https://wa.me/${detailItem.whatsappNumber.replace(/[^\d]/g, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-0.5 inline-flex items-center gap-1 text-[12px] font-semibold text-green-700 underline hover:text-green-800"
-                    >
-                      {detailItem.whatsappNumber}
-                    </a>
-                  </div>
+              {/* Kontak: tiga kartu sejajar (Mitra, PIC Mitra, PIC Polibatam); yang belum terisi tampil "-" */}
+              <div className="rounded-xl border border-green-100 bg-green-50 px-4 py-3">
+                <div className="mb-3 flex items-center gap-2">
+                  <Phone size={15} className="shrink-0 text-green-600" />
+                  <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Kontak WhatsApp</p>
                 </div>
-              )}
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[
+                    {
+                      judul: 'Mitra',
+                      nama: detailItem.namaMitra,
+                      jabatan: undefined as string | undefined,
+                      tampil: detailItem.whatsappMitraUmum,
+                      url: (pesan: string) => buatUrlWhatsApp(detailItem.whatsappMitraUmum, pesan),
+                      kepada: detailItem.picMitra,
+                    },
+                    {
+                      judul: 'PIC Mitra',
+                      nama: detailItem.picMitra,
+                      jabatan: detailItem.jabatanPicMitra,
+                      tampil: detailItem.whatsappPicMitra,
+                      url: (pesan: string) => buatUrlWhatsApp(detailItem.whatsappPicMitra, pesan),
+                      kepada: detailItem.picMitra,
+                    },
+                    {
+                      judul: 'PIC Polibatam',
+                      nama: detailItem.picPolibatamNama,
+                      jabatan: detailItem.picPolibatamJabatan,
+                      tampil: detailItem.picPolibatamTelepon ? `+62 ${detailItem.picPolibatamTelepon}` : undefined,
+                      url: (pesan: string) => buatUrlWhatsAppPolibatam(detailItem.picPolibatamTelepon, pesan),
+                      kepada: detailItem.picPolibatamNama,
+                    },
+                  ].map((kontak) => {
+                    const pesan = buildPesanWhatsAppDokumen(detailItem.judulKegiatan || detailItem.namaMitra, detailItem.noDokumen, kontak.kepada);
+                    const ada = Boolean(kontak.tampil && kontak.tampil !== '-');
+                    const url = ada ? kontak.url(pesan) : null;
+                    return (
+                      <div key={kontak.judul} className="flex flex-col rounded-lg border border-green-100 bg-white px-3 py-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-green-700">{kontak.judul}</p>
+                        <p className="mt-1 text-[12px] font-semibold text-gray-900">{kontak.nama || '-'}</p>
+                        <p className="min-h-[16px] text-[10.5px] text-gray-500">{kontak.jabatan || ''}</p>
+                        <div className="mt-2 border-t border-gray-100 pt-2">
+                          {url ? (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-green-700 hover:text-green-800 hover:underline"
+                            >
+                              <Phone size={12} className="shrink-0" />
+                              {kontak.tampil}
+                            </a>
+                          ) : (
+                            <p className="text-[12px] font-medium text-gray-400">Nomor belum diisi</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Manfaat Kerja Sama */}
               <div className="rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
@@ -1440,7 +1485,7 @@ export default function RekapDataPage() {
             if (!unitProdiId) {
               setFeedbackModal({
                 title: 'Gagal Menambahkan Dokumen',
-                message: data.asalKategori === 'Jurusan' && !data.prodiId
+                message: data.asalKategori === 'Jurusan' && !data.prodiId && !data.prodiIds?.length
                   ? 'Prodi belum dipilih atau tidak ditemukan di Master Unit/Prodi. Silakan pilih ulang.'
                   : 'Jurusan/unit yang dipilih tidak ditemukan di Master Unit/Prodi. Silakan pilih ulang.',
               });
@@ -1465,6 +1510,9 @@ export default function RekapDataPage() {
               judul_dokumen: data.judulKegiatan?.trim() || null,
               jenis_dokumen: mapJenisToApi(data.jenisDokumen),
               unit_prodi_id: unitProdiId,
+              ...(data.prodiIds && data.prodiIds.length > 0
+                ? { unit_prodi_ids: data.prodiIds, ...(data.jurusanIds?.length ? { jurusan_ids: data.jurusanIds } : {}) }
+                : {}),
               mitra_id: mitraId ?? null,
               tanggal_mulai: data.tanggalMulai || null,
               tanggal_berakhir: data.tanggalBerakhir || null,
@@ -1538,6 +1586,8 @@ export default function RekapDataPage() {
             asalKategori: data.asalKategori || editingItem.kategoriUnit || 'Unit',
             unitKerja: data.unitKerja || editingItem.unit,
             prodiId: data.prodiId ?? (editingItem.jurusanUnitProdiId ? editingItem.unitProdiId : null),
+            prodiIds: data.prodiIds?.length ? data.prodiIds : (editingItem.unitProdiIds ?? []),
+            jurusanIds: data.jurusanIds,
             ruangLingkup: data.ruangLingkup?.length ? data.ruangLingkup : (editingItem.ruangLingkup || []),
             ruangLingkupIds: data.ruangLingkupIds?.length ? data.ruangLingkupIds : (editingItem.ruangLingkupIds || []),
             dokumenTerkait: data.dokumenTerkait?.length ? data.dokumenTerkait : editingItem.dokumenTerkait,
@@ -1591,6 +1641,9 @@ export default function RekapDataPage() {
                 judul_dokumen: mergedData.judulKegiatan?.trim() || null,
                 jenis_dokumen: mapJenisToApi(mergedData.jenisDokumen),
                 unit_prodi_id: unitProdiId ?? undefined,
+                ...(mergedData.prodiIds && mergedData.prodiIds.length > 0
+                  ? { unit_prodi_ids: mergedData.prodiIds, ...(mergedData.jurusanIds?.length ? { jurusan_ids: mergedData.jurusanIds } : {}) }
+                  : {}),
                 tanggal_mulai: mergedData.tanggalMulai || null,
                 tanggal_berakhir: mergedData.tanggalBerakhir || null,
                 status_siklus: mapStatusToApi(mergedData.status),

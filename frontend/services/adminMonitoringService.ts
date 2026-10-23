@@ -606,7 +606,7 @@ export function getMonitoringJenisOptions(items: Kerjasama[]): string[] {
 // Ambil daftar jurusan/unit (termasuk prodi bila ada di data) unik untuk dropdown filter.
 export function getMonitoringUnitOptions(items: Kerjasama[]): string[] {
   return [
-    'Semua Jurusan/unit',
+    'Semua Jurusan/Prodi/Unit',
     ...Array.from(new Set(items.map((item) => item.unit).filter((v): v is string => Boolean(v)))),
   ];
 }
@@ -636,7 +636,7 @@ export function getMonitoringYearOptions(items: Kerjasama[]): number[] {
 export function filterMonitoringData(items: Kerjasama[], filters: MonitoringFilterOptions): Kerjasama[] {
   return items.filter((item) => {
     const matchesJenis = filters.filterJenis === 'Semua Jenis' || item.jenis === filters.filterJenis;
-    const matchesUnit = filters.filterUnit === 'Semua Jurusan/unit' || item.unit === filters.filterUnit;
+    const matchesUnit = filters.filterUnit === 'Semua Jurusan/Prodi/Unit' || item.unit === filters.filterUnit;
     const matchesJenisMitra = filters.filterJenisMitra === 'Semua Jenis Mitra' || item.jenisMitra === filters.filterJenisMitra;
     const matchesTingkat =
       filters.filterTingkatPerusahaan === 'Semua Tingkat Perusahaan' || item.tingkatPerusahaan === filters.filterTingkatPerusahaan;
