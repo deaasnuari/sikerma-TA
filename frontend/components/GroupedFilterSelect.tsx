@@ -3,10 +3,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
+// Opsi berupa teks biasa (value = teks tampilan) atau pasangan value/label bila nilai yang dikirim
+// berbeda dari teks yang ditampilkan (mis. value "id:12", label "Teknik Informatika").
+export type FilterOption = string | { value: string; label: string };
+
 export type FilterOptionGroup = {
   label: string;
-  options: string[];
+  options: FilterOption[];
 };
+
+const optionValue = (option: FilterOption) => (typeof option === 'string' ? option : option.value);
+const optionLabel = (option: FilterOption) => (typeof option === 'string' ? option : option.label);
 
 type GroupedFilterSelectProps = {
   value: string;
@@ -39,6 +46,9 @@ export default function GroupedFilterSelect({
   buttonClassName,
 }: GroupedFilterSelectProps) {
   const resolvedAllValue = allValue ?? allLabel;
+  const selectedLabel =
+    groups.flatMap((group) => group.options).map((option) => ({ value: optionValue(option), label: optionLabel(option) })).find((option) => option.value === value)?.label ??
+    value;
   const [open, setOpen] = useState(false);
   const [dropUp, setDropUp] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -82,7 +92,7 @@ export default function GroupedFilterSelect({
           'input-field flex min-w-[220px] items-center justify-between gap-2 px-3 py-2 text-[12px] text-gray-700 cursor-pointer'
         }
       >
-        <span className="truncate">{value === resolvedAllValue ? allLabel : value || allLabel}</span>
+        <span className="truncate">{value === resolvedAllValue ? allLabel : selectedLabel || allLabel}</span>
         <ChevronDown size={14} className={`shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -114,17 +124,17 @@ export default function GroupedFilterSelect({
                   )}
                   {group.options.map((option) => (
                     <button
-                      key={option}
+                      key={optionValue(option)}
                       type="button"
                       onClick={() => {
-                        onChange(option);
+                        onChange(optionValue(option));
                         setOpen(false);
                       }}
                       className={`block w-full rounded-lg px-3 py-2 text-left text-[12px] ${
-                        value === option ? 'bg-[#173B82]/10 font-semibold text-[#173B82]' : 'text-gray-700 hover:bg-gray-50'
+                        value === optionValue(option) ? 'bg-[#173B82]/10 font-semibold text-[#173B82]' : 'text-gray-700 hover:bg-gray-50'
                       }`}
                     >
-                      {option}
+                      {optionLabel(option)}
                     </button>
                   ))}
                 </div>

@@ -10,6 +10,8 @@ type MonthPickerProps = {
   value: string;
   onChange: (value: string) => void;
   buttonClassName?: string;
+  // Opsi "Tanpa Bulan (-)" untuk data tanpa tanggal; sembunyikan bila semua data pasti bertanggal.
+  allowTanpaBulan?: boolean;
 };
 
 /**
@@ -19,6 +21,7 @@ type MonthPickerProps = {
 export default function MonthPicker({
   value,
   onChange,
+  allowTanpaBulan = true,
   buttonClassName = 'input-field inline-flex min-w-[150px] items-center justify-between gap-2 px-3 py-2 text-[12px] text-gray-700 transition-colors',
 }: MonthPickerProps) {
   const [open, setOpen] = useState(false);
@@ -70,20 +73,22 @@ export default function MonthPicker({
               );
             })}
 
-            <button
-              type="button"
-              onClick={() => {
-                onChange(tanpaBulanLabel);
-                setOpen(false);
-              }}
-              className={`col-span-3 rounded-lg border px-2 py-2 text-[11.5px] font-medium transition-colors ${
-                value === tanpaBulanLabel
-                  ? 'border-[#1E376C] bg-[#1E376C] text-white'
-                  : 'border-gray-200 bg-white text-gray-800 hover:border-[#1E376C] hover:text-[#1E376C]'
-              }`}
-            >
-              {tanpaBulanLabel}
-            </button>
+            {allowTanpaBulan && (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(tanpaBulanLabel);
+                  setOpen(false);
+                }}
+                className={`col-span-3 rounded-lg border px-2 py-2 text-[11.5px] font-medium transition-colors ${
+                  value === tanpaBulanLabel
+                    ? 'border-[#1E376C] bg-[#1E376C] text-white'
+                    : 'border-gray-200 bg-white text-gray-800 hover:border-[#1E376C] hover:text-[#1E376C]'
+                }`}
+              >
+                {tanpaBulanLabel}
+              </button>
+            )}
           </div>
 
           <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">

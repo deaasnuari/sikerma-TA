@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, FileText, RefreshCw, BarChart3,
-  BookOpen, Archive, Users, Handshake, ChevronLeft, ChevronRight, Bell,
+  BookOpen, Archive, Users, Handshake, ChevronLeft, ChevronRight, Bell, Lightbulb,
   type LucideIcon,
 } from 'lucide-react';
 import { getUnreadCountByHref, getUnreadCountByHrefPrefix } from '@/services/adminService';
@@ -33,6 +33,7 @@ const DATA_PENGAJUAN_HREF_PREFIX = '/admin/data_pengajuan';
 
 const defaultMenuItems: SidebarMenuItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/admin' },
+  { icon: Lightbulb, label: 'Inisiasi', href: '/admin/inisiasi' },
   {
     icon: FileText,
     label: 'Data Pengajuan',

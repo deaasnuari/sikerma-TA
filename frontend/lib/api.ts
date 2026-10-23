@@ -253,3 +253,29 @@ export function openUrl(url: string): void {
 export async function downloadProtectedFile(path: string, fileName: string): Promise<void> {
   await downloadFileWithAuth(berkasEndpoint(path), fileName);
 }
+
+// Foto/berkas gambar terlindungi sebagai object URL siap pakai untuk <img src>. <img> tidak bisa
+// membawa header Authorization, jadi gambarnya diambil lewat fetch (GET /berkas) lalu dijadikan blob.
+// Hasilnya di-cache per path supaya galeri/kartu yang sama tidak mengunduh ulang tiap render.
+const protectedObjectUrlCache = new Map<string, Promise<string>>();
+
+export function getProtectedObjectUrl(path: string): Promise<string> {
+  const cached = protectedObjectUrlCache.get(path);
+  if (cached) return cached;
+
+  const request = (async () => {
+    const response = await fetchWithFallback(berkasEndpoint(path), {}, (accessToken) => ({
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    }));
+
+    if (!response.ok) {
+      throw new Error(response.status === 404 ? 'Gambar tidak ditemukan.' : 'Gagal memuat gambar.');
+    }
+
+    return URL.createObjectURL(await response.blob());
+  })();
+
+  protectedObjectUrlCache.set(path, request);
+  request.catch(() => protectedObjectUrlCache.delete(path));
+  return request;
+}
