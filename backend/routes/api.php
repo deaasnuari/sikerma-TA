@@ -60,6 +60,8 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::delete('/catatan-admin/{catatan_admin}', [CatatanAdminController::class, 'destroy']);
 	Route::post('/dokumen-kerjasama/{dokumen_kerjasama}/upload-file', [DokumenKerjasamaController::class, 'uploadFile'])
 		->whereNumber('dokumen_kerjasama');
+	Route::patch('/dokumen-kerjasama/{dokumen_kerjasama}/nilai', [DokumenKerjasamaController::class, 'updateNilai'])
+		->whereNumber('dokumen_kerjasama');
 	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/documents', [DokumenKerjasamaController::class, 'documents'])
 		->whereNumber('dokumen_kerjasama');
 	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/notifikasi', [NotificationController::class, 'riwayat'])

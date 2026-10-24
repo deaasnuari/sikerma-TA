@@ -51,7 +51,7 @@ const statusConfig: Record<PengajuanStatus, { className: string; icon: React.Rea
   Revisi: {
     className: 'bg-orange-100 text-orange-700',
     icon: <XCircle size={14} />,
-    label: 'Revisi',
+    label: 'Review/Revisi',
   },
   'Disetujui Internal': {
     className: 'bg-indigo-100 text-indigo-700',

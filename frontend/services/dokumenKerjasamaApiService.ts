@@ -512,6 +512,16 @@ export async function updateDokumenKerjasamaById(
   rekapDokumenCache = null;
 }
 
+// Khusus Nilai Kerja Sama: bisa dipakai admin maupun akun internal pemilik dokumen / pimpinan
+// unitnya (updateDokumenKerjasamaById di atas hanya untuk admin).
+export async function updateNilaiKerjasama(id: number, nilai: string | null): Promise<void> {
+  await apiRequest<unknown>(`/dokumen-kerjasama/${id}/nilai`, {
+    method: 'PATCH',
+    body: JSON.stringify({ nilai_kerjasama: nilai }),
+  });
+  rekapDokumenCache = null;
+}
+
 export async function createDokumenKerjasama(payload: {
   nomor_dokumen: string;
   nama_dokumen: string;

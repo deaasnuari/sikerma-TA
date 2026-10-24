@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Building2, CalendarDays, ChevronLeft, ChevronRight, ImageOff, Pencil, Trash2, Users, X } from 'lucide-react';
+import { Building2, CalendarDays, ChevronLeft, ChevronRight, Download, ExternalLink, FileText, ImageOff, Pencil, Trash2, Users, X } from 'lucide-react';
 import ProtectedImage from '@/components/ProtectedImage';
-import { formatTanggalInisiasi, type InisiasiItem } from '@/services/inisiasiService';
+import { downloadProtectedFile, openProtectedFile } from '@/lib/api';
+import { formatTanggalInisiasi, formatUkuranBerkas, type InisiasiItem } from '@/services/inisiasiService';
 
 type Props = {
   item: InisiasiItem | null;
@@ -120,6 +121,46 @@ export default function InisiasiDetailModal({ item, onClose, onEdit, onDelete }:
           <section>
             <h3 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">Deskripsi Kegiatan</h3>
             <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{item.deskripsi}</p>
+          </section>
+
+          <section aria-label="Dokumen pendukung">
+            <h3 className="mb-1.5 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+              <FileText size={12} /> Dokumen ({item.dokumens.length})
+            </h3>
+            {item.dokumens.length > 0 ? (
+              <ul className="space-y-1.5">
+                {item.dokumens.map((dokumen) => {
+                  const nama = dokumen.nama_asli ?? 'Dokumen.pdf';
+                  return (
+                    <li key={dokumen.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                      <FileText size={16} className="shrink-0 text-red-500" />
+                      <span className="min-w-0 flex-1 truncate text-sm text-slate-700" title={nama}>{nama}</span>
+                      <span className="shrink-0 text-xs text-slate-400">{formatUkuranBerkas(dokumen.ukuran)}</span>
+                      <button
+                        type="button"
+                        onClick={() => void openProtectedFile(dokumen.path_file)}
+                        title="Buka di tab baru"
+                        aria-label={`Buka ${nama}`}
+                        className="shrink-0 rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-[#173B82]"
+                      >
+                        <ExternalLink size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadProtectedFile(dokumen.path_file, nama).catch((err) => alert(err instanceof Error ? err.message : 'Gagal mengunduh file.'))}
+                        title="Unduh"
+                        aria-label={`Unduh ${nama}`}
+                        className="shrink-0 rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-[#173B82]"
+                      >
+                        <Download size={14} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-400">Belum ada dokumen</p>
+            )}
           </section>
 
           <div className="grid gap-4 sm:grid-cols-2">

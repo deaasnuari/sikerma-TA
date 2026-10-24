@@ -97,7 +97,6 @@ export default function InternalDataPengajuanPage() {
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState('Semua Status');
-  const [filterKategori, setFilterKategori] = useState<'Semua' | 'Jurusan' | 'Unit'>('Semua');
   const [filterJurusan, setFilterJurusan] = useState('Semua Jurusan/Prodi/Unit');
   const [pengajuanData, setPengajuanData] = useState<PengajuanItem[]>([]);
   const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
@@ -145,8 +144,6 @@ export default function InternalDataPengajuanPage() {
     };
   }, []);
 
-  const unitNameSet = useMemo(() => new Set(masterUnitNames), [masterUnitNames]);
-  const prodiNameSet = useMemo(() => new Set(masterProdiNames), [masterProdiNames]);
 
   useEffect(() => {
     let isMounted = true;
@@ -214,25 +211,7 @@ export default function InternalDataPengajuanPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pengajuanData]);
 
-  // Flat (Jurusan/Unit tab — 1 kategori saja) atau null (tab Semua, pakai jurusanOptionGroups
-  // yang sudah dikelompokkan Jurusan/Program Studi/Unit Kerja/Lainnya lewat <optgroup>).
-  const jurusanOptionsFlat = useMemo(() => {
-    const currentValues = pengajuanData.map((item) => item.namaUnitProdi).filter(Boolean);
-
-    if (filterKategori === 'Jurusan') {
-      return Array.from(new Set([
-        ...masterJurusanNames,
-        ...currentValues.filter((value) => !unitNameSet.has(value) && !prodiNameSet.has(value)),
-      ]));
-    }
-
-    if (filterKategori === 'Unit') {
-      return Array.from(new Set([...masterUnitNames, ...currentValues.filter((value) => unitNameSet.has(value))]));
-    }
-
-    return null;
-  }, [filterKategori, pengajuanData, masterJurusanNames, masterUnitNames, unitNameSet, prodiNameSet]);
-
+  // Dropdown dikelompokkan Jurusan / Program Studi / Unit Kerja / Lainnya, sama seperti di Rekap Data.
   const jurusanOptionGroups = useMemo(() => {
     const currentValues = pengajuanData.map((item) => item.namaUnitProdi).filter(Boolean);
     const known = new Set([...masterJurusanNames, ...masterProdiNames, ...masterUnitNames]);
@@ -242,19 +221,13 @@ export default function InternalDataPengajuanPage() {
   }, [pengajuanData, masterJurusanNames, masterProdiNames, masterUnitNames]);
 
   const filteredItems = useMemo(() => {
-    const baseItems = getFilteredPengajuanData(pengajuanData, {
+    const filtered = getFilteredPengajuanData(pengajuanData, {
       filterStatus,
       filterJurusan,
       filterTahun: 'Semua Tahun',
       search,
     }, { excludeAdmin: true });
 
-    let filtered = baseItems;
-    if (filterKategori === 'Jurusan') {
-      filtered = baseItems.filter((item) => !unitNameSet.has(item.namaUnitProdi));
-    } else if (filterKategori === 'Unit') {
-      filtered = baseItems.filter((item) => unitNameSet.has(item.namaUnitProdi));
-    }
     // Dedup sebelum render
     const seen = new Set();
     const unique = [];
@@ -265,7 +238,7 @@ export default function InternalDataPengajuanPage() {
       }
     }
     return unique;
-  }, [pengajuanData, filterStatus, filterJurusan, search, filterKategori, unitNameSet]);
+  }, [pengajuanData, filterStatus, filterJurusan, search]);
 
   // Daftar ditampilkan 10 per halaman, seperti di Rekap Data.
   const ITEMS_PER_PAGE = 10;
@@ -278,7 +251,7 @@ export default function InternalDataPengajuanPage() {
   // Kembali ke halaman 1 setiap kali filter atau pencarian berubah.
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterStatus, filterJurusan, filterKategori, search]);
+  }, [filterStatus, filterJurusan, search]);
 
   const stats = getPengajuanStats(pengajuanData);
 
@@ -301,7 +274,7 @@ export default function InternalDataPengajuanPage() {
 
     if (!bolehDiubah(item)) {
       setInfoModalMessage(
-        `Pengajuan ini sedang berstatus "${item.statusPengajuan}" sehingga belum bisa diubah. ` +
+        `Pengajuan ini sedang berstatus "${item.statusPengajuan === 'Revisi' ? 'Review/Revisi' : item.statusPengajuan}" sehingga belum bisa diubah. ` +
           'Perubahan hanya bisa dilakukan saat pengajuan masih menunggu review atau diminta revisi oleh admin.'
       );
       return;
@@ -387,49 +360,18 @@ export default function InternalDataPengajuanPage() {
             Filter:
           </div>
 
-          <div className="inline-flex overflow-hidden rounded-lg border border-slate-300 bg-white">
-            {(['Semua', 'Jurusan', 'Unit'] as const).map((kategori) => (
-              <button
-                key={kategori}
-                type="button"
-                onClick={() => {
-                  setFilterKategori(kategori);
-                  setFilterJurusan('Semua Jurusan/Prodi/Unit');
-                }}
-                className={`px-3 py-2 text-sm font-semibold transition ${
-                  filterKategori === kategori
-                    ? 'bg-[#173B82] text-white'
-                    : 'text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                {kategori}
-              </button>
-            ))}
-          </div>
-
           <GroupedFilterSelect
             value={filterJurusan}
             onChange={setFilterJurusan}
-            allLabel={
-              filterKategori === 'Jurusan'
-                ? 'Semua Jurusan'
-                : filterKategori === 'Unit'
-                  ? 'Semua Unit'
-                  : 'Semua Jurusan/Prodi/Unit'
-            }
-            allValue="Semua Jurusan/Prodi/Unit"
+            allLabel="Semua Jurusan/Prodi/Unit"
             className="min-w-[220px]"
             buttonClassName="input-field flex min-w-[220px] items-center justify-between gap-2 px-3 py-2 text-sm text-gray-700 cursor-pointer"
-            groups={
-              jurusanOptionsFlat
-                ? [{ label: '', options: jurusanOptionsFlat }]
-                : [
-                    { label: 'Jurusan', options: jurusanOptionGroups.jurusan },
-                    { label: 'Program Studi', options: jurusanOptionGroups.prodi },
-                    { label: 'Unit Kerja', options: jurusanOptionGroups.unit },
-                    { label: 'Lainnya', options: jurusanOptionGroups.lainnya },
-                  ]
-            }
+            groups={[
+              { label: 'Jurusan', options: jurusanOptionGroups.jurusan },
+              { label: 'Program Studi', options: jurusanOptionGroups.prodi },
+              { label: 'Unit Kerja', options: jurusanOptionGroups.unit },
+              { label: 'Lainnya', options: jurusanOptionGroups.lainnya },
+            ]}
           />
 
           <GroupedFilterSelect
@@ -445,13 +387,7 @@ export default function InternalDataPengajuanPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={
-                filterKategori === 'Jurusan'
-                  ? 'Cari judul, mitra, pengusul, atau jurusan'
-                  : filterKategori === 'Unit'
-                    ? 'Cari judul, mitra, pengusul, atau unit'
-                    : 'Cari judul, mitra, pengusul, atau jurusan/unit'
-              }
+              placeholder="Cari judul, mitra, pengusul, atau jurusan/prodi/unit"
               className="input-field w-full pl-9 pr-3 py-2 text-sm text-gray-700"
             />
           </div>
@@ -498,7 +434,7 @@ export default function InternalDataPengajuanPage() {
 
                   <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${sc.className}`}>
                     {sc.icon}
-                    {item.statusPengajuan}
+                    {item.statusPengajuan === 'Revisi' ? 'Review/Revisi' : item.statusPengajuan}
                   </span>
                 </div>
 

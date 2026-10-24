@@ -4,9 +4,9 @@
   "private": true,
   "license": "SEE LICENSE IN ../LICENSE",
   "scripts": {
-    "dev": "start http://localhost:3000 && next dev",
+    "dev": "node scripts/open-browser.mjs http://localhost:3000 && next dev",
     "dev:plain": "next dev",
-    "dev:open": "start http://localhost:3000 && next dev",
+    "dev:open": "node scripts/open-browser.mjs http://localhost:3000 && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

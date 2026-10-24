@@ -7,6 +7,13 @@ export type InisiasiFoto = {
   nama_asli: string | null;
 };
 
+export type InisiasiDokumen = {
+  id: number;
+  path_file: string;
+  nama_asli: string | null;
+  ukuran: number | null;
+};
+
 export type InisiasiUnit = {
   id: number;
   unit_prodi_id: number | null;
@@ -24,6 +31,7 @@ export type InisiasiItem = {
   units: InisiasiUnit[];
   peserta: { id: number; nama: string }[];
   fotos: InisiasiFoto[];
+  dokumens: InisiasiDokumen[];
   created_at: string | null;
   updated_at: string | null;
 };
@@ -47,6 +55,8 @@ export type InisiasiFormPayload = {
   peserta: string[];
   fotoBaru: File[];
   hapusFotoIds: number[];
+  dokumenBaru: File[];
+  hapusDokumenIds: number[];
 };
 
 export type InisiasiOpsiFilter = {
@@ -71,6 +81,16 @@ export const INISIASI_MAKS_UKURAN_FOTO = 5 * 1024 * 1024;
 // Batas total foto baru dalam satu kali simpan: server PHP membatasi seluruh isi request (post_max_size, umumnya 10 MB).
 export const INISIASI_MAKS_TOTAL_UKURAN_BARU = 8 * 1024 * 1024;
 export const INISIASI_FORMAT_FOTO = ['image/jpeg', 'image/png', 'image/webp'];
+export const INISIASI_MAKS_DOKUMEN = 10;
+export const INISIASI_MAKS_UKURAN_DOKUMEN = 10 * 1024 * 1024;
+// Batas gabungan semua berkas baru (foto + dokumen) dalam satu kali simpan; server perlu post_max_size di atas ini.
+export const INISIASI_MAKS_TOTAL_UPLOAD_BARU = 48 * 1024 * 1024;
+
+export function formatUkuranBerkas(bytes: number | null | undefined): string {
+  if (!bytes || bytes <= 0) return '';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
+}
 
 export async function getInisiasiList(
   params: InisiasiFilter & { page?: number; perPage?: number },
@@ -107,7 +127,7 @@ export async function getInisiasi(id: number): Promise<InisiasiItem> {
   return response.data;
 }
 
-// Dikirim sebagai multipart (ada berkas foto). Update memakai POST + _method=PATCH karena PHP tidak
+// Dikirim sebagai multipart (ada berkas foto dan dokumen PDF). Update memakai POST + _method=PATCH karena PHP tidak
 // mengurai multipart pada request PATCH.
 export async function saveInisiasi(payload: InisiasiFormPayload, id?: number): Promise<InisiasiItem> {
   const body = new FormData();
@@ -120,6 +140,8 @@ export async function saveInisiasi(payload: InisiasiFormPayload, id?: number): P
   payload.peserta.forEach((nama) => body.append('peserta[]', nama));
   payload.fotoBaru.forEach((file) => body.append('fotos[]', file));
   payload.hapusFotoIds.forEach((fotoId) => body.append('hapus_foto_ids[]', String(fotoId)));
+  payload.dokumenBaru.forEach((file) => body.append('dokumens[]', file));
+  payload.hapusDokumenIds.forEach((dokumenId) => body.append('hapus_dokumen_ids[]', String(dokumenId)));
 
   if (id !== undefined) {
     body.append('_method', 'PATCH');

@@ -1,17 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, Calendar, CheckCircle2, Clock, Download, FileText, Mail, Phone, User } from 'lucide-react';
+import { ArrowLeft, Calendar, CheckCircle2, Clock, Download, FileText, Mail, Pencil, Phone, User } from 'lucide-react';
 import { generateNoDokumen } from '@/services/adminMonitoringService';
 import type { PengajuanItem } from '@/services/adminPengajuanService';
 import type { JenisBerkas } from '@/services/adminRekapDataService';
 import JenisBerkasBadge from '@/components/JenisBerkasBadge';
+import { updateNilaiKerjasama } from '@/services/dokumenKerjasamaApiService';
 
 type ApprovalStatus = 'Menunggu' | 'Disetujui' | 'Ditolak';
 type Jenis = 'MoU' | 'MoA' | 'IA';
 type TabKey = 'informasi' | 'dokumen' | 'kontak' | 'histori';
 
 interface KerjasamaItem {
+  id?: number;
   noDokumen: string;
   namaMitra: string;
   jenis: Jenis;
@@ -43,6 +45,8 @@ interface DetailKerjasamaModalProps {
   // Dipakai untuk mengisi tab Kontak & Histori di modal Detail Kerjasama dengan data pengajuan
   pengajuan?: PengajuanItem;
   onClose: () => void;
+  // Dipanggil setelah Nilai Kerja Sama berhasil disimpan, supaya daftar di halaman ikut diperbarui.
+  onNilaiSaved?: (nilai: string | undefined) => void;
 }
 
 function formatDateTime(value?: string | null): string {
@@ -166,7 +170,7 @@ function buildHistoriFromSumber(pengajuan?: PengajuanItem): HistoriItem[] {
   return events;
 }
 
-export default function DetailKerjasamaModal({ item, pengajuan, onClose }: DetailKerjasamaModalProps) {
+export default function DetailKerjasamaModal({ item, pengajuan, onClose, onNilaiSaved }: DetailKerjasamaModalProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('informasi');
 
   // Modal internal rekap_data tidak punya tipe proper untuk dokumen pendukung,
@@ -245,7 +249,7 @@ export default function DetailKerjasamaModal({ item, pengajuan, onClose }: Detai
 
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {activeTab === 'informasi' && <TabInformasi item={item} />}
+          {activeTab === 'informasi' && <TabInformasi item={item} onNilaiSaved={onNilaiSaved} />}
           {activeTab === 'dokumen' && <TabDokumen dokumenTerkait={dokumenTerkait} />}
           {activeTab === 'kontak' && <TabKontak kontak={kontak} />}
           {activeTab === 'histori' && <TabHistori histori={histori} />}
@@ -279,7 +283,30 @@ export default function DetailKerjasamaModal({ item, pengajuan, onClose }: Detai
   );
 }
 
-function TabInformasi({ item }: { item: KerjasamaItem }) {
+function TabInformasi({ item, onNilaiSaved }: { item: KerjasamaItem; onNilaiSaved?: (nilai: string | undefined) => void }) {
+  const [nilaiTersimpan, setNilaiTersimpan] = useState<string | undefined>(item.nilaiKerjasama);
+  const [isEditingNilai, setIsEditingNilai] = useState(false);
+  const [nilaiDraft, setNilaiDraft] = useState('');
+  const [savingNilai, setSavingNilai] = useState(false);
+  const [nilaiError, setNilaiError] = useState<string | null>(null);
+
+  const handleSimpanNilai = async () => {
+    if (typeof item.id !== 'number') return;
+    const nilai = nilaiDraft.trim();
+    setSavingNilai(true);
+    setNilaiError(null);
+    try {
+      await updateNilaiKerjasama(item.id, nilai || null);
+      setNilaiTersimpan(nilai || undefined);
+      setIsEditingNilai(false);
+      onNilaiSaved?.(nilai || undefined);
+    } catch (err) {
+      setNilaiError(err instanceof Error ? err.message : 'Gagal menyimpan nilai kerja sama.');
+    } finally {
+      setSavingNilai(false);
+    }
+  };
+
   const jurusanUnitDisplay = item.jurusanNama
     ? `${item.jurusanNama}${item.prodiNama ? ` / ${item.prodiNama}` : ''}`
     : (item.unitKerjaNama || item.unit || '-');
@@ -332,10 +359,59 @@ function TabInformasi({ item }: { item: KerjasamaItem }) {
           </div>
         </div>
 
-        {/* Nilai kerja sama diisi admin (di Rekap Data admin); di sini hanya dibaca. */}
+        {/* Nilai kerja sama bisa diisi admin dan akun internal pemilik dokumen / pimpinan unitnya. */}
         <div>
-          <p className="text-[10px] text-gray-500">Nilai Kerja Sama</p>
-          <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{item.nilaiKerjasama || '-'}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-gray-500">Nilai Kerja Sama</p>
+            {!isEditingNilai && typeof item.id === 'number' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setNilaiDraft(nilaiTersimpan || '');
+                  setNilaiError(null);
+                  setIsEditingNilai(true);
+                }}
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-[#1E376C] transition-colors hover:bg-[#1E376C]/10"
+              >
+                <Pencil size={11} />
+                Edit
+              </button>
+            )}
+          </div>
+          {isEditingNilai ? (
+            <div className="mt-1 space-y-2">
+              <input
+                type="text"
+                value={nilaiDraft}
+                onChange={(e) => setNilaiDraft(e.target.value)}
+                maxLength={255}
+                className="input-field h-10 w-full rounded-lg px-3 text-[12px]"
+                placeholder="Contoh: Rp 50.000.000 atau USD 5,000"
+              />
+              <p className="text-[10px] text-gray-400">Tulis nominal beserta mata uangnya (Rp, USD, dll.). Boleh tambah keterangan, mis. &quot;Rp 20 juta per tahun&quot;.</p>
+              {nilaiError && <p className="text-[11px] text-red-500">{nilaiError}</p>}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingNilai(false)}
+                  disabled={savingNilai}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSimpanNilai}
+                  disabled={savingNilai}
+                  className="rounded-lg bg-[#1E376C] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#2B4A93] disabled:opacity-60"
+                >
+                  {savingNilai ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{nilaiTersimpan || '-'}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">

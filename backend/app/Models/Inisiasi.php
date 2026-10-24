@@ -38,6 +38,11 @@ class Inisiasi extends Model
         return $this->hasMany(InisiasiFoto::class, 'inisiasi_id')->orderBy('urutan')->orderBy('id');
     }
 
+    public function dokumens(): HasMany
+    {
+        return $this->hasMany(InisiasiDokumen::class, 'inisiasi_id')->orderBy('urutan')->orderBy('id');
+    }
+
     public function pembuat(): BelongsTo
     {
         return $this->belongsTo(User::class, 'dibuat_oleh_user_id');

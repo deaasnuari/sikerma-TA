@@ -131,7 +131,7 @@ export default function EksternalPage() {
       { title: 'Total Kerjasama', value: total, note: 'Semua pengajuan Anda', icon: FileBadge2, iconBox: 'bg-orange-100 text-orange-600', bar: 'bg-orange-400' },
       { title: 'Aktif', value: totalAktif, note: `${pct(totalAktif)}% dari total`, icon: CheckCircle2, iconBox: 'bg-emerald-100 text-emerald-600', bar: 'bg-emerald-500' },
       { title: 'Dalam Proses', value: totalDiproses, note: 'Menunggu atau diproses admin', icon: Clock3, iconBox: 'bg-amber-100 text-amber-600', bar: 'bg-amber-500' },
-      { title: 'Perlu Revisi', value: totalRevisi, note: 'Perbarui data/dokumen', icon: Building2, iconBox: 'bg-orange-100 text-orange-700', bar: 'bg-orange-500' },
+      { title: 'Perlu Review/Revisi', value: totalRevisi, note: 'Perbarui data/dokumen', icon: Building2, iconBox: 'bg-orange-100 text-orange-700', bar: 'bg-orange-500' },
     ],
     [total, totalAktif, totalDiproses, totalRevisi],
   );
@@ -278,7 +278,7 @@ export default function EksternalPage() {
                     </p>
                   </div>
                   <span className={`hidden shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold sm:inline-flex ${statusBadgeClass[item.status]}`}>
-                    {item.status === 'Berakhir' ? 'Ditolak' : item.status}
+                    {item.status === 'Berakhir' ? 'Ditolak' : item.status === 'Revisi' ? 'Review/Revisi' : item.status}
                   </span>
                   <ChevronRight size={16} className="shrink-0 text-slate-300 transition group-hover:text-[#173B82]" />
                 </Link>

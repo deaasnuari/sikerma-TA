@@ -18,7 +18,7 @@ const statusConfig: Record<PengajuanStatus, { className: string; icon: React.Rea
   Menunggu: { className: 'bg-amber-100 text-amber-700', icon: <Clock3 size={14} />, label: 'Menunggu' },
   'Menunggu Review': { className: 'bg-amber-100 text-amber-700', icon: <Clock3 size={14} />, label: 'Menunggu Review' },
   Diproses: { className: 'bg-sky-100 text-sky-700', icon: <Clock3 size={14} />, label: 'Diproses' },
-  Revisi: { className: 'bg-orange-100 text-orange-700', icon: <Clock3 size={14} />, label: 'Revisi' },
+  Revisi: { className: 'bg-orange-100 text-orange-700', icon: <Clock3 size={14} />, label: 'Review/Revisi' },
   Disetujui: { className: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle2 size={14} />, label: 'Disetujui' },
   'Disetujui Internal': { className: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle2 size={14} />, label: 'Disetujui Internal' },
   'Disetujui Mitra': { className: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle2 size={14} />, label: 'Disetujui Mitra' },

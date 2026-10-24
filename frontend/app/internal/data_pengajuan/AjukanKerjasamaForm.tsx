@@ -254,7 +254,7 @@ const defaultAppearanceSettings: FormAppearanceSettings = {
   sectionInformasiMitraSubtitle: 'Data lengkap mitra kerja sama',
   sectionDetailKerjasamaTitle: 'Detail Kerjasama',
   sectionDetailKerjasamaSubtitle: 'Informasi dasar kerja sama yang akan diajukan',
-  sectionKontakTitle: 'Kontak Person Mitra',
+  sectionKontakTitle: 'Kontak Person PIC / Koresponden Mitra',
   sectionKontakSubtitle: 'Informasi kontak person dari pihak mitra',
   sectionDokumenTitle: 'Dokumen Pendukung',
   sectionDokumenSubtitle: 'Pilih jenis dokumen, unduh template bila diperlukan, lalu upload berkas pendukung.',

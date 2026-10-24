@@ -2,11 +2,12 @@
 
 import { openUrl } from '@/lib/api';
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, ChevronRight, Download, FileText, Save, Send, Upload, X } from 'lucide-react';
+import { CheckCircle2, ChevronRight, Download, ExternalLink, FileText, Save, Send, Upload, X } from 'lucide-react';
 import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploadUtils';
 import { submitLaporanPelaksanaan } from '@/services/laporanPelaksanaanService';
 import { downloadTemplate, templateLaporanPelaksanaan } from '@/lib/templateDokumen';
 import { buildLaporanPelaksanaanDocx, DEFAULT_JABATAN_MENGETAHUI } from '@/lib/laporanPelaksanaanDocx';
+import { LINK_DRIVE_LAPORAN_KEGIATAN } from '@/lib/laporanKegiatanConfig';
 
 export interface LaporanPelaksanaanData {
   namaMitra: string;
@@ -247,7 +248,7 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
         unitPengaju,
         kegiatan: kegiatanText,
         hasil: hasilText,
-        tautanDokumentasi,
+        tautanDokumentasi: LINK_DRIVE_LAPORAN_KEGIATAN || tautanDokumentasi,
         namaPenanggungJawab,
         nipPenanggungJawab,
         jabatanMengetahui,
@@ -277,7 +278,7 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
         mitraKerjasama,
         ruangLingkup: kegiatanText,
         hasilPelaksanaan: hasilText,
-        tautanDokumentasi,
+        tautanDokumentasi: LINK_DRIVE_LAPORAN_KEGIATAN || tautanDokumentasi,
         namaPenanggungJawab,
         namaTtdMitra,
         jabatanTtdMitra,
@@ -459,10 +460,28 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
             ))}
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">Tautan/Link Dokumentasi Kegiatan dan Laporan Kegiatan</label>
-              <input type="text" value={tautanDokumentasi} disabled={!isDraftEditable}
-                onChange={(e) => setTautanDokumentasi(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1E376C] disabled:bg-slate-50 disabled:text-slate-500"
-              />
+              {LINK_DRIVE_LAPORAN_KEGIATAN ? (
+                <>
+                  <a
+                    href={LINK_DRIVE_LAPORAN_KEGIATAN}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-[#1E376C] underline hover:bg-slate-100"
+                  >
+                    <span className="break-all">{LINK_DRIVE_LAPORAN_KEGIATAN}</span>
+                    <ExternalLink size={14} className="shrink-0" />
+                  </a>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Unggah dokumentasi kegiatan dan laporan kegiatan ke folder Google Drive Admin Kerja Sama di atas.
+                  </p>
+                </>
+              ) : (
+                <input type="text" value={tautanDokumentasi} disabled={!isDraftEditable}
+                  onChange={(e) => setTautanDokumentasi(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1E376C] disabled:bg-slate-50 disabled:text-slate-500"
+                />
+              )}
+              <p className="mt-1 text-xs font-semibold text-amber-600">*Link bisa diakses semua orang</p>
             </div>
           </div>
 

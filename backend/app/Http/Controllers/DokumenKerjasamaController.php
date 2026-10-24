@@ -1070,6 +1070,69 @@ class DokumenKerjasamaController extends Controller
         ]);
     }
 
+    /**
+     * Mengisi/mengubah Nilai Kerja Sama saja. Admin boleh untuk semua dokumen; akun internal
+     * (internal/unit/jurusan/prodi) hanya untuk dokumen miliknya sendiri atau yang masuk cakupan
+     * jurusan/prodi/unit yang dia pimpin (aturan yang sama dengan show()). Yang sekadar di-CC
+     * (distribusi) dan akun eksternal/pimpinan tidak boleh mengubahnya.
+     */
+    public function updateNilai(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
+    {
+        $user = $request->user();
+        $normalizedRole = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+
+        $validated = $request->validate([
+            'nilai_kerjasama' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if (!in_array($normalizedRole, ['admin', 'admin-humas'], true)) {
+            if (!$user || !in_array($normalizedRole, ['internal', 'unit', 'jurusan', 'prodi'], true)) {
+                return response([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki akses untuk mengubah nilai kerja sama.',
+                ], 403);
+            }
+
+            $isOwner = (int) $dokumen_kerjasama->dibuat_oleh_user_id === (int) $user->id
+                || (int) $dokumen_kerjasama->pengajuan?->user_pengusul_id === (int) $user->id;
+
+            $isInStructuralScope = false;
+            if (!$isOwner) {
+                $structural = app(StructuralAccessService::class);
+                $scopedUnitProdiIds = $structural->resolveScopedUnitProdiIds($structural->getUserStructuralAccess($user));
+                $isInStructuralScope = $scopedUnitProdiIds && $dokumen_kerjasama->termasukUnitProdi($scopedUnitProdiIds);
+            }
+
+            $sudahDihapus = $dokumen_kerjasama->dihapus_admin_pada || $dokumen_kerjasama->dihapus_user_pada;
+            $isDistribusi = is_array($dokumen_kerjasama->pengajuan?->distribusi_user_ids)
+                && in_array($user->id, $dokumen_kerjasama->pengajuan->distribusi_user_ids, false);
+
+            if (!$sudahDihapus && !$isOwner && !$isInStructuralScope && $isDistribusi) {
+                // Boleh melihat (di-CC) tetapi bukan pengisi: pesan jelas, bukan "tidak ditemukan".
+                return response([
+                    'success' => false,
+                    'message' => 'Nilai kerja sama hanya dapat diisi oleh pemilik dokumen, pimpinan unitnya, atau admin.',
+                ], 403);
+            }
+
+            if ($sudahDihapus || (!$isOwner && !$isInStructuralScope)) {
+                return response([
+                    'success' => false,
+                    'message' => 'Dokumen kerjasama tidak ditemukan.',
+                ], 404);
+            }
+        }
+
+        $nilai = trim((string) ($validated['nilai_kerjasama'] ?? ''));
+        $dokumen_kerjasama->update(['nilai_kerjasama' => $nilai !== '' ? $nilai : null]);
+
+        return response([
+            'success' => true,
+            'data' => ['id' => $dokumen_kerjasama->id, 'nilai_kerjasama' => $dokumen_kerjasama->nilai_kerjasama],
+            'message' => 'Nilai kerja sama berhasil disimpan',
+        ]);
+    }
+
     public function uploadFile(Request $request, DokumenKerjasama $dokumen_kerjasama): Response
     {
         if ($response = $this->ensureAdmin($request)) {

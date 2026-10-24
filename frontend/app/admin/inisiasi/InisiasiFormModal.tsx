@@ -1,21 +1,28 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ImagePlus, Plus, RefreshCw, X } from 'lucide-react';
+import { FileText, ImagePlus, Plus, RefreshCw, X } from 'lucide-react';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 import ProtectedImage from '@/components/ProtectedImage';
 import { useMasterUnitProdi } from '@/hooks/useMasterData';
+import { getDistribusiKandidat, type DistribusiJabatan, type DistribusiKandidat } from '@/services/distribusiKandidatService';
 import {
   INISIASI_FORMAT_FOTO,
+  INISIASI_MAKS_DOKUMEN,
   INISIASI_MAKS_FOTO,
   INISIASI_MAKS_TOTAL_UKURAN_BARU,
+  INISIASI_MAKS_TOTAL_UPLOAD_BARU,
+  INISIASI_MAKS_UKURAN_DOKUMEN,
   INISIASI_MAKS_UKURAN_FOTO,
+  formatUkuranBerkas,
   saveInisiasi,
+  type InisiasiDokumen,
   type InisiasiFoto,
   type InisiasiItem,
 } from '@/services/inisiasiService';
 
 type FotoBaru = { id: string; file: File; previewUrl: string };
+type DokumenBaru = { id: string; file: File };
 
 type Props = {
   open: boolean;
@@ -28,6 +35,12 @@ type Props = {
 type FieldErrors = Partial<Record<'tanggal' | 'judul' | 'mitra' | 'deskripsi', string>>;
 
 const labelClass = 'mb-1 block text-sm font-semibold text-slate-700';
+
+const JABATAN_LABEL: Record<DistribusiJabatan, string> = {
+  ketua_jurusan: 'Ketua Jurusan',
+  ketua_prodi: 'Ketua Prodi',
+  kepala_unit: 'Kepala Unit',
+};
 
 function groupLabel(kategori: string | null | undefined, jenis: string): string {
   if (jenis === 'prodi') return 'Program Studi';
@@ -51,12 +64,19 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
   const [fotoLama, setFotoLama] = useState<InisiasiFoto[]>([]);
   const [hapusFotoIds, setHapusFotoIds] = useState<number[]>([]);
   const [fotoBaru, setFotoBaru] = useState<FotoBaru[]>([]);
+  const [dokumenLama, setDokumenLama] = useState<InisiasiDokumen[]>([]);
+  const [hapusDokumenIds, setHapusDokumenIds] = useState<number[]>([]);
+  const [dokumenBaru, setDokumenBaru] = useState<DokumenBaru[]>([]);
+  const [dokumenError, setDokumenError] = useState<string | null>(null);
+  // Saran nama peserta: Ketua Jurusan/Prodi/Kepala Unit (sama dengan pilihan Distribusi/CC di Data Pengajuan).
+  const [kandidat, setKandidat] = useState<DistribusiKandidat[]>([]);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [fotoError, setFotoError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const fotoInputRef = useRef<HTMLInputElement>(null);
+  const dokumenInputRef = useRef<HTMLInputElement>(null);
   // Target tombol "Ganti": foto lama (id) atau foto baru (id lokal); null = tambah foto biasa.
   const gantiTarget = useRef<{ jenis: 'lama' | 'baru'; id: string | number } | null>(null);
   const fotoBaruRef = useRef<FotoBaru[]>([]);
@@ -76,6 +96,10 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
     setFotoLama(item?.fotos ?? []);
     setHapusFotoIds([]);
     setFotoBaru([]);
+    setDokumenLama(item?.dokumens ?? []);
+    setHapusDokumenIds([]);
+    setDokumenBaru([]);
+    setDokumenError(null);
     setUnitInput('');
     setPesertaInput('');
     setErrors({});
@@ -83,6 +107,18 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
     setServerError(null);
     setSubmitting(false);
   }, [open, item]);
+
+  // Daftar kandidat diambil sekali saat modal pertama dibuka; bila gagal, peserta tetap bisa diketik bebas.
+  const kandidatDimuat = useRef(false);
+  useEffect(() => {
+    if (!open || kandidatDimuat.current) return;
+    kandidatDimuat.current = true;
+    getDistribusiKandidat()
+      .then(setKandidat)
+      .catch(() => {
+        kandidatDimuat.current = false;
+      });
+  }, [open]);
 
   // Lepas object URL preview saat modal ditutup/komponen dibongkar supaya memori tidak bocor.
   useEffect(() => {
@@ -103,6 +139,23 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
   if (!open) return null;
 
   const totalFoto = fotoLama.length + fotoBaru.length;
+
+  const kataPeserta = pesertaInput.trim().toLowerCase();
+  const saranPeserta = (() => {
+    if (!kataPeserta) return [];
+    const sudah = new Set(peserta.map((nama) => nama.toLowerCase()));
+    const terlihat = new Set<string>();
+    return kandidat
+      .filter((k) => k.nama.toLowerCase().includes(kataPeserta) && !sudah.has(k.nama.toLowerCase()))
+      .filter((k) => {
+        // Orang yang sama bisa muncul dua kali untuk jabatan berbeda; kuncinya nama+jabatan+unit.
+        const kunci = `${k.nama.toLowerCase()}|${k.jabatan}|${k.unitNama ?? ''}`;
+        if (terlihat.has(kunci)) return false;
+        terlihat.add(kunci);
+        return true;
+      });
+  })();
+  const totalDokumen = dokumenLama.length + dokumenBaru.length;
 
   // Gabungkan teks ketikan (boleh beberapa nama dipisah koma/titik koma) ke daftar chip, tanpa duplikat.
   const gabungChip = (nilai: string, daftar: string[]): string[] => {
@@ -185,6 +238,50 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
     ]);
   };
 
+  const handlePilihDokumen = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      const adalahPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      if (!adalahPdf) {
+        setDokumenError(`${file.name}: format harus PDF.`);
+        return;
+      }
+      if (file.size > INISIASI_MAKS_UKURAN_DOKUMEN) {
+        setDokumenError(`${file.name}: ukuran maksimal 10 MB.`);
+        return;
+      }
+    }
+
+    if (totalDokumen + files.length > INISIASI_MAKS_DOKUMEN) {
+      setDokumenError(`Maksimal ${INISIASI_MAKS_DOKUMEN} dokumen per kegiatan.`);
+      return;
+    }
+
+    const ukuranFotoBaru = fotoBaru.reduce((total, foto) => total + foto.file.size, 0);
+    const ukuranDokumenBaru = dokumenBaru.reduce((total, dokumen) => total + dokumen.file.size, 0);
+    if (ukuranFotoBaru + ukuranDokumenBaru + files.reduce((total, file) => total + file.size, 0) > INISIASI_MAKS_TOTAL_UPLOAD_BARU) {
+      setDokumenError('Total ukuran berkas yang diunggah sekaligus maksimal 48 MB. Simpan dulu, lalu tambahkan dokumen berikutnya lewat Edit.');
+      return;
+    }
+
+    setDokumenError(null);
+    setDokumenBaru((prev) => [...prev, ...files.map((file) => ({ id: `${Date.now()}-${Math.random()}`, file }))]);
+  };
+
+  const hapusDokumenBaru = (id: string) => {
+    setDokumenBaru((prev) => prev.filter((dokumen) => dokumen.id !== id));
+    setDokumenError(null);
+  };
+
+  const hapusDokumenLama = (id: number) => {
+    setHapusDokumenIds((prev) => [...prev, id]);
+    setDokumenLama((prev) => prev.filter((dokumen) => dokumen.id !== id));
+    setDokumenError(null);
+  };
+
   const bukaPemilihFoto = (target: { jenis: 'lama' | 'baru'; id: string | number } | null) => {
     gantiTarget.current = target;
     fotoInputRef.current?.click();
@@ -235,6 +332,8 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
           peserta: pesertaFinal,
           fotoBaru: fotoBaru.map((foto) => foto.file),
           hapusFotoIds,
+          dokumenBaru: dokumenBaru.map((dokumen) => dokumen.file),
+          hapusDokumenIds,
         },
         item?.id,
       );
@@ -387,6 +486,7 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
 
           <div>
             <span className={labelClass}>Nama Peserta</span>
+            <div className="relative">
             <div className="flex gap-2">
               <input
                 type="text"
@@ -400,7 +500,7 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
                   }
                 }}
                 maxLength={200}
-                placeholder="Ketik nama lalu tekan Enter (boleh beberapa nama dipisah koma)"
+                placeholder="Cari nama Ketua Jurusan/Prodi/Kepala Unit, atau ketik nama lalu Enter"
                 className="input-field h-9 min-w-0 flex-1 rounded-lg px-3 text-sm"
               />
               <button
@@ -413,6 +513,28 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
               >
                 <Plus size={14} /> Tambah
               </button>
+            </div>
+            {kataPeserta && saranPeserta.length > 0 && (
+              <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                {saranPeserta.slice(0, 8).map((k) => (
+                  <button
+                    key={`${k.nik ?? 'x'}-${k.jabatan}-${k.unitNama ?? ''}-${k.nama}`}
+                    type="button"
+                    onClick={() => {
+                      setPeserta((prev) => gabungChip(k.nama, prev));
+                      setPesertaInput('');
+                    }}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <span className="truncate">{k.nama}</span>
+                    <span className="shrink-0 text-xs text-slate-400">
+                      {JABATAN_LABEL[k.jabatan]}
+                      {k.unitNama ? ` · ${k.unitNama}` : ''}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
             </div>
             {peserta.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -470,6 +592,41 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
             <p className="mt-1 text-xs text-slate-400">JPG, JPEG, PNG, atau WebP — maksimal 5 MB per foto, total 8 MB per sekali simpan.</p>
             {fotoError && <p className="mt-1 text-xs text-red-500">{fotoError}</p>}
           </div>
+
+          <div>
+            <span className={labelClass}>Dokumen Pendukung (PDF)</span>
+            <input
+              ref={dokumenInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              multiple
+              className="hidden"
+              onChange={handlePilihDokumen}
+            />
+
+            {totalDokumen > 0 && (
+              <ul className="mb-3 space-y-1.5">
+                {dokumenLama.map((dokumen) => (
+                  <DokumenBaris key={`lama-${dokumen.id}`} nama={dokumen.nama_asli ?? 'Dokumen'} ukuran={dokumen.ukuran} onHapus={() => hapusDokumenLama(dokumen.id)} />
+                ))}
+                {dokumenBaru.map((dokumen) => (
+                  <DokumenBaris key={dokumen.id} nama={dokumen.file.name} ukuran={dokumen.file.size} baru onHapus={() => hapusDokumenBaru(dokumen.id)} />
+                ))}
+              </ul>
+            )}
+
+            <button
+              type="button"
+              onClick={() => dokumenInputRef.current?.click()}
+              disabled={totalDokumen >= INISIASI_MAKS_DOKUMEN}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#173B82]/30 bg-white px-4 py-4 text-sm font-medium text-slate-600 transition hover:border-[#173B82] hover:text-[#173B82] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <FileText size={18} />
+              Pilih dokumen PDF ({totalDokumen}/{INISIASI_MAKS_DOKUMEN})
+            </button>
+            <p className="mt-1 text-xs text-slate-400">Hanya PDF — bisa lebih dari satu, maksimal 10 MB per dokumen.</p>
+            {dokumenError && <p className="mt-1 text-xs text-red-500">{dokumenError}</p>}
+          </div>
         </div>
 
         <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-5 py-3">
@@ -487,6 +644,20 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
         </div>
       </form>
     </div>
+  );
+}
+
+function DokumenBaris({ nama, ukuran, baru = false, onHapus }: { nama: string; ukuran: number | null; baru?: boolean; onHapus: () => void }) {
+  return (
+    <li className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${baru ? 'border-blue-200 bg-blue-50/50' : 'border-slate-200 bg-white'}`}>
+      <FileText size={16} className="shrink-0 text-red-500" />
+      <span className="min-w-0 flex-1 truncate text-sm text-slate-700" title={nama}>{nama}</span>
+      {baru && <span className="rounded bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold text-white">BARU</span>}
+      <span className="shrink-0 text-xs text-slate-400">{formatUkuranBerkas(ukuran)}</span>
+      <button type="button" onClick={onHapus} title="Hapus dokumen" aria-label={`Hapus ${nama}`} className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600">
+        <X size={14} />
+      </button>
+    </li>
   );
 }
 

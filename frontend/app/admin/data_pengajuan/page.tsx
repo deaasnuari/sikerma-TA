@@ -88,7 +88,7 @@ const statusConfig: Record<PengajuanStatus, { label: string; className: string; 
     iconEl: <Clock size={13} />,
   },
   Revisi: {
-    label: 'Revisi',
+    label: 'Review/Revisi',
     className: 'bg-orange-100 text-orange-800 border border-orange-300 rounded-full px-3 py-1 text-[10px] font-semibold',
     iconEl: <Clock size={13} />,
   },
@@ -150,6 +150,50 @@ function buildWhatsAppUrl(value?: string | null, pesan?: string): string | null 
 function buildPolibatamWhatsAppUrl(value?: string | null, pesan?: string): string | null {
   const local = (value || '').replace(/\D/g, '').replace(/^62/, '').replace(/^0+/, '');
   return local ? `https://wa.me/62${local}${pesan ? `?text=${encodeURIComponent(pesan)}` : ''}` : null;
+}
+
+// Kontak person PIC dari pihak mitra (diisi pengusul di bagian "Kontak Person PIC" pada form pengajuan),
+// ditampilkan ke admin sebagai koresponden mitra supaya jelas siapa yang dihubungi.
+function KoresponMitraCard({ item }: { item: PengajuanItem }) {
+  const telepon = item.mitraPicTelepon || item.whatsappPengusul;
+  const waUrl = buildWhatsAppUrl(telepon, buildPesanWhatsAppPengajuan(item, item.mitraPicNama));
+
+  return (
+    <div className="bg-white rounded-lg px-4 py-3 border border-[#D9DCE4]">
+      <p className="text-[12px] font-semibold text-gray-900 mb-3">Kontak Person PIC / Koresponden Mitra</p>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[10px]">
+        <div>
+          <p className="text-gray-500">Nama</p>
+          <p className="text-gray-900 font-medium">{item.mitraPicNama || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-500">Jabatan</p>
+          <p className="text-gray-900 font-medium">{item.mitraPicJabatan || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-500">Email</p>
+          {item.mitraPicEmail ? (
+            <a href={`mailto:${item.mitraPicEmail}`} className="font-medium text-gray-900 underline hover:text-gray-700 break-all">
+              {item.mitraPicEmail}
+            </a>
+          ) : (
+            <p className="text-gray-900 font-medium">-</p>
+          )}
+        </div>
+        <div>
+          <p className="text-gray-500">Telepon / WhatsApp</p>
+          {telepon && waUrl ? (
+            <a href={waUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-green-700 underline hover:text-green-800">
+              {telepon}
+              <ExternalLink size={12} />
+            </a>
+          ) : (
+            <p className="text-gray-900 font-medium">{telepon || '-'}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const editTemplateDokumenMap: Record<string, TemplateDokumenConfig> = {
@@ -2493,6 +2537,8 @@ function addEditJurusanUnitOption() {
                 </div>
               </div>
 
+              <KoresponMitraCard item={detailItem} />
+
               <div className="bg-white rounded-lg px-4 py-3 border border-[#D9DCE4]">
                 <p className="text-[12px] font-semibold text-gray-900 mb-3">Informasi Pengajuan</p>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[10px]">
@@ -2669,6 +2715,8 @@ function addEditJurusanUnitOption() {
                 </div>
               </div>
 
+              <KoresponMitraCard item={reviewItem} />
+
 <div>
                 <p className="text-[10px] font-semibold text-gray-700 mb-2">Keputusan *</p>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -2679,7 +2727,7 @@ function addEditJurusanUnitOption() {
                     className={`h-11 rounded-lg text-[10px] font-semibold inline-flex items-center justify-center gap-2 border ${reviewDecision === 'Revisi' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-orange-600 border-orange-300 hover:bg-orange-50'}`}
                   >
                     <FilePenLine size={14} />
-                    REVISI
+                    REVIEW/REVISI
                   </button>
                   {/* Tolak button - MIDDLE */}
                   <button
@@ -3958,7 +4006,7 @@ function addEditJurusanUnitOption() {
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="px-5 py-4 border-b border-slate-200">
               <h3 className="text-[15px] font-bold text-slate-900">
-                {reviewDecision === 'Revisi' ? 'Konfirmasi Kirim Revisi' : reviewDecision === 'Ditolak' ? 'Konfirmasi Tolak Pengajuan' : 'Konfirmasi Upload Dokumen Final'}
+                {reviewDecision === 'Revisi' ? 'Konfirmasi Kirim Review/Revisi' : reviewDecision === 'Ditolak' ? 'Konfirmasi Tolak Pengajuan' : 'Konfirmasi Upload Dokumen Final'}
               </h3>
             </div>
             <div className="px-5 py-4 space-y-2">
@@ -3968,7 +4016,7 @@ function addEditJurusanUnitOption() {
                 </p>
               ) : reviewDecision === 'Revisi' ? (
                 <p className="text-[12px] text-slate-700">
-                  Yakin ingin mengirim catatan revisi? Status pengajuan akan berubah menjadi <span className="font-semibold text-orange-600">Revisi</span> dan notifikasi akan dikirim ke Pengaju untuk melakukan perbaikan sesuai catatan. Pengaju cukup memperbarui data/dokumen pada pengajuan yang sama, <span className="font-semibold">tidak perlu membuat pengajuan baru</span>.
+                  Yakin ingin mengirim catatan revisi? Status pengajuan akan berubah menjadi <span className="font-semibold text-orange-600">Review/Revisi</span> dan notifikasi akan dikirim ke Pengaju untuk melakukan perbaikan sesuai catatan. Pengaju cukup memperbarui data/dokumen pada pengajuan yang sama, <span className="font-semibold">tidak perlu membuat pengajuan baru</span>.
                 </p>
               ) : (
                 <>

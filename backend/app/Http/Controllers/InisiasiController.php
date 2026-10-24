@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Inisiasi;
+use App\Models\InisiasiDokumen;
 use App\Models\InisiasiFoto;
 use App\Models\MasterUnitProdi;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,10 @@ class InisiasiController extends Controller
 
     private const FOLDER_FOTO = 'inisiasi';
 
+    private const MAKS_DOKUMEN = 10;
+
+    private const FOLDER_DOKUMEN = 'inisiasi/dokumen';
+
     public function index(Request $request): JsonResponse
     {
         $this->pastikanAdmin($request);
@@ -37,7 +42,7 @@ class InisiasiController extends Controller
             'bulan' => ['nullable', 'integer', 'min:1', 'max:12'],
         ]);
 
-        $query = Inisiasi::query()->with(['units', 'peserta', 'fotos']);
+        $query = Inisiasi::query()->with(['units', 'peserta', 'fotos', 'dokumens']);
 
         $kata = mb_strtolower(trim((string) ($validated['q'] ?? '')));
         if ($kata !== '') {
@@ -78,7 +83,7 @@ class InisiasiController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $this->format($inisiasi->load(['units', 'peserta', 'fotos']), $request),
+            'data' => $this->format($inisiasi->load(['units', 'peserta', 'fotos', 'dokumens']), $request),
         ]);
     }
 
@@ -88,10 +93,11 @@ class InisiasiController extends Controller
 
         $validated = $this->validasi($request);
         $fileBaru = $request->file('fotos', []);
+        $dokumenBaru = $request->file('dokumens', []);
         $tersimpan = [];
 
         try {
-            $inisiasi = DB::transaction(function () use ($request, $validated, $fileBaru, &$tersimpan) {
+            $inisiasi = DB::transaction(function () use ($request, $validated, $fileBaru, $dokumenBaru, &$tersimpan) {
                 $inisiasi = Inisiasi::create([
                     'tanggal_kegiatan' => $validated['tanggal_kegiatan'],
                     'judul' => trim($validated['judul']),
@@ -102,6 +108,7 @@ class InisiasiController extends Controller
 
                 $this->simpanUnitDanPeserta($inisiasi, $validated);
                 $this->simpanFoto($inisiasi, $fileBaru, $tersimpan);
+                $this->simpanDokumen($inisiasi, $dokumenBaru, $tersimpan);
 
                 return $inisiasi;
             });
@@ -114,7 +121,7 @@ class InisiasiController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Data inisiasi berhasil ditambahkan.',
-            'data' => $this->format($inisiasi->load(['units', 'peserta', 'fotos']), $request),
+            'data' => $this->format($inisiasi->load(['units', 'peserta', 'fotos', 'dokumens']), $request),
         ], 201);
     }
 
@@ -124,6 +131,7 @@ class InisiasiController extends Controller
 
         $validated = $this->validasi($request);
         $fileBaru = $request->file('fotos', []);
+        $dokumenBaru = $request->file('dokumens', []);
 
         $hapusIds = collect($validated['hapus_foto_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values();
         $fotoDihapus = $inisiasi->fotos()->whereIn('id', $hapusIds)->get();
@@ -135,10 +143,20 @@ class InisiasiController extends Controller
             ]);
         }
 
+        $hapusDokumenIds = collect($validated['hapus_dokumen_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values();
+        $dokumenDihapus = $inisiasi->dokumens()->whereIn('id', $hapusDokumenIds)->get();
+
+        $sisaDokumen = $inisiasi->dokumens()->count() - $dokumenDihapus->count() + count($dokumenBaru);
+        if ($sisaDokumen > self::MAKS_DOKUMEN) {
+            throw ValidationException::withMessages([
+                'dokumens' => 'Maksimal '.self::MAKS_DOKUMEN.' dokumen per kegiatan.',
+            ]);
+        }
+
         $tersimpan = [];
 
         try {
-            DB::transaction(function () use ($inisiasi, $validated, $fileBaru, $fotoDihapus, &$tersimpan) {
+            DB::transaction(function () use ($inisiasi, $validated, $fileBaru, $fotoDihapus, $dokumenBaru, $dokumenDihapus, &$tersimpan) {
                 $inisiasi->update([
                     'tanggal_kegiatan' => $validated['tanggal_kegiatan'],
                     'judul' => trim($validated['judul']),
@@ -153,6 +171,9 @@ class InisiasiController extends Controller
 
                 InisiasiFoto::query()->whereIn('id', $fotoDihapus->pluck('id'))->delete();
                 $this->simpanFoto($inisiasi, $fileBaru, $tersimpan);
+
+                InisiasiDokumen::query()->whereIn('id', $dokumenDihapus->pluck('id'))->delete();
+                $this->simpanDokumen($inisiasi, $dokumenBaru, $tersimpan);
             });
         } catch (\Throwable $e) {
             Storage::disk('public')->delete($tersimpan);
@@ -160,12 +181,15 @@ class InisiasiController extends Controller
         }
 
         // Berkas foto yang dihapus dibuang dari disk hanya setelah perubahan di database berhasil.
-        Storage::disk('public')->delete($fotoDihapus->pluck('path_file')->all());
+        Storage::disk('public')->delete(array_merge(
+            $fotoDihapus->pluck('path_file')->all(),
+            $dokumenDihapus->pluck('path_file')->all(),
+        ));
 
         return response()->json([
             'success' => true,
             'message' => 'Data inisiasi berhasil diperbarui.',
-            'data' => $this->format($inisiasi->fresh()->load(['units', 'peserta', 'fotos']), $request),
+            'data' => $this->format($inisiasi->fresh()->load(['units', 'peserta', 'fotos', 'dokumens']), $request),
         ]);
     }
 
@@ -173,11 +197,15 @@ class InisiasiController extends Controller
     {
         $this->pastikanAdmin($request);
 
-        $paths = $inisiasi->fotos()->pluck('path_file')->all();
+        $paths = array_merge(
+            $inisiasi->fotos()->pluck('path_file')->all(),
+            $inisiasi->dokumens()->pluck('path_file')->all(),
+        );
 
         // Anak dihapus eksplisit (selain cascade di database) supaya hasilnya sama di semua driver.
         DB::transaction(function () use ($inisiasi) {
             $inisiasi->fotos()->delete();
+            $inisiasi->dokumens()->delete();
             $inisiasi->peserta()->delete();
             $inisiasi->units()->delete();
             $inisiasi->delete();
@@ -291,6 +319,10 @@ class InisiasiController extends Controller
             'fotos.*' => ['file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'hapus_foto_ids' => ['nullable', 'array'],
             'hapus_foto_ids.*' => ['integer'],
+            'dokumens' => ['nullable', 'array', 'max:'.self::MAKS_DOKUMEN],
+            'dokumens.*' => ['file', 'mimes:pdf', 'max:10240'],
+            'hapus_dokumen_ids' => ['nullable', 'array'],
+            'hapus_dokumen_ids.*' => ['integer'],
         ], [
             'tanggal_kegiatan.required' => 'Tanggal kegiatan wajib diisi.',
             'judul.required' => 'Judul kegiatan wajib diisi.',
@@ -300,6 +332,10 @@ class InisiasiController extends Controller
             'fotos.*.mimes' => 'Format foto harus JPG, JPEG, PNG, atau WebP.',
             'fotos.*.max' => 'Ukuran tiap foto maksimal 5 MB.',
             'fotos.max' => 'Maksimal '.self::MAKS_FOTO.' foto per kegiatan.',
+            'dokumens.*.file' => 'Dokumen harus berupa berkas PDF.',
+            'dokumens.*.mimes' => 'Format dokumen harus PDF.',
+            'dokumens.*.max' => 'Ukuran tiap dokumen maksimal 10 MB.',
+            'dokumens.max' => 'Maksimal '.self::MAKS_DOKUMEN.' dokumen per kegiatan.',
         ]);
     }
 
@@ -348,6 +384,27 @@ class InisiasiController extends Controller
     }
 
     /**
+     * @param  array<int, \Illuminate\Http\UploadedFile>  $files
+     * @param  array<int, string>  $tersimpan  diisi path tiap berkas yang berhasil ditulis (untuk pembersihan bila gagal)
+     */
+    private function simpanDokumen(Inisiasi $inisiasi, array $files, array &$tersimpan): void
+    {
+        $urutan = (int) $inisiasi->dokumens()->max('urutan');
+
+        foreach ($files as $file) {
+            $path = $file->store(self::FOLDER_DOKUMEN, 'public');
+            $tersimpan[] = $path;
+
+            $inisiasi->dokumens()->create([
+                'path_file' => $path,
+                'nama_asli' => mb_substr($file->getClientOriginalName(), 0, 255),
+                'ukuran' => $file->getSize(),
+                'urutan' => ++$urutan,
+            ]);
+        }
+    }
+
+    /**
      * @param  array<int, mixed>  $daftar
      * @return array<int, string>
      */
@@ -384,6 +441,12 @@ class InisiasiController extends Controller
                 'path_file' => $foto->path_file,
                 'url' => $host.'/storage/'.ltrim($foto->path_file, '/'),
                 'nama_asli' => $foto->nama_asli,
+            ])->values(),
+            'dokumens' => $inisiasi->dokumens->map(fn ($dokumen) => [
+                'id' => $dokumen->id,
+                'path_file' => $dokumen->path_file,
+                'nama_asli' => $dokumen->nama_asli,
+                'ukuran' => $dokumen->ukuran,
             ])->values(),
             'created_at' => $inisiasi->created_at?->toISOString(),
             'updated_at' => $inisiasi->updated_at?->toISOString(),

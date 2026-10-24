@@ -181,7 +181,7 @@ const statusDetailConfig: Record<KerjasamaItem['status'], { className: string; i
   Revisi: {
     className: 'bg-orange-100 text-orange-700',
     icon: <AlertTriangle size={14} />,
-    label: 'Revisi',
+    label: 'Review/Revisi',
   },
   Aktif: {
     className: 'bg-emerald-100 text-emerald-700',
@@ -458,7 +458,7 @@ export default function DaftarKerjasamaEksternalPage() {
               <option>Semua Status</option>
               <option>Menunggu</option>
               <option>Diproses</option>
-              <option>Revisi</option>
+              <option value="Revisi">Review/Revisi</option>
               <option>Aktif</option>
               <option>Berakhir</option>
             </select>
@@ -612,7 +612,7 @@ export default function DaftarKerjasamaEksternalPage() {
                     <td className="px-4 py-3">
                       <div className="flex flex-col items-start gap-1">
                         <span className={`rounded-full px-2.5 py-1 text-[10.5px] font-semibold ${statusStyle[item.status]}`}>
-                          {item.status}
+                          {item.status === 'Revisi' ? 'Review/Revisi' : item.status}
                         </span>
                         {item.status === 'Menunggu' && item.direvisiPengusulPada ? (
                           <span className="text-[10px] font-medium text-sky-700">Perbaikan terkirim</span>

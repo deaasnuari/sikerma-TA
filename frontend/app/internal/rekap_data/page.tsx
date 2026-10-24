@@ -831,6 +831,10 @@ export default function InternalRekapDataPage() {
           item={detailItem}
           pengajuan={allPengajuan.find((p) => p.id === detailItem.sourcePengajuanId)}
           onClose={() => setDetailItem(null)}
+          onNilaiSaved={(nilai) => {
+            setData((prev) => prev.map((row) => (row.id === detailItem.id ? { ...row, nilaiKerjasama: nilai } : row)));
+            setDetailItem((prev) => (prev ? { ...prev, nilaiKerjasama: nilai } : prev));
+          }}
         />
       )}
 
