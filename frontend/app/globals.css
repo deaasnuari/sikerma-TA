@@ -18,9 +18,11 @@
 html {
   font-size: 14px;
   scroll-behavior: smooth;
+  overscroll-behavior: none;
 }
 
 body {
+  overscroll-behavior: none;
   background-color: var(--color-bg);
   color: var(--color-text);
   font-size: 1rem;

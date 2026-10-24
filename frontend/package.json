@@ -2,6 +2,7 @@
   "name": "sikerma-frontend",
   "version": "1.0.0",
   "private": true,
+  "license": "SEE LICENSE IN ../LICENSE",
   "scripts": {
     "dev": "start http://localhost:3000 && next dev",
     "dev:plain": "next dev",
@@ -13,9 +14,9 @@
   "dependencies": {
     "exceljs": "^4.4.0",
     "lucide-react": "^1.8.0",
-    "next": "^16.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "next": "^16.4.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "recharts": "^3.8.1",
     "swr": "^2.5.1",
     "xlsx": "^0.18.5"
@@ -27,7 +28,7 @@
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10",
     "eslint": "^9",
-    "eslint-config-next": "^16",
+    "eslint-config-next": "^16.4.3",
     "postcss": "^8",
     "tailwindcss": "^4",
     "typescript": "^5"

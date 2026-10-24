@@ -82,7 +82,7 @@ export default function PimpinanLayout({ children }: { children: React.ReactNode
           </div>
 
           <main className="flex flex-1 flex-col overflow-hidden pb-4">
-            <div className="flex-1 overflow-y-auto rounded-lg bg-white p-3 shadow-sm">
+            <div className="flex-1 overflow-y-auto overscroll-none rounded-lg bg-white p-3 shadow-sm">
               {/* Isi pendek: footer tetap di dasar area konten. Isi panjang: footer ikut tergulir di ujung konten. */}
               <div className="flex h-full flex-col">
                 <div className="flex-1">{children}</div>
