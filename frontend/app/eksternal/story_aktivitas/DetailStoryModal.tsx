@@ -25,6 +25,7 @@ import type { KerjasamaStory, Aktivitas } from './page';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
 import { getLaporanPelaksanaanByDokumenKerjasamaIds, type LaporanPelaksanaanRecord } from '@/services/laporanPelaksanaanService';
 import { createAktivitasForDokumenApi } from '@/services/adminStoryAktivitasService';
+import { showNotice } from '@/lib/dialog';
 
 type Jenis = 'MoA' | 'MoU' | 'IA';
 type StatusKerjasama = 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
@@ -522,19 +523,19 @@ function TambahAktivitasForm({
 
   async function handleSubmit() {
     if (!judul.trim()) {
-      alert('Judul aktivitas wajib diisi.');
+      showNotice('Judul aktivitas wajib diisi.');
       return;
     }
     if (!jenisAktivitas) {
-      alert('Jenis aktivitas wajib dipilih.');
+      showNotice('Jenis aktivitas wajib dipilih.');
       return;
     }
     if (!tanggal) {
-      alert('Tanggal wajib diisi.');
+      showNotice('Tanggal wajib diisi.');
       return;
     }
     if (!picPolibatam.trim()) {
-      alert('PIC Polibatam wajib diisi.');
+      showNotice('PIC Polibatam wajib diisi.');
       return;
     }
 

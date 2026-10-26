@@ -4,6 +4,7 @@ import { openUrl } from '@/lib/api';
 import { useEffect, useRef, useState } from 'react';
 import { Download, FileText, Save, Upload, X } from 'lucide-react';
 import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploadUtils';
+import { showNotice } from '@/lib/dialog';
 
 interface LaporanKegiatanTemplateModalProps {
   isOpen: boolean;
@@ -235,7 +236,7 @@ export default function LaporanKegiatanTemplateModal({ isOpen, onClose, data }: 
     });
 
     if (validationError) {
-      alert(validationError);
+      showNotice(validationError);
       event.target.value = '';
       return;
     }

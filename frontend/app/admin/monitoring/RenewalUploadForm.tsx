@@ -4,6 +4,7 @@ import { Check, ChevronDown, Plus, Upload, X, AlertCircle, Download } from 'luci
 import { getMasterRuangLingkup, getCachedMasterRuangLingkup, type MasterRuangLingkup } from '@/services/masterRuangLingkupService';
 import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploadUtils';
 import { templateFilesByJenis, templateUrl } from '@/lib/templateDokumen';
+import { showNotice } from '@/lib/dialog';
 
 interface RenewalUploadFormProps {
   onSubmit: (data: { tanggalMulaiBaru: string; tanggalBerakhirBaru: string; catatan: string; dokumen: File[]; ruangLingkup: string[] }) => void | Promise<void>;
@@ -64,7 +65,7 @@ export default function RenewalUploadForm({ onSubmit, singleFile = false, submit
         maxSizeBytes: 10 * 1024 * 1024,
       });
       if (validationError) {
-        alert(validationError);
+        showNotice(validationError);
         return;
       }
       const processedFile = await compressImageFileIfNeeded(file, {

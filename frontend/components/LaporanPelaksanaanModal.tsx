@@ -8,6 +8,7 @@ import { submitLaporanPelaksanaan } from '@/services/laporanPelaksanaanService';
 import { downloadTemplate, templateLaporanPelaksanaan } from '@/lib/templateDokumen';
 import { buildLaporanPelaksanaanDocx, DEFAULT_JABATAN_MENGETAHUI } from '@/lib/laporanPelaksanaanDocx';
 import { LINK_DRIVE_LAPORAN_KEGIATAN } from '@/lib/laporanKegiatanConfig';
+import { showNotice } from '@/lib/dialog';
 
 export interface LaporanPelaksanaanData {
   namaMitra: string;
@@ -204,7 +205,7 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
     const file = event.target.files?.[0];
     if (!file) return;
     const err = validateSelectedFile(file, { accept: '.pdf,.doc,.docx,.jpg,.jpeg,.png', maxSizeBytes: 10 * 1024 * 1024 });
-    if (err) { alert(err); event.target.value = ''; return; }
+    if (err) { showNotice(err); event.target.value = ''; return; }
     const processed = await compressImageFileIfNeeded(file, { maxDimension: 1920, quality: 0.8, minBytesToCompress: 400 * 1024 });
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(URL.createObjectURL(processed));
@@ -225,10 +226,10 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
 
   async function handleKirimPIC() {
     if (!data) return;
-    if (!uploadedFile) { alert('Upload file laporan terlebih dahulu sebelum mengirim.'); return; }
-    if (!namaPenanggungJawab.trim()) { alert('Isi nama penanggung jawab kegiatan terlebih dahulu.'); return; }
+    if (!uploadedFile) { showNotice('Upload file laporan terlebih dahulu sebelum mengirim.'); return; }
+    if (!namaPenanggungJawab.trim()) { showNotice('Isi nama penanggung jawab kegiatan terlebih dahulu.'); return; }
     if (!data.pengajuanId && !data.dokumenKerjasamaId) {
-      alert('Laporan ini tidak terhubung ke pengajuan atau dokumen manapun sehingga tidak bisa dikirim ke admin.');
+      showNotice('Laporan ini tidak terhubung ke pengajuan atau dokumen manapun sehingga tidak bisa dikirim ke admin.');
       return;
     }
 

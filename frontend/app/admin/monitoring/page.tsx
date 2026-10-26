@@ -51,6 +51,7 @@ import { useMasterUnitProdi } from '@/hooks/useMasterData';
 import { updateDokumenKerjasamaById, uploadDokumenFile } from '@/services/dokumenKerjasamaApiService';
 import { getPageNumbers } from '@/lib/pagination';
 import { parseTanggal } from '@/lib/parseTanggal';
+import { showNotice } from '@/lib/dialog';
 
 
 export default function MonitoringdanstatusPage() {
@@ -105,7 +106,7 @@ export default function MonitoringdanstatusPage() {
   // Toast hint setelah perpanjangan berhasil diajukan
   const [perpanjanganHint, setPerpanjanganHint] = useState(false);
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Modal konfirmasi setelah kerja sama berhasil dinonaktifkan — pengganti alert() bawaan browser.
+  // Modal konfirmasi setelah kerja sama berhasil dinonaktifkan — pengganti showNotice() bawaan browser.
   const [nonaktifSuccessMessage, setNonaktifSuccessMessage] = useState<string | null>(null);
 
   const showPerpanjanganHint = () => {
@@ -1029,7 +1030,7 @@ export default function MonitoringdanstatusPage() {
                   showPerpanjanganHint();
                 } catch (error) {
                   const message = error instanceof Error ? error.message : 'Gagal mengajukan perpanjangan.';
-                  alert(`✗ ${message}`);
+                  showNotice(`✗ ${message}`);
                 }
               }}
             />
@@ -1153,7 +1154,7 @@ export default function MonitoringdanstatusPage() {
         </div>
       )}
 
-      {/* Konfirmasi berhasil dinonaktifkan — pengganti alert() bawaan browser */}
+      {/* Konfirmasi berhasil dinonaktifkan — pengganti showNotice() bawaan browser */}
       {nonaktifSuccessMessage && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 backdrop-blur-[1px]"

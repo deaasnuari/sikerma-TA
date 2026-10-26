@@ -27,6 +27,7 @@ import { deletePengajuanItemApi, fetchPengajuanDataFromApi, type PengajuanItem, 
 
 import { useMasterUnitProdi } from '@/hooks/useMasterData';
 import { exportToExcel } from '@/lib/exportExcel';
+import { showNotice } from '@/lib/dialog';
 
 type ApprovalStatus = 'Menunggu' | 'Disetujui' | 'Ditolak';
 type Jenis = 'MoU' | 'MoA' | 'IA';
@@ -844,7 +845,7 @@ export default function InternalRekapDataPage() {
           onClose={() => setEditItem(null)}
           onSave={(data) => {
             setEditItem(null);
-            alert(`Dokumen "${data.namaMitra}" berhasil diperbarui.`);
+            showNotice(`Dokumen "${data.namaMitra}" berhasil diperbarui.`, { tone: 'success' });
           }}
         />
       )}

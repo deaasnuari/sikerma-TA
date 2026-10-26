@@ -15,6 +15,7 @@ import {
 } from '@/services/adminRenewalRequestService';
 import { addAdminNotification, markNotificationsByHrefAsRead } from '@/services/adminService';
 import { invalidateRekapCache } from '@/services/dokumenKerjasamaApiService';
+import { showNotice } from '@/lib/dialog';
 
 type FilterKey = 'semua' | RenewalRequestStatus;
 
@@ -107,7 +108,7 @@ export default function MonitoringPerpanjanganPage() {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Gagal memproses keputusan perpanjangan.';
-      alert(`✗ ${message}`);
+      showNotice(`✗ ${message}`);
     }
   };
 
@@ -120,7 +121,7 @@ const handleHapus = async () => {
       setHapusTarget(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Gagal menghapus permintaan perpanjangan.';
-      alert(`✗ ${message}`);
+      showNotice(`✗ ${message}`);
     } finally {
       setMenghapus(false);
     }

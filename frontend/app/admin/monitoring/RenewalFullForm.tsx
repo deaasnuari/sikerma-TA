@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Plus, Upload, X, AlertCircle, RefreshCw, ChevronDown, Check } from 'lucide-react';
 import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploadUtils';
 import { getMasterRuangLingkup, getCachedMasterRuangLingkup, type MasterRuangLingkup } from '@/services/masterRuangLingkupService';
+import { showNotice } from '@/lib/dialog';
 
 export interface RenewalFullFormProps {
   initialData: {
@@ -81,7 +82,7 @@ export default function RenewalFullForm({ initialData, onSubmit }: RenewalFullFo
         maxSizeBytes: 10 * 1024 * 1024,
       });
       if (validationError) {
-        alert(validationError);
+        showNotice(validationError);
         return;
       }
       const processedFile = await compressImageFileIfNeeded(file, {

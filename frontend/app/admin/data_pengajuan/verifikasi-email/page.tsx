@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { MailCheck, ShieldCheck, ExternalLink } from 'lucide-react';
 import { markPengajuanEmailVerified } from '@/services/adminPengajuanService';
+import { showNotice } from '@/lib/dialog';
 
 function getEmailAction(email: string) {
   const domain = email.split('@')[1]?.toLowerCase() || '';
@@ -37,11 +38,11 @@ export default function VerifikasiEmailPage() {
         await markPengajuanEmailVerified(pengajuanId);
       }
 
-      alert('Verifikasi email dikonfirmasi. Pengajuan siap diproses lebih lanjut.');
+      showNotice('Verifikasi email dikonfirmasi. Pengajuan siap diproses lebih lanjut.', { tone: 'success' });
       router.push('/admin/data_pengajuan');
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : 'Gagal memperbarui status verifikasi email.';
-      alert(message);
+      showNotice(message);
     }
   };
 

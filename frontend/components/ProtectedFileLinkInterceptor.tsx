@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { downloadProtectedFile, extractProtectedStoragePath, openProtectedFile } from '@/lib/api';
+import { showNotice } from '@/lib/dialog';
 
 const NON_PREVIEWABLE_FILE_NAME = /^[^/\\]+\.(docx?|xlsx?|pptx?|zip|rar)$/i;
 
@@ -28,7 +29,7 @@ export default function ProtectedFileLinkInterceptor() {
 
       if (anchor.hasAttribute('download') || nameFromText) {
         const name = anchor.getAttribute('download') || nameFromText || path.split('/').pop() || 'dokumen';
-        downloadProtectedFile(path, name).catch((err) => alert(err instanceof Error ? err.message : 'Gagal mengunduh file.'));
+        downloadProtectedFile(path, name).catch((err) => showNotice(err instanceof Error ? err.message : 'Gagal mengunduh file.'));
       } else {
         void openProtectedFile(path);
       }

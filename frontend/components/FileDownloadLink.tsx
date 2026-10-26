@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { downloadFileWithAuth, openUrl } from '@/lib/api';
+import { showNotice } from '@/lib/dialog';
 
 interface FileDownloadLinkProps extends Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href' | 'onClick'> {
   // URL mentah ke storage (fallback) — dipakai kalau downloadUrl tidak ada.
@@ -39,7 +40,7 @@ export default function FileDownloadLink({ url, downloadUrl, fileName, children,
       if (url) {
         openUrl(url);
       } else {
-        alert(err instanceof Error ? err.message : 'Gagal mengunduh file.');
+        showNotice(err instanceof Error ? err.message : 'Gagal mengunduh file.');
       }
     } finally {
       setIsDownloading(false);

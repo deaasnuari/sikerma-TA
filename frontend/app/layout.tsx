@@ -5,6 +5,7 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { SWRProvider } from "@/components/SWRProvider";
 import ProtectedFileLinkInterceptor from "@/components/ProtectedFileLinkInterceptor";
+import DialogHost from "@/components/DialogHost";
 
 const poppins = Poppins({
   subsets: ['latin'],
@@ -86,6 +87,7 @@ export default function RootLayout({
           {stripExtensionInjectedAttributes}
         </Script>
         <ProtectedFileLinkInterceptor />
+        <DialogHost />
         <SWRProvider>
           <AuthProvider>
             {children}

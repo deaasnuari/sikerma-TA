@@ -4,6 +4,7 @@ import { useState } from 'react';
 import RenewalUploadForm from './RenewalUploadForm';
 import { Check, Clock, X } from 'lucide-react';
 import type { RenewalRecord } from '@/services/adminMonitoringService';
+import { showNotice } from '@/lib/dialog';
 
 interface RenewalHistoryModalProps {
   isOpen: boolean;
@@ -38,12 +39,12 @@ export default function RenewalHistoryModal({
 
   const handleAddRenewal = () => {
     if (!tanggalMulaiBaru || !tanggalBerakhirBaru) {
-      alert('Silakan isi tanggal mulai dan tanggal berakhir perpanjangan.');
+      showNotice('Silakan isi tanggal mulai dan tanggal berakhir perpanjangan.');
       return;
     }
 
     if (new Date(tanggalBerakhirBaru) < new Date(tanggalMulaiBaru)) {
-      alert('Tanggal berakhir tidak boleh lebih kecil dari tanggal mulai.');
+      showNotice('Tanggal berakhir tidak boleh lebih kecil dari tanggal mulai.');
       return;
     }
 

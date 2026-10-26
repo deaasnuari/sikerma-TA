@@ -5,6 +5,7 @@ import { Building2, CalendarDays, ChevronLeft, ChevronRight, Download, ExternalL
 import ProtectedImage from '@/components/ProtectedImage';
 import { downloadProtectedFile, openProtectedFile } from '@/lib/api';
 import { INISIASI_STATUS_CLASS, INISIASI_STATUS_LABEL, formatTanggalInisiasi, formatUkuranBerkas, type InisiasiItem } from '@/services/inisiasiService';
+import { showNotice } from '@/lib/dialog';
 
 type Props = {
   item: InisiasiItem | null;
@@ -163,7 +164,7 @@ export default function InisiasiDetailModal({ item, onClose, onEdit, onDelete }:
                       </button>
                       <button
                         type="button"
-                        onClick={() => downloadProtectedFile(dokumen.path_file, nama).catch((err) => alert(err instanceof Error ? err.message : 'Gagal mengunduh file.'))}
+                        onClick={() => downloadProtectedFile(dokumen.path_file, nama).catch((err) => showNotice(err instanceof Error ? err.message : 'Gagal mengunduh file.'))}
                         title="Unduh"
                         aria-label={`Unduh ${nama}`}
                         className="shrink-0 rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-[#173B82]"

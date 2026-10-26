@@ -9,6 +9,7 @@ import {
   type MasterRuangLingkup,
 } from '@/services/masterRuangLingkupService';
 import { useMasterRuangLingkup } from '@/hooks/useMasterData';
+import { askConfirm } from '@/lib/dialog';
 
 type FormState = {
   nama_ruang_lingkup: string;
@@ -110,7 +111,7 @@ export default function MasterRuangLingkupPage() {
   };
 
   const handleDelete = async (item: MasterRuangLingkup) => {
-    if (!confirm(`Yakin ingin menghapus ruang lingkup "${item.nama_ruang_lingkup}"?`)) {
+    if (!(await askConfirm(`Yakin ingin menghapus ruang lingkup "${item.nama_ruang_lingkup}"?`))) {
       return;
     }
 

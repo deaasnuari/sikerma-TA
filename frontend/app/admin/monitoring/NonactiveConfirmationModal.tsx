@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { X, AlertTriangle, Upload, FileText, Trash2 } from 'lucide-react';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 import FileDownloadLink from '@/components/FileDownloadLink';
+import { showNotice } from '@/lib/dialog';
 
 interface NonactiveConfirmationModalProps {
   isOpen: boolean;
@@ -46,7 +47,7 @@ export default function NonactiveConfirmationModal({
     });
 
     if (validationError) {
-      alert(validationError);
+      showNotice(validationError);
       e.target.value = '';
       return;
     }

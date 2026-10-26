@@ -16,6 +16,7 @@ import { deleteDokumenKerjasamaById, fetchArsipDokumenFromApi } from '@/services
 import { fetchMonitoringDataFromApi } from '@/services/adminMonitoringService';
 import { exportToExcel } from '@/lib/exportExcel';
 import FileDownloadLink from '@/components/FileDownloadLink';
+import { askConfirm, showNotice } from '@/lib/dialog';
 
 interface ArsipDokumen {
   id: number;
@@ -131,14 +132,14 @@ export default function ArsipDokumenPage() {
   const handleDelete = async (id: number) => {
     const item = data.find((d) => d.id === id);
     if (!item) return;
-    if (!confirm(`Yakin ingin memindahkan arsip "${item.noDokumen}" (${item.namaMitra}) ke Sampah?`)) return;
+    if (!(await askConfirm(`Yakin ingin memindahkan arsip "${item.noDokumen}" (${item.namaMitra}) ke Sampah?`))) return;
     try {
       // Soft-delete di server (masuk Sampah di Rekap Data, bisa dipulihkan) — sebelumnya cuma
       // hilang dari tampilan dan muncul lagi setelah refresh.
       await deleteDokumenKerjasamaById(id);
       setData((prev) => prev.filter((d) => d.id !== id));
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Gagal menghapus arsip.');
+      showNotice(err instanceof Error ? err.message : 'Gagal menghapus arsip.');
     }
   };
 

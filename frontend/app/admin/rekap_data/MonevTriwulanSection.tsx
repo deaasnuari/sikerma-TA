@@ -10,6 +10,7 @@ import {
   getMonevByDokumenKerjasamaId,
   type MonevQuarter,
 } from '@/services/monevService';
+import { showNotice } from '@/lib/dialog';
 
 interface Props {
   // id dokumen_kerjasama (selalu ada untuk setiap baris Detail Kerjasama) — kunci utama
@@ -109,7 +110,7 @@ export default function MonevTriwulanSection({ dokumenKerjasamaId, pengajuanId }
       setOpenFormKey(null);
       await load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Gagal menyimpan catatan Monev.');
+      showNotice(e instanceof Error ? e.message : 'Gagal menyimpan catatan Monev.');
     } finally {
       setSubmitting(false);
     }
@@ -122,7 +123,7 @@ export default function MonevTriwulanSection({ dokumenKerjasamaId, pengajuanId }
       await deleteMonevManual(id);
       await load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Gagal menghapus catatan Monev.');
+      showNotice(e instanceof Error ? e.message : 'Gagal menghapus catatan Monev.');
     } finally {
       setDeletingId(null);
     }

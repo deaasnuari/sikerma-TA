@@ -29,6 +29,7 @@ import {
   updateAdminUserStatus,
 } from '@/services/adminUserService';
 import { useMasterUnitProdi } from '@/hooks/useMasterData';
+import { askConfirm, showNotice } from '@/lib/dialog';
 
 interface UserItem {
   id: number;
@@ -304,7 +305,7 @@ export default function ManajemenUserPage() {
       return;
     }
 
-    if (!confirm(`Yakin ingin menghapus user "${item.nama}"?`)) return;
+    if (!(await askConfirm(`Yakin ingin menghapus user "${item.nama}"?`))) return;
 
     try {
       setSubmitting(true);
@@ -329,7 +330,7 @@ export default function ManajemenUserPage() {
       const updated = await updateAdminUserStatus(id, nextStatus);
       setUsers((prev) => prev.map((u) => (u.id === id ? updated : u)));
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Gagal mengubah status user.');
+      showNotice(error instanceof Error ? error.message : 'Gagal mengubah status user.');
     } finally {
       setSubmitting(false);
     }
