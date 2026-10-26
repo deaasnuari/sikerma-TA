@@ -43,6 +43,11 @@ class Inisiasi extends Model
         return $this->hasMany(InisiasiDokumen::class, 'inisiasi_id')->orderBy('urutan')->orderBy('id');
     }
 
+    public function pengajuan(): HasMany
+    {
+        return $this->hasMany(Pengajuan::class, 'inisiasi_id')->orderBy('id');
+    }
+
     public function pembuat(): BelongsTo
     {
         return $this->belongsTo(User::class, 'dibuat_oleh_user_id');

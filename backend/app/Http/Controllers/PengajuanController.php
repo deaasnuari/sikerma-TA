@@ -14,6 +14,7 @@ use App\Support\UnitProdiSelection;
 use App\Models\Pengajuan;
 use App\Models\User;
 use App\Services\CivitasStructureService;
+use App\Services\InisiasiAksesService;
 use App\Services\StructuralAccessService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -1268,6 +1269,29 @@ class PengajuanController extends Controller
         ]);
     }
 
+    /**
+     * Hanya admin yang menautkan pengajuan ke Inisiasi (admin yang membuatkan pengajuan dari inisiasi;
+     * pengguna internal hanya melihat inisiasi sebagai CC dan mengajukan sendiri lewat menu pengajuan).
+     * Mengembalikan respons 403 bila yang menautkan bukan admin.
+     */
+    private function tolakInisiasiTakBerhak(Request $request, mixed $inisiasiId): ?Response
+    {
+        if ($inisiasiId === null || $inisiasiId === '') {
+            return null;
+        }
+
+        $user = $request->user();
+
+        if ($user && app(InisiasiAksesService::class)->isAdmin($user)) {
+            return null;
+        }
+
+        return response([
+            'success' => false,
+            'message' => 'Hanya admin yang dapat menautkan pengajuan ke inisiasi.',
+        ], 403);
+    }
+
     public function store(Request $request): Response
     {
         if (! $this->useNewPengajuanSchema()) {
@@ -1308,6 +1332,7 @@ class PengajuanController extends Controller
             'unit_prodi_id' => ['nullable', 'integer', 'exists:master_unit_prodi,id'],
             ...UnitProdiSelection::rules(),
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
+            'inisiasi_id' => ['nullable', 'integer', 'exists:inisiasi,id'],
             'nama_mitra' => ['nullable', 'string', 'max:255'],
             'jenis_mitra' => ['nullable', 'string', 'max:150'],
             'bidang_usaha' => ['nullable', 'string', 'max:150'],
@@ -1336,6 +1361,10 @@ class PengajuanController extends Controller
         $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
         $validated['ruang_lingkup_ids'] = $ruangLingkupIds;
         $unitProdiIds = UnitProdiSelection::extract($validated);
+
+        if ($tolak = $this->tolakInisiasiTakBerhak($request, $validated['inisiasi_id'] ?? null)) {
+            return $tolak;
+        }
 
         // Catat siapa yang membuat pengajuan ini dari sesi login, bukan dari input klien
         // (supaya nanti bisa dibedakan pengajuan yang dibuat admin vs internal vs eksternal).
@@ -1370,6 +1399,12 @@ class PengajuanController extends Controller
 
             if ($unitProdiIds !== null) {
                 $pengajuan->syncUnitProdi($unitProdiIds);
+            }
+
+            // Dibuat dari inisiasi: yang di-CC di inisiasi ikut di-CC di pengajuan (tampil di Data Pengajuan mereka).
+            if ($pengajuan->inisiasi_id && ($inisiasi = \App\Models\Inisiasi::find($pengajuan->inisiasi_id))) {
+                app(InisiasiAksesService::class)->teruskanCcKePengajuan($inisiasi, $pengajuan);
+                $pengajuan->refresh();
             }
 
             // Set tahapan awal "Pengajuan Awal" secara otomatis
@@ -1550,6 +1585,7 @@ class PengajuanController extends Controller
             'unit_prodi_id' => ['nullable', 'integer', 'exists:master_unit_prodi,id'],
             ...UnitProdiSelection::rules(),
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
+            'inisiasi_id' => ['nullable', 'integer', 'exists:inisiasi,id'],
             'nama_mitra' => ['nullable', 'string', 'max:255'],
             'jenis_mitra' => ['nullable', 'string', 'max:150'],
             'bidang_usaha' => ['nullable', 'string', 'max:150'],
@@ -1629,6 +1665,12 @@ class PengajuanController extends Controller
 
         $unitProdiIds = UnitProdiSelection::extract($validated, $pengajuan->unit_prodi_id);
 
+        // Tautan inisiasi hanya boleh diubah admin. Dari pengguna lain diabaikan (bukan ditolak), supaya
+        // pengusul tetap bisa mengedit pengajuan yang sudah tertaut tanpa tautannya terhapus.
+        if (! $isAdmin) {
+            unset($validated['inisiasi_id']);
+        }
+
         if ($request->has('ruang_lingkup_ids')) {
             $validated['ruang_lingkup_ids'] = $ruangLingkupIds;
         }
@@ -1680,6 +1722,11 @@ class PengajuanController extends Controller
 
                 if ($unitProdiIds !== null) {
                     $pengajuan->syncUnitProdi($unitProdiIds);
+                }
+
+                // Admin menautkan/mengganti inisiasi: CC inisiasinya ikut diteruskan.
+                if ($isAdmin && array_key_exists('inisiasi_id', $validated) && $pengajuan->inisiasi_id && ($inisiasi = \App\Models\Inisiasi::find($pengajuan->inisiasi_id))) {
+                    app(InisiasiAksesService::class)->teruskanCcKePengajuan($inisiasi, $pengajuan);
                 }
 
                 // Write to pengajuan_log when status changes.

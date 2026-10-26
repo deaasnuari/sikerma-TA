@@ -39,6 +39,8 @@ export interface PengajuanItem {
   jabatanPengusul?: string;
   diajukanPada: string;
   mitraId?: number;
+  // Inisiasi yang ditindaklanjuti pengajuan ini (opsional).
+  inisiasiId?: number | null;
   namaMitra: string;
   jenisDokumen: string;
   mitraKategori?: string;
@@ -246,6 +248,7 @@ type ApiPengajuanRow = {
   pic_polibatam_whatsapp?: string | null;
   unit_prodi_id?: number | null;
   mitra_id?: number | null;
+  inisiasi_id?: number | null;
   jenis_mitra?: string | null;
   bidang_usaha?: string | null;
   tingkat_perusahaan?: string | null;
@@ -513,6 +516,7 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
     jabatanPengusul: row.jabatan_pengusul || undefined,
     diajukanPada,
     mitraId: row.mitra_id ?? undefined,
+    inisiasiId: row.inisiasi_id ?? null,
     namaMitra: mitraNama,
     mitraKategori: row.jenis_mitra || (typeof row.mitra === 'object' && row.mitra !== null && 'kategori_mitra' in row.mitra ? row.mitra.kategori_mitra || undefined : undefined),
     mitraBidangUsaha: row.bidang_usaha || (typeof row.mitra === 'object' && row.mitra !== null && 'bidang_usaha' in row.mitra ? (row.mitra as { bidang_usaha?: string | null }).bidang_usaha || undefined : undefined),
@@ -736,6 +740,7 @@ export async function updatePengajuanItemApi(
     if (updates.jurusanIds && updates.jurusanIds.length > 0) payload.jurusan_ids = updates.jurusanIds;
   }
   if (updates.mitraId !== undefined) payload.mitra_id = updates.mitraId;
+  if (updates.inisiasiId !== undefined) payload.inisiasi_id = updates.inisiasiId;
   if (typeof updates.namaMitra === 'string') payload.nama_mitra = updates.namaMitra;
   if (updates.mitraKategori !== undefined) payload.jenis_mitra = updates.mitraKategori || null;
   if (updates.mitraBidangUsaha !== undefined) payload.bidang_usaha = updates.mitraBidangUsaha || null;
@@ -814,6 +819,7 @@ export async function submitPengajuanApi(
     luaran_kerja_sama: data.luaranKerjaSama || null,
     jenis_dokumen: mapJenisDokumenToApi(data.jenisDokumen),
     mitra_id: data.mitraId ?? null,
+    inisiasi_id: data.inisiasiId ?? null,
     nama_mitra: data.namaMitra,
     jenis_mitra: data.mitraKategori || null,
     bidang_usaha: data.mitraBidangUsaha || null,

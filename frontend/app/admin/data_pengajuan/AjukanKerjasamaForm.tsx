@@ -19,6 +19,7 @@ import {
 } from '@/services/masterRuangLingkupService';
 import { getMasterNegara } from '@/services/masterNegaraService';
 import { getMasterMitra, type MasterMitra as MasterMitraRow } from '@/services/masterMitraService';
+import { formatTanggalInisiasi, getInisiasi, type InisiasiItem } from '@/services/inisiasiService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 import { downloadTemplate, templateFilesByJenis, templateHintByLabel, type TemplateFile } from '@/lib/templateDokumen';
 
@@ -180,6 +181,8 @@ function formatFileSize(bytes: number) {
 }
 
 type InternalAjukanKerjasamaFormProps = {
+  // Pengajuan dibuat admin dari satu Inisiasi (tautan disimpan; nama instansi mengisi kolom mitra).
+  inisiasiId?: number | null;
   onCancel?: () => void;
   onSubmitted?: () => void;
   enableAppearanceEdit?: boolean;
@@ -279,6 +282,7 @@ const defaultAppearanceSettings: FormAppearanceSettings = {
 const DEFAULT_APPEARANCE_STORAGE_KEY = 'internal-pengajuan-appearance-v1';
 
 export default function AdminAjukanKerjasamaForm({
+  inisiasiId = null,
   onCancel,
   onSubmitted,
   enableAppearanceEdit = false,
@@ -329,6 +333,7 @@ export default function AdminAjukanKerjasamaForm({
   const [showDocumentReminderModal, setShowDocumentReminderModal] = useState(false);
   const [masterMitraRows, setMasterMitraRows] = useState<MasterMitraRow[]>([]);
   const [selectedMitraId, setSelectedMitraId] = useState<number | null>(null);
+  const [inisiasiAsal, setInisiasiAsal] = useState<InisiasiItem | null>(null);
   const [mitraOpen, setMitraOpen] = useState(false);
   const [mitraSearch, setMitraSearch] = useState('');
   const allJurusanOptions = [...jurusanOptions, ...customJurusanOpts];
@@ -397,6 +402,32 @@ export default function AdminAjukanKerjasamaForm({
   useEffect(() => {
     getMasterMitra({ aktif: true }).then(setMasterMitraRows).catch(() => {});
   }, []);
+
+  // Dibuka dari kartu Inisiasi: ambil datanya, isi kolom mitra yang masih kosong dengan nama instansinya.
+  useEffect(() => {
+    if (!inisiasiId) {
+      setInisiasiAsal(null);
+      return;
+    }
+    let aktif = true;
+    getInisiasi(inisiasiId)
+      .then((item) => {
+        if (!aktif) return;
+        setInisiasiAsal(item);
+        setFormData((prev) => (prev.namaMitra ? prev : { ...prev, namaMitra: item.nama_mitra }));
+      })
+      .catch(() => {});
+    return () => {
+      aktif = false;
+    };
+  }, [inisiasiId]);
+
+  // Cocokkan nama instansi dengan master mitra (sekali, setelah keduanya termuat) supaya tertaut ke mitra yang sama.
+  useEffect(() => {
+    if (!inisiasiAsal || selectedMitraId !== null || masterMitraRows.length === 0) return;
+    const cocok = masterMitraRows.find((m) => m.nama_mitra.trim().toLowerCase() === inisiasiAsal.nama_mitra.trim().toLowerCase());
+    if (cocok && formData.namaMitra.trim().toLowerCase() === cocok.nama_mitra.trim().toLowerCase()) setSelectedMitraId(cocok.id);
+  }, [inisiasiAsal, masterMitraRows, selectedMitraId, formData.namaMitra]);
 
   useEffect(() => {
     setCustomNegaraOpts(initialCustomNegaraOptions);
@@ -975,6 +1006,7 @@ export default function AdminAjukanKerjasamaForm({
         namaPengusul: formData.namaKontak || 'Internal Polibatam',
         namaMitra: formData.namaMitra,
         mitraId: selectedMitraId ?? undefined,
+        inisiasiId: inisiasiId ?? undefined,
         // Alamat & PIC mitra disinkronkan ke Data Kemitraan oleh BACKEND (lihat
         // PengajuanController), bukan lewat panggilan langsung ke endpoint /master/mitra.
         mitraAlamat: formData.alamatMitra.trim() || undefined,
@@ -1133,6 +1165,12 @@ export default function AdminAjukanKerjasamaForm({
           <p className="mb-4 text-xs text-slate-500">{appearanceSettings.sectionInformasiMitraSubtitle}</p>
 
           <div className="grid gap-4 md:grid-cols-2">
+            {inisiasiAsal && (
+              <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Pengajuan dari Inisiasi: <span className="font-semibold">{inisiasiAsal.judul}</span> ({formatTanggalInisiasi(inisiasiAsal.tanggal_kegiatan)}).
+                Pilih jurusan/prodi/unit pelaksana pada form ini; pengajuan akan terlihat oleh unit tersebut.
+              </div>
+            )}
             <div className="md:col-span-2">
               <label className="mb-1 block text-sm font-semibold text-slate-700">{appearanceSettings.labelNamaMitra}</label>
               <div className="relative">

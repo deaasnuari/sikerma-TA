@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Download, Filter, ImageOff, Images, Info, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
+import Link from 'next/link';
+import { Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Download, FilePlus2, Filter, ImageOff, Images, Info, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ProtectedImage from '@/components/ProtectedImage';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
@@ -12,12 +13,16 @@ import { useMasterUnitProdi } from '@/hooks/useMasterData';
 import { exportInisiasiKeExcel } from '@/lib/exportInisiasiExcel';
 import {
   deleteInisiasi,
+  deleteInisiasiMassal,
   formatTanggalInisiasi,
   getInisiasiList,
   getSemuaInisiasi,
+  INISIASI_STATUS_CLASS,
+  INISIASI_STATUS_LABEL,
   type InisiasiItem,
   type InisiasiListMeta,
   type InisiasiOpsiFilter,
+  type InisiasiStatus,
   type InisiasiUrut,
 } from '@/services/inisiasiService';
 import InisiasiDetailModal from './InisiasiDetailModal';
@@ -41,6 +46,7 @@ export default function InisiasiPage() {
   const [filterUnit, setFilterUnit] = useState('');
   const [filterTahun, setFilterTahun] = useState('');
   const [filterBulan, setFilterBulan] = useState('');
+  const [filterStatus, setFilterStatus] = useState<InisiasiStatus | ''>('');
   const [opsi, setOpsi] = useState<InisiasiOpsiFilter>({ tahun: [], unit: [] });
   const [mengekspor, setMengekspor] = useState(false);
   const [progresExport, setProgresExport] = useState<string | null>(null);
@@ -50,6 +56,10 @@ export default function InisiasiPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editItem, setEditItem] = useState<InisiasiItem | null>(null);
   const [hapusItem, setHapusItem] = useState<InisiasiItem | null>(null);
+  // Pilihan untuk hapus banyak sekaligus (id inisiasi); tetap terpilih saat pindah halaman.
+  const [pilihIds, setPilihIds] = useState<number[]>([]);
+  const [hapusMassalOpen, setHapusMassalOpen] = useState(false);
+  const [menghapusMassal, setMenghapusMassal] = useState(false);
   const [menghapus, setMenghapus] = useState(false);
   const [pesan, setPesan] = useState<Pesan | null>(null);
 
@@ -74,6 +84,7 @@ export default function InisiasiPage() {
         unit: filterUnit || undefined,
         tahun: filterTahun ? Number(filterTahun) : null,
         bulan: filterBulan ? Number(filterBulan) : null,
+        status: filterStatus,
       });
       // Halaman terakhir jadi kosong (mis. setelah hapus) -> mundur satu halaman.
       if (hasil.data.length === 0 && page > 1) {
@@ -88,7 +99,7 @@ export default function InisiasiPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, urut, page, filterUnit, filterTahun, filterBulan]);
+  }, [search, urut, page, filterUnit, filterTahun, filterBulan, filterStatus]);
 
   useEffect(() => {
     void muat();
@@ -120,12 +131,44 @@ export default function InisiasiPage() {
     void muat();
   };
 
+  const idsHalaman = items.map((item) => item.id);
+  const semuaHalamanTerpilih = idsHalaman.length > 0 && idsHalaman.every((id) => pilihIds.includes(id));
+
+  const togglePilih = (id: number) => {
+    setPilihIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const togglePilihHalaman = () => {
+    setPilihIds((prev) =>
+      semuaHalamanTerpilih ? prev.filter((id) => !idsHalaman.includes(id)) : Array.from(new Set([...prev, ...idsHalaman])),
+    );
+  };
+
+  const konfirmasiHapusMassal = async () => {
+    if (pilihIds.length === 0) return;
+    setMenghapusMassal(true);
+    try {
+      const jumlah = await deleteInisiasiMassal(pilihIds);
+      setPesan({ tipe: 'sukses', teks: `${jumlah} data inisiasi berhasil dihapus.` });
+      setPilihIds([]);
+      setHapusMassalOpen(false);
+      setDetailItem(null);
+      await muat();
+    } catch (err) {
+      setPesan({ tipe: 'gagal', teks: err instanceof Error ? err.message : 'Gagal menghapus data inisiasi.' });
+      setHapusMassalOpen(false);
+    } finally {
+      setMenghapusMassal(false);
+    }
+  };
+
   const konfirmasiHapus = async () => {
     if (!hapusItem) return;
     setMenghapus(true);
     try {
       await deleteInisiasi(hapusItem.id);
       setPesan({ tipe: 'sukses', teks: 'Data inisiasi berhasil dihapus.' });
+      setPilihIds((prev) => prev.filter((id) => id !== hapusItem.id));
       setHapusItem(null);
       setDetailItem(null);
       await muat();
@@ -138,7 +181,7 @@ export default function InisiasiPage() {
   };
 
   const adaFilter = search.trim() !== '' || filterUnit !== '' || filterTahun !== '' || filterBulan !== '';
-  const adaFilterSelain = filterUnit !== '' || filterTahun !== '' || filterBulan !== '';
+  const adaFilterSelain = filterUnit !== '' || filterTahun !== '' || filterBulan !== '' || filterStatus !== '';
 
   const resetFilter = () => {
     setSearchInput('');
@@ -146,6 +189,7 @@ export default function InisiasiPage() {
     setFilterUnit('');
     setFilterTahun('');
     setFilterBulan('');
+    setFilterStatus('');
     setPage(1);
   };
 
@@ -160,6 +204,7 @@ export default function InisiasiPage() {
         unit: filterUnit || undefined,
         tahun: filterTahun ? Number(filterTahun) : null,
         bulan: filterBulan ? Number(filterBulan) : null,
+        status: filterStatus,
       });
 
       if (semua.length === 0) {
@@ -230,7 +275,7 @@ export default function InisiasiPage() {
               misalnya kunjungan, pertemuan, rapat online, atau diskusi perkenalan.
             </p>
             <ul className="list-inside list-disc space-y-0.5 text-xs text-slate-600">
-              <li>Isi: tanggal, judul kegiatan, nama mitra, dan cerita singkat apa yang dibahas serta hasilnya.</li>
+              <li>Isi: tanggal, judul kegiatan, nama instansi, dan cerita singkat apa yang dibahas serta hasilnya.</li>
               <li>Catat juga siapa saja yang ikut dari Polibatam (unit dan nama peserta), lalu tambahkan foto kegiatan.</li>
               <li>Catatan di sini berdiri sendiri. Tidak otomatis menjadi berita atau dokumen kerja sama.</li>
             </ul>
@@ -260,7 +305,7 @@ export default function InisiasiPage() {
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Cari judul kegiatan atau nama mitra…"
+              placeholder="Cari judul kegiatan atau nama instansi…"
               aria-label="Cari inisiasi"
               className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm outline-none transition placeholder:text-gray-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/30"
             />
@@ -323,6 +368,21 @@ export default function InisiasiPage() {
             allowTanpaBulan={false}
           />
 
+          <select
+            value={filterStatus}
+            onChange={(e) => {
+              setFilterStatus(e.target.value as InisiasiStatus | '');
+              setPage(1);
+            }}
+            aria-label="Filter status"
+            className="input-field h-9 rounded-lg px-3 text-sm"
+          >
+            <option value="">Semua status</option>
+            {(Object.keys(INISIASI_STATUS_LABEL) as InisiasiStatus[]).map((status) => (
+              <option key={status} value={status}>{INISIASI_STATUS_LABEL[status]}</option>
+            ))}
+          </select>
+
           {adaFilterSelain && (
             <button type="button" onClick={resetFilter} className="text-xs font-semibold text-[#173B82] underline hover:text-blue-800">
               Reset filter
@@ -330,6 +390,35 @@ export default function InisiasiPage() {
           )}
         </div>
       </div>
+
+      {items.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm">
+          <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={semuaHalamanTerpilih}
+              onChange={togglePilihHalaman}
+              className="h-4 w-4 cursor-pointer accent-[#173B82]"
+            />
+            Pilih semua di halaman ini
+          </label>
+          {pilihIds.length > 0 && (
+            <>
+              <span className="text-slate-500">{pilihIds.length} dipilih</span>
+              <button type="button" onClick={() => setPilihIds([])} className="text-xs font-semibold text-[#173B82] underline hover:text-blue-800">
+                Batalkan pilihan
+              </button>
+              <button
+                type="button"
+                onClick={() => setHapusMassalOpen(true)}
+                className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700"
+              >
+                <Trash2 size={14} /> Hapus {pilihIds.length} terpilih
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {loading && items.length === 0 ? (
         <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(250px,1fr))]" aria-busy="true">
@@ -369,7 +458,24 @@ export default function InisiasiPage() {
       ) : (
         <div className={`grid gap-4 grid-cols-[repeat(auto-fill,minmax(250px,1fr))] ${loading ? 'opacity-60' : ''}`}>
           {items.map((item) => (
-            <article key={item.id} className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md">
+            <article
+              key={item.id}
+              className={`relative flex flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md ${
+                pilihIds.includes(item.id) ? 'border-[#173B82] ring-2 ring-[#173B82]/30' : 'border-gray-200'
+              }`}
+            >
+              <label
+                className="absolute right-2 top-2 z-10 inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-white/95 shadow-sm"
+                title="Pilih untuk dihapus"
+              >
+                <input
+                  type="checkbox"
+                  checked={pilihIds.includes(item.id)}
+                  onChange={() => togglePilih(item.id)}
+                  aria-label={`Pilih ${item.judul}`}
+                  className="h-4 w-4 cursor-pointer accent-[#173B82]"
+                />
+              </label>
               <button
                 type="button"
                 onClick={() => setDetailItem(item)}
@@ -412,6 +518,10 @@ export default function InisiasiPage() {
                   <Building2 size={13} className="shrink-0 text-slate-400" />
                   <span className="truncate">{item.nama_mitra}</span>
                 </p>
+                <span className={`mt-1.5 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${INISIASI_STATUS_CLASS[item.status_tindak_lanjut]}`}>
+                  {INISIASI_STATUS_LABEL[item.status_tindak_lanjut]}
+                  {item.jumlah_pengajuan > 0 ? ` · ${item.jumlah_pengajuan} pengajuan` : ''}
+                </span>
                 <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-500">{item.deskripsi}</p>
 
                 {item.units.length > 0 && (
@@ -441,6 +551,14 @@ export default function InisiasiPage() {
                 </div>
 
                 <div className="mt-3 flex justify-end gap-1.5 border-t border-slate-100 pt-2.5">
+                  {(item.status_tindak_lanjut === 'belum' || item.status_tindak_lanjut === 'tidak_dilanjutkan') && (
+                    <Link
+                      href={`/admin/data_pengajuan?view=ajukan&inisiasi=${item.id}`}
+                      className="inline-flex h-7 items-center gap-1 rounded-lg border border-[#173B82] bg-[#173B82] px-2.5 text-[11px] font-semibold text-white hover:bg-[#122f68]"
+                    >
+                      <FilePlus2 size={13} /> Buat Pengajuan
+                    </Link>
+                  )}
                   <button
                     type="button"
                     onClick={() => bukaEdit(item)}
@@ -496,6 +614,21 @@ export default function InisiasiPage() {
           setEditItem(null);
         }}
         onSaved={handleSaved}
+      />
+
+      <ConfirmDialog
+        open={hapusMassalOpen}
+        title={`Hapus ${pilihIds.length} data inisiasi?`}
+        message={
+          <>
+            <strong>{pilihIds.length}</strong> data inisiasi beserta seluruh foto dan dokumennya akan dihapus permanen, termasuk dari tampilan
+            internal yang di-CC. Tindakan ini tidak bisa dikembalikan.
+          </>
+        }
+        confirmLabel={`Ya, hapus ${pilihIds.length}`}
+        loading={menghapusMassal}
+        onConfirm={() => void konfirmasiHapusMassal()}
+        onCancel={() => setHapusMassalOpen(false)}
       />
 
       <ConfirmDialog

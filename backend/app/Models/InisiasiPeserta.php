@@ -9,7 +9,7 @@ class InisiasiPeserta extends Model
 {
     protected $table = 'inisiasi_peserta';
 
-    protected $fillable = ['inisiasi_id', 'nama'];
+    protected $fillable = ['inisiasi_id', 'nama', 'user_id'];
 
     public function inisiasi(): BelongsTo
     {

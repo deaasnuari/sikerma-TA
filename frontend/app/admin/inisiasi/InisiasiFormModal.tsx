@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, ImagePlus, Plus, RefreshCw, X } from 'lucide-react';
+import { ChevronDown, FileText, ImagePlus, Plus, RefreshCw, X } from 'lucide-react';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 import ProtectedImage from '@/components/ProtectedImage';
-import { useMasterUnitProdi } from '@/hooks/useMasterData';
-import { getDistribusiKandidat, type DistribusiJabatan, type DistribusiKandidat } from '@/services/distribusiKandidatService';
+import { useMasterMitra, useMasterUnitProdi } from '@/hooks/useMasterData';
+import { getDistribusiKandidat, provisionDistribusiUser, type DistribusiJabatan, type DistribusiKandidat } from '@/services/distribusiKandidatService';
 import {
   INISIASI_FORMAT_FOTO,
   INISIASI_MAKS_DOKUMEN,
@@ -34,6 +34,9 @@ type Props = {
 
 type FieldErrors = Partial<Record<'tanggal' | 'judul' | 'mitra' | 'deskripsi', string>>;
 
+// Singkatan jurusan lama yang disembunyikan juga di form pengajuan.
+const HIDDEN_JURUSAN_ALIASES = new Set(['EL', 'TM', 'MB']);
+
 const labelClass = 'mb-1 block text-sm font-semibold text-slate-700';
 
 const JABATAN_LABEL: Record<DistribusiJabatan, string> = {
@@ -42,15 +45,30 @@ const JABATAN_LABEL: Record<DistribusiJabatan, string> = {
   kepala_unit: 'Kepala Unit',
 };
 
-function groupLabel(kategori: string | null | undefined, jenis: string): string {
-  if (jenis === 'prodi') return 'Program Studi';
-  if (kategori === 'jurusan') return 'Jurusan';
-  return 'Unit Kerja';
-}
-
 export default function InisiasiFormModal({ open, item, onClose, onSaved }: Props) {
   const isEdit = item !== null;
   const { data: unitRows } = useMasterUnitProdi();
+  // Saran nama instansi dari Data Kemitraan (master mitra); nama di luar daftar tetap boleh diketik.
+  const { data: mitraRows } = useMasterMitra({ aktif: true });
+  const [mitraOpen, setMitraOpen] = useState(false);
+  const [mitraSearch, setMitraSearch] = useState('');
+  const mitraBoxRef = useRef<HTMLDivElement>(null);
+  const filteredMitraOptions = useMemo(() => {
+    const q = mitraSearch.trim().toLowerCase();
+    return mitraRows.filter(
+      (m) => !q || m.nama_mitra.toLowerCase().includes(q) || (m.kode_mitra || '').toLowerCase().includes(q),
+    );
+  }, [mitraRows, mitraSearch]);
+
+  // Tutup dropdown saat klik di luar.
+  useEffect(() => {
+    if (!mitraOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (mitraBoxRef.current && !mitraBoxRef.current.contains(e.target as Node)) setMitraOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [mitraOpen]);
 
   const [tanggal, setTanggal] = useState('');
   const [judul, setJudul] = useState('');
@@ -59,7 +77,11 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
   const [unitProdiIds, setUnitProdiIds] = useState<number[]>([]);
   const [unitLainnya, setUnitLainnya] = useState<string[]>([]);
   const [unitInput, setUnitInput] = useState('');
+  // Tab pilihan unit seperti di form pengajuan; pilihan di kedua tab tetap tersimpan saat berpindah tab.
+  const [unitTab, setUnitTab] = useState<'Jurusan' | 'Unit'>('Jurusan');
   const [peserta, setPeserta] = useState<string[]>([]);
+  // Peserta yang dipilih dari saran = di-CC: nama (huruf kecil) -> id akun. Nama yang diketik bebas tidak masuk sini.
+  const [ccPeserta, setCcPeserta] = useState<Record<string, number>>({});
   const [pesertaInput, setPesertaInput] = useState('');
   const [fotoLama, setFotoLama] = useState<InisiasiFoto[]>([]);
   const [hapusFotoIds, setHapusFotoIds] = useState<number[]>([]);
@@ -93,6 +115,7 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
     setUnitProdiIds(item?.units.filter((unit) => unit.unit_prodi_id !== null).map((unit) => unit.unit_prodi_id as number) ?? []);
     setUnitLainnya(item?.units.filter((unit) => unit.unit_prodi_id === null).map((unit) => unit.nama) ?? []);
     setPeserta(item?.peserta.map((p) => p.nama) ?? []);
+    setCcPeserta(Object.fromEntries((item?.peserta ?? []).filter((p) => p.user_id).map((p) => [p.nama.toLowerCase(), p.user_id as number])));
     setFotoLama(item?.fotos ?? []);
     setHapusFotoIds([]);
     setFotoBaru([]);
@@ -101,6 +124,7 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
     setDokumenBaru([]);
     setDokumenError(null);
     setUnitInput('');
+    setUnitTab('Jurusan');
     setPesertaInput('');
     setErrors({});
     setFotoError(null);
@@ -127,14 +151,89 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
   }, [open]);
   useEffect(() => () => fotoBaruRef.current.forEach((foto) => URL.revokeObjectURL(foto.previewUrl)), []);
 
-  const unitOptions = useMemo(
+  const unitAktif = useMemo(() => unitRows.filter((row) => row.aktif), [unitRows]);
+  const jurusanRows = useMemo(
     () =>
-      unitRows
-        .filter((row) => row.aktif)
-        .map((row) => ({ value: row.id, label: row.nama, group: groupLabel(row.kategori_unit, row.jenis_node) }))
-        .sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label)),
-    [unitRows],
+      unitAktif
+        .filter((row) => row.jenis_node === 'unit' && row.kategori_unit === 'jurusan' && !HIDDEN_JURUSAN_ALIASES.has(row.nama.trim().toUpperCase()))
+        .sort((a, b) => a.nama.localeCompare(b.nama)),
+    [unitAktif],
   );
+  const jurusanIdSet = useMemo(() => new Set(jurusanRows.map((row) => row.id)), [jurusanRows]);
+  const prodiRows = useMemo(() => unitAktif.filter((row) => row.jenis_node === 'prodi'), [unitAktif]);
+  const unitKerjaRows = useMemo(
+    () => unitAktif.filter((row) => row.jenis_node === 'unit' && row.kategori_unit === 'unit_kerja').sort((a, b) => a.nama.localeCompare(b.nama)),
+    [unitAktif],
+  );
+
+  // Satu daftar id (unitProdiIds) tetap jadi sumber kebenaran; jurusan/prodi/unit di bawah diturunkan darinya.
+  // Prodi tersimpan tanpa jurusannya, jadi jurusan yang tampil terpilih = jurusan eksplisit + induk tiap prodi terpilih.
+  const prodiTerpilih = useMemo(() => unitProdiIds.filter((id) => prodiRows.some((row) => row.id === id)), [unitProdiIds, prodiRows]);
+  const unitKerjaTerpilih = useMemo(() => unitProdiIds.filter((id) => unitKerjaRows.some((row) => row.id === id)), [unitProdiIds, unitKerjaRows]);
+  const jurusanTerpilih = useMemo(() => {
+    const induk = prodiTerpilih.map((id) => prodiRows.find((row) => row.id === id)?.parent_id).filter((id): id is number => id != null && jurusanIdSet.has(id));
+    return Array.from(new Set([...unitProdiIds.filter((id) => jurusanIdSet.has(id)), ...induk]));
+  }, [unitProdiIds, prodiTerpilih, prodiRows, jurusanIdSet]);
+
+  const jurusanSelectOptions = useMemo(() => jurusanRows.map((row) => ({ value: row.id, label: row.nama })), [jurusanRows]);
+  const prodiSelectOptions = useMemo(
+    () =>
+      jurusanTerpilih.flatMap((jurusanId) => {
+        const jurusanNama = jurusanRows.find((row) => row.id === jurusanId)?.nama ?? '';
+        return prodiRows
+          .filter((row) => row.parent_id === jurusanId)
+          .sort((a, b) => a.nama.localeCompare(b.nama))
+          .map((row) => ({ value: row.id, label: row.nama, group: jurusanNama }));
+      }),
+    [jurusanTerpilih, jurusanRows, prodiRows],
+  );
+  const unitKerjaSelectOptions = useMemo(() => unitKerjaRows.map((row) => ({ value: row.id, label: row.nama })), [unitKerjaRows]);
+
+  const ubahJurusan = (next: number[]) => {
+    const dihapus = jurusanTerpilih.filter((id) => !next.includes(id));
+    setUnitProdiIds((prev) => [
+      ...prev.filter((id) => !jurusanIdSet.has(id) && !prodiTerpilih.includes(id)),
+      ...prodiTerpilih.filter((id) => !dihapus.includes(prodiRows.find((row) => row.id === id)?.parent_id ?? -1)),
+      ...next,
+    ]);
+  };
+  const ubahProdi = (next: number[]) => {
+    setUnitProdiIds((prev) => [...prev.filter((id) => !prodiTerpilih.includes(id)), ...next]);
+  };
+  const ubahUnitKerja = (next: number[]) => {
+    setUnitProdiIds((prev) => [...prev.filter((id) => !unitKerjaTerpilih.includes(id)), ...next]);
+  };
+
+  const hapusPeserta = (nama: string) => {
+    setPeserta((prev) => prev.filter((n) => n !== nama));
+    setCcPeserta((prev) => {
+      const { [nama.toLowerCase()]: _dihapus, ...sisa } = prev;
+      return sisa;
+    });
+  };
+
+  // Memilih kandidat dari saran = meng-CC orangnya. Kandidat yang belum pernah login dibuatkan akunnya dulu
+  // (cocok by NIK, tidak dobel saat orangnya login), sama seperti Distribusi/CC di Data Pengajuan.
+  const pilihKandidat = async (k: DistribusiKandidat) => {
+    setPesertaInput('');
+    setPeserta((prev) => gabungChip(k.nama, prev));
+    setServerError(null);
+
+    let userId = k.id;
+    if (userId === null) {
+      if (!k.nik) {
+        setServerError(`${k.nama} ditambahkan sebagai peserta saja: NIK tidak tersedia sehingga tidak bisa di-CC.`);
+        return;
+      }
+      try {
+        userId = (await provisionDistribusiUser({ nik: k.nik, nama: k.nama, jabatan: k.jabatan })).id;
+      } catch {
+        setServerError(`${k.nama} ditambahkan sebagai peserta saja: gagal menyiapkan akun untuk CC.`);
+        return;
+      }
+    }
+    setCcPeserta((prev) => ({ ...prev, [k.nama.toLowerCase()]: userId as number }));
+  };
 
   if (!open) return null;
 
@@ -309,13 +408,19 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
     const nextErrors: FieldErrors = {};
     if (!tanggal) nextErrors.tanggal = 'Tanggal kegiatan wajib diisi.';
     if (!judul.trim()) nextErrors.judul = 'Judul kegiatan wajib diisi.';
-    if (!mitra.trim()) nextErrors.mitra = 'Nama mitra wajib diisi.';
+    if (!mitra.trim()) nextErrors.mitra = 'Nama instansi wajib diisi.';
     if (!deskripsi.trim()) nextErrors.deskripsi = 'Deskripsi kegiatan wajib diisi.';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
     // Teks yang masih diketik di kolom unit/peserta (belum ditekan Enter) ikut disimpan.
     const unitFinal = gabungChip(unitInput, unitLainnya);
+    // Jurusan yang prodinya dipilih diwakili prodinya (jurusan tetap tercakup lewat induk prodi);
+    // jurusan tanpa prodi terpilih dikirim sendiri sebagai "seluruh jurusan".
+    const jurusanDenganProdi = new Set(
+      prodiTerpilih.map((id) => prodiRows.find((row) => row.id === id)?.parent_id).filter((id): id is number => id != null),
+    );
+    const unitProdiIdsKirim = Array.from(new Set(unitProdiIds.filter((id) => !(jurusanIdSet.has(id) && jurusanDenganProdi.has(id)))));
     const pesertaFinal = gabungChip(pesertaInput, peserta);
 
     setSubmitting(true);
@@ -327,9 +432,9 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
           judul: judul.trim(),
           namaMitra: mitra.trim(),
           deskripsi: deskripsi.trim(),
-          unitProdiIds,
+          unitProdiIds: unitProdiIdsKirim,
           unitLainnya: unitFinal,
-          peserta: pesertaFinal,
+          peserta: pesertaFinal.map((nama) => ({ nama, userId: ccPeserta[nama.toLowerCase()] ?? null })),
           fotoBaru: fotoBaru.map((foto) => foto.file),
           hapusFotoIds,
           dokumenBaru: dokumenBaru.map((dokumen) => dokumen.file),
@@ -357,7 +462,7 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div>
             <h2 className="text-lg font-bold text-slate-900">{isEdit ? 'Edit Inisiasi' : 'Tambah Inisiasi'}</h2>
-            <p className="mt-0.5 text-xs text-slate-500">Catat kegiatan awal dengan calon mitra: apa yang dibahas, siapa yang ikut, dan fotonya.</p>
+            <p className="mt-0.5 text-xs text-slate-500">Catat kegiatan awal dengan calon instansi mitra: apa yang dibahas, siapa yang ikut, dan fotonya.</p>
           </div>
           <button
             type="button"
@@ -390,16 +495,75 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
               {errors.tanggal && <p className="mt-1 text-xs text-red-500">{errors.tanggal}</p>}
             </div>
             <div>
-              <label htmlFor="inisiasi-mitra" className={labelClass}>Nama Mitra *</label>
-              <input
-                id="inisiasi-mitra"
-                type="text"
-                value={mitra}
-                onChange={(e) => setMitra(e.target.value)}
-                maxLength={255}
-                placeholder="Nama mitra yang terlibat"
-                className={`input-field h-10 w-full rounded-lg px-3 text-sm ${errorClass(errors.mitra)}`}
-              />
+              <label htmlFor="inisiasi-mitra" className={labelClass}>Nama Instansi *</label>
+              <div className="relative" ref={mitraBoxRef}>
+                <button
+                  id="inisiasi-mitra"
+                  type="button"
+                  onClick={() => setMitraOpen((prev) => !prev)}
+                  className={`input-field flex h-10 w-full items-center justify-between rounded-lg px-3 text-left text-sm ${errorClass(errors.mitra)}`}
+                >
+                  <span className={`truncate ${mitra ? 'text-slate-900' : 'text-slate-400'}`}>
+                    {mitra || 'Pilih instansi dari daftar...'}
+                  </span>
+                  <ChevronDown size={14} className="ml-2 shrink-0 text-slate-400" />
+                </button>
+                {mitraOpen && (
+                  <div className="absolute z-50 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-xl">
+                    <div className="border-b border-slate-100 p-2">
+                      <input
+                        autoFocus
+                        value={mitraSearch}
+                        onChange={(e) => setMitraSearch(e.target.value)}
+                        maxLength={255}
+                        placeholder="Cari kode atau nama instansi..."
+                        className="input-field h-8 w-full rounded-lg px-3 text-sm"
+                      />
+                    </div>
+                    <ul className="max-h-52 overflow-y-auto py-1">
+                      {filteredMitraOptions.length === 0 && !mitraSearch.trim() && (
+                        <li className="px-4 py-3 text-sm text-slate-400">Tidak ada instansi ditemukan</li>
+                      )}
+                      {filteredMitraOptions.map((m) => (
+                        <li key={m.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMitra(m.nama_mitra);
+                              setMitraOpen(false);
+                              setMitraSearch('');
+                            }}
+                            className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm hover:bg-slate-50"
+                          >
+                            {m.kode_mitra && (
+                              <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">{m.kode_mitra}</span>
+                            )}
+                            <span className="flex-1 text-slate-800">{m.nama_mitra}</span>
+                          </button>
+                        </li>
+                      ))}
+                      {mitraSearch.trim() && (
+                        <li className="border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMitra(mitraSearch.trim());
+                              setMitraOpen(false);
+                              setMitraSearch('');
+                            }}
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-[#173B82] hover:bg-slate-50"
+                          >
+                            <Plus size={14} className="shrink-0" />
+                            <span>
+                              Pakai &quot;<span className="font-semibold">{mitraSearch.trim()}</span>&quot; (instansi belum terdaftar)
+                            </span>
+                          </button>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
               {errors.mitra && <p className="mt-1 text-xs text-red-500">{errors.mitra}</p>}
             </div>
           </div>
@@ -434,16 +598,74 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
 
           <div>
             <span className={labelClass}>Unit Terlibat</span>
-            <MultiSelectDropdown
-              options={unitOptions}
-              selected={unitProdiIds}
-              onChange={setUnitProdiIds}
-              placeholder="Pilih jurusan, prodi, atau unit (bisa lebih dari satu)"
-              searchPlaceholder="Cari unit..."
-              ariaLabel="Pilih unit terlibat"
-              textClassName="text-sm"
-            />
-            <div className="mt-2 flex gap-2">
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              {(['Jurusan', 'Unit'] as const).map((tab) => {
+                const jumlah = tab === 'Jurusan' ? jurusanTerpilih.length : unitKerjaTerpilih.length + unitLainnya.length;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setUnitTab(tab)}
+                    className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
+                      unitTab === tab
+                        ? 'border-[#173B82] bg-[#173B82] text-white shadow-sm'
+                        : 'border-slate-300 bg-white text-slate-700 hover:border-[#173B82]'
+                    }`}
+                  >
+                    {tab}
+                    {jumlah > 0 && <span className="ml-1.5 text-xs font-normal opacity-80">({jumlah})</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {unitTab === 'Jurusan' ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">Jurusan</label>
+                  <MultiSelectDropdown
+                    options={jurusanSelectOptions}
+                    selected={jurusanTerpilih}
+                    onChange={ubahJurusan}
+                    placeholder="Pilih jurusan"
+                    searchPlaceholder="Cari jurusan..."
+                    ariaLabel="Pilih jurusan"
+                    textClassName="text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">Prodi</label>
+                  <MultiSelectDropdown
+                    options={prodiSelectOptions}
+                    selected={prodiTerpilih}
+                    onChange={ubahProdi}
+                    disabled={jurusanTerpilih.length === 0 || prodiSelectOptions.length === 0}
+                    placeholder={
+                      jurusanTerpilih.length === 0
+                        ? '-- Pilih jurusan terlebih dahulu --'
+                        : prodiSelectOptions.length === 0
+                          ? '-- Tidak ada prodi untuk jurusan ini --'
+                          : 'Pilih prodi (kosongkan bila melibatkan seluruh jurusan)'
+                    }
+                    searchPlaceholder="Cari prodi..."
+                    ariaLabel="Pilih prodi"
+                    textClassName="text-sm"
+                  />
+                  {prodiTerpilih.length > 0 && <p className="mt-1 text-xs text-slate-500">{prodiTerpilih.length} prodi terpilih</p>}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <MultiSelectDropdown
+                  options={unitKerjaSelectOptions}
+                  selected={unitKerjaTerpilih}
+                  onChange={ubahUnitKerja}
+                  placeholder="Pilih unit (bisa lebih dari satu)"
+                  searchPlaceholder="Cari unit..."
+                  ariaLabel="Pilih unit"
+                  textClassName="text-sm"
+                />
+            <div className="mt-3 flex gap-2">
               <input
                 type="text"
                 value={unitInput}
@@ -480,6 +702,8 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
                     </button>
                   </span>
                 ))}
+              </div>
+            )}
               </div>
             )}
           </div>
@@ -520,10 +744,7 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
                   <button
                     key={`${k.nik ?? 'x'}-${k.jabatan}-${k.unitNama ?? ''}-${k.nama}`}
                     type="button"
-                    onClick={() => {
-                      setPeserta((prev) => gabungChip(k.nama, prev));
-                      setPesertaInput('');
-                    }}
+                    onClick={() => void pilihKandidat(k)}
                     className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
                   >
                     <span className="truncate">{k.nama}</span>
@@ -541,7 +762,10 @@ export default function InisiasiFormModal({ open, item, onClose, onSaved }: Prop
                 {peserta.map((nama) => (
                   <span key={nama} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
                     {nama}
-                    <button type="button" aria-label={`Hapus ${nama}`} onClick={() => setPeserta((prev) => prev.filter((n) => n !== nama))} className="text-slate-400 hover:text-slate-700">
+                    {ccPeserta[nama.toLowerCase()] && (
+                      <span title="Di-CC: ikut melihat inisiasi ini di menu Inisiasi internal" className="rounded bg-[#173B82] px-1 text-[9px] font-bold uppercase text-white">CC</span>
+                    )}
+                    <button type="button" aria-label={`Hapus ${nama}`} onClick={() => hapusPeserta(nama)} className="text-slate-400 hover:text-slate-700">
                       <X size={11} />
                     </button>
                   </span>

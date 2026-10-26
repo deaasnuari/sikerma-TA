@@ -949,21 +949,18 @@ export default function Home() {
 
               <div className="space-y-5 text-[12.5px]">
                 {[
-                  { title: 'Kapokja Humas dan Kerjasama', nama: 'Ridwan P.', email: null },
-                  { title: 'Kerjasama Luar Negeri / OIA', nama: 'Irkham', email: 'oia@polibatam.ac.id' },
-                  { title: 'Kerjasama Dalam Negeri', nama: 'Dessy', email: 'kerjasama@polibatam.ac.id' },
+                  { title: 'Kapokja Humas dan Kerjasama', email: 'kapokja-hk@polibatam.ac.id' },
+                  { title: 'Kerjasama Luar Negeri', email: 'oia@polibatam.ac.id' },
+                  { title: 'Kerjasama Dalam Negeri', email: 'kerjasama@polibatam.ac.id' },
                 ].map((kontak) => (
                   <div key={kontak.title}>
                     <h3 className="mb-2 text-[13px] font-bold text-white">{kontak.title}</h3>
                     <ul className="space-y-1 text-slate-100">
-                      <li>{kontak.nama}</li>
-                      {kontak.email && (
-                        <li>
-                          <a href={`mailto:${kontak.email}`} className="text-cyan-200 underline-offset-2 hover:underline">
-                            {kontak.email}
-                          </a>
-                        </li>
-                      )}
+                      <li>
+                        <a href={`mailto:${kontak.email}`} className="text-cyan-200 underline-offset-2 hover:underline">
+                          {kontak.email}
+                        </a>
+                      </li>
                     </ul>
                   </div>
                 ))}

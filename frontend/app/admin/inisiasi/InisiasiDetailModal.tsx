@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Building2, CalendarDays, ChevronLeft, ChevronRight, Download, ExternalLink, FileText, ImageOff, Pencil, Trash2, Users, X } from 'lucide-react';
 import ProtectedImage from '@/components/ProtectedImage';
 import { downloadProtectedFile, openProtectedFile } from '@/lib/api';
-import { formatTanggalInisiasi, formatUkuranBerkas, type InisiasiItem } from '@/services/inisiasiService';
+import { INISIASI_STATUS_CLASS, INISIASI_STATUS_LABEL, formatTanggalInisiasi, formatUkuranBerkas, type InisiasiItem } from '@/services/inisiasiService';
 
 type Props = {
   item: InisiasiItem | null;
@@ -55,6 +55,22 @@ export default function InisiasiDetailModal({ item, onClose, onEdit, onDelete }:
             <p className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-slate-600">
               <Building2 size={14} className="shrink-0 text-slate-400" /> {item.nama_mitra}
             </p>
+            <p className="mt-1.5">
+              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${INISIASI_STATUS_CLASS[item.status_tindak_lanjut]}`}>
+                {INISIASI_STATUS_LABEL[item.status_tindak_lanjut]}
+              </span>
+            </p>
+            {(item.pengajuan?.length ?? 0) > 0 && (
+              <ul className="mt-1.5 space-y-0.5 text-xs text-slate-600">
+                {item.pengajuan?.map((p) => (
+                  <li key={p.id}>
+                    <span className="font-semibold">{p.nomor_pengajuan ?? `Pengajuan #${p.id}`}</span>
+                    {p.judul_pengajuan ? ` — ${p.judul_pengajuan}` : ''}
+                    {p.status_pengajuan ? ` (${p.status_pengajuan})` : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Tutup">
             <X size={18} />

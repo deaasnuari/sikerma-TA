@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { FileText, Clock, CheckCircle, XCircle, Search, Filter, Plus, Eye, MessageSquare, X, ThumbsUp, FilePenLine, CalendarDays, ChevronLeft, ChevronRight, Pencil, Trash2, ExternalLink, Paperclip, Download, Upload, Bell, CheckSquare, Square } from 'lucide-react';
 import { addAdminNotification, markNotificationsByHrefPrefixAsRead } from '@/services/adminService';
 import AdminAjukanKerjasamaForm from './AjukanKerjasamaForm';
+import InisiasiAsalPanel from '@/components/admin/InisiasiAsalPanel';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { invalidateRekapCache } from '@/services/dokumenKerjasamaApiService';
@@ -284,6 +285,9 @@ export default function PengajuanKerjasama() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const isAjukanView  = searchParams.get('view') === 'ajukan';
+  // Dari kartu Inisiasi: ?view=ajukan&inisiasi=<id> -> pengajuan dibuat sebagai tindak lanjut inisiasi itu.
+  const inisiasiParam = Number(searchParams.get('inisiasi'));
+  const inisiasiAsalId = isAjukanView && Number.isInteger(inisiasiParam) && inisiasiParam > 0 ? inisiasiParam : null;
   const reviewTargetId = searchParams.get('review') ? Number(searchParams.get('review')) : null;
 
   // Keep hook order stable on every render to avoid runtime hook mismatch.
@@ -2404,6 +2408,7 @@ function addEditJurusanUnitOption() {
             >
               <AdminAjukanKerjasamaForm
                 isModal
+                inisiasiId={inisiasiAsalId}
                 onCancel={() => setAjukanModalOpen(false)}
                 onSubmitted={() => {
                   setAjukanModalOpen(false);
@@ -2468,6 +2473,8 @@ function addEditJurusanUnitOption() {
                 <p className="text-[10px] text-gray-500">Status:</p>
                 <p className="text-[12px] font-semibold text-gray-900 mt-0.5">{statusConfig[detailItem.statusPengajuan]?.label || 'Menunggu'}</p>
               </div>
+
+              <InisiasiAsalPanel inisiasiId={detailItem.inisiasiId} />
 
               <div className="bg-white rounded-lg px-4 py-3 border border-[#D9DCE4]">
                 <p className="text-[12px] font-semibold text-gray-900">{detailItem.judulPengajuan}</p>

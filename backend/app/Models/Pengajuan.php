@@ -54,6 +54,7 @@ class Pengajuan extends Model
         'pic_polibatam_whatsapp',
         'unit_prodi_id',
         'mitra_id',
+        'inisiasi_id',
         'judul_pengajuan',
         'deskripsi_pengajuan',
         'manfaat',
@@ -130,6 +131,11 @@ class Pengajuan extends Model
     public function mitra(): BelongsTo
     {
         return $this->belongsTo(MasterMitra::class, 'mitra_id');
+    }
+
+    public function inisiasi(): BelongsTo
+    {
+        return $this->belongsTo(Inisiasi::class, 'inisiasi_id');
     }
 
     public function pengajuanFiles(): HasMany

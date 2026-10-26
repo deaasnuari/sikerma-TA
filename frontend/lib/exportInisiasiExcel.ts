@@ -101,7 +101,7 @@ export async function exportInisiasiKeExcel(
     { header: 'No', width: 5 },
     { header: 'Tanggal Kegiatan', width: 18 },
     { header: 'Judul Kegiatan', width: 32 },
-    { header: 'Nama Mitra', width: 26 },
+    { header: 'Nama Instansi', width: 26 },
     { header: 'Deskripsi Kegiatan', width: 50 },
     { header: 'Unit Terlibat', width: 32 },
     { header: 'Jumlah Peserta', width: 10 },

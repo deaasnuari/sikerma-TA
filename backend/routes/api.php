@@ -101,6 +101,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 	// Inisiasi (dokumentasi penjajakan kerja sama): hanya admin, dicek di controller. Update dengan foto
 	// dikirim sebagai POST + _method=PATCH (multipart).
+	Route::post('/inisiasi/hapus-massal', [InisiasiController::class, 'hapusMassal']);
 	Route::apiResource('/inisiasi', InisiasiController::class)->parameters(['inisiasi' => 'inisiasi']);
 
 	// Buka berkas di storage (dokumen, lampiran pengajuan, laporan) — wajib login + dicek per berkas.

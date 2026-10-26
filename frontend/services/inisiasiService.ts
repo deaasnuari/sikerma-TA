@@ -20,6 +20,22 @@ export type InisiasiUnit = {
   nama: string;
 };
 
+export type InisiasiStatus = 'belum' | 'diproses' | 'kerja_sama' | 'tidak_dilanjutkan';
+
+export const INISIASI_STATUS_LABEL: Record<InisiasiStatus, string> = {
+  belum: 'Belum ada pengajuan',
+  diproses: 'Pengajuan diproses',
+  kerja_sama: 'Menjadi kerja sama',
+  tidak_dilanjutkan: 'Tidak berlanjut',
+};
+
+export const INISIASI_STATUS_CLASS: Record<InisiasiStatus, string> = {
+  belum: 'bg-slate-100 text-slate-600 border-slate-200',
+  diproses: 'bg-amber-50 text-amber-700 border-amber-200',
+  kerja_sama: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  tidak_dilanjutkan: 'bg-rose-50 text-rose-700 border-rose-200',
+};
+
 export type InisiasiItem = {
   id: number;
   tanggal_kegiatan: string;
@@ -29,9 +45,15 @@ export type InisiasiItem = {
   // Disiapkan untuk menghubungkan ke berita kerja sama di kemudian hari; belum dipakai (selalu opsional).
   berita_kerjasama_id: number | null;
   units: InisiasiUnit[];
-  peserta: { id: number; nama: string }[];
-  fotos: InisiasiFoto[];
-  dokumens: InisiasiDokumen[];
+  // Foto, dokumen, dan peserta hanya dikirim server ke admin; pengguna internal hanya mendapat ringkasan.
+  // user_id terisi = peserta ini di-CC (tertaut ke akun) dan ikut melihat inisiasi di menu internal.
+  peserta?: { id: number; nama: string; user_id: number | null }[];
+  fotos?: InisiasiFoto[];
+  dokumens?: InisiasiDokumen[];
+  status_tindak_lanjut: InisiasiStatus;
+  jumlah_pengajuan: number;
+  // Hanya untuk admin.
+  pengajuan?: { id: number; nomor_pengajuan: string | null; judul_pengajuan: string | null; status_pengajuan: string | null }[];
   created_at: string | null;
   updated_at: string | null;
 };
@@ -52,7 +74,7 @@ export type InisiasiFormPayload = {
   deskripsi: string;
   unitProdiIds: number[];
   unitLainnya: string[];
-  peserta: string[];
+  peserta: { nama: string; userId: number | null }[];
   fotoBaru: File[];
   hapusFotoIds: number[];
   dokumenBaru: File[];
@@ -71,6 +93,7 @@ export type InisiasiFilter = {
   unit?: string;
   tahun?: number | null;
   bulan?: number | null;
+  status?: InisiasiStatus | '';
 };
 
 type ListResponse = { success: boolean; data: InisiasiItem[]; meta: InisiasiListMeta; opsi_filter: InisiasiOpsiFilter };
@@ -101,6 +124,7 @@ export async function getInisiasiList(
   if (params.unit) query.set('unit', params.unit);
   if (params.tahun) query.set('tahun', String(params.tahun));
   if (params.bulan) query.set('bulan', String(params.bulan));
+  if (params.status) query.set('status', params.status);
   if (params.page) query.set('page', String(params.page));
   if (params.perPage) query.set('per_page', String(params.perPage));
 
@@ -137,7 +161,10 @@ export async function saveInisiasi(payload: InisiasiFormPayload, id?: number): P
   body.append('deskripsi', payload.deskripsi);
   payload.unitProdiIds.forEach((unitId) => body.append('unit_prodi_ids[]', String(unitId)));
   payload.unitLainnya.forEach((nama) => body.append('unit_lainnya[]', nama));
-  payload.peserta.forEach((nama) => body.append('peserta[]', nama));
+  payload.peserta.forEach((p, indeks) => {
+    body.append('peserta[]', p.nama);
+    if (p.userId) body.append(`peserta_user_ids[${indeks}]`, String(p.userId));
+  });
   payload.fotoBaru.forEach((file) => body.append('fotos[]', file));
   payload.hapusFotoIds.forEach((fotoId) => body.append('hapus_foto_ids[]', String(fotoId)));
   payload.dokumenBaru.forEach((file) => body.append('dokumens[]', file));
@@ -152,6 +179,14 @@ export async function saveInisiasi(payload: InisiasiFormPayload, id?: number): P
     body,
   });
   return response.data;
+}
+
+export async function deleteInisiasiMassal(ids: number[]): Promise<number> {
+  const response = await apiRequest<{ success: boolean; jumlah: number }>('/inisiasi/hapus-massal', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  });
+  return response.jumlah;
 }
 
 export async function deleteInisiasi(id: number): Promise<void> {

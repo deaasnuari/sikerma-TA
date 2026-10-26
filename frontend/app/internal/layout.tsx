@@ -6,6 +6,7 @@ import {
   BookOpen,
   ClipboardList,
   LayoutDashboard,
+  Lightbulb,
   NotebookPen,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -26,6 +27,11 @@ const menuItems: SidebarMenuItem[] = [
     label: 'Data Pengajuan',
     href: '/internal/data_pengajuan',
     icon: NotebookPen,
+  },
+  {
+    label: 'Inisiasi',
+    href: '/internal/inisiasi',
+    icon: Lightbulb,
   },
   {
     label: 'Rekap Data dan Monitoring',
