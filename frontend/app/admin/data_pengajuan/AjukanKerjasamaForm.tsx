@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { CalendarDays, CheckCircle, ChevronDown, Download, MessageCircle, Paperclip, Pencil, Plus, Upload, X } from 'lucide-react';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   pengajuanJurusanOptions,
   submitPengajuanApi,
@@ -18,7 +18,7 @@ import {
   type MasterRuangLingkup,
 } from '@/services/masterRuangLingkupService';
 import { getMasterNegara } from '@/services/masterNegaraService';
-import { getMasterMitra, type MasterMitra as MasterMitraRow } from '@/services/masterMitraService';
+import { useMasterMitra } from '@/hooks/useMasterData';
 import { formatTanggalInisiasi, getInisiasi, type InisiasiItem } from '@/services/inisiasiService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 import { downloadTemplate, templateFilesByJenis, templateHintByLabel, type TemplateFile } from '@/lib/templateDokumen';
@@ -136,7 +136,8 @@ const initialForm = {
   picPolibatamTelepon: '',
 };
 
-const INTERNAL_PENGAJUAN_DRAFT_KEY = 'internal-pengajuan-draft-v1';
+// v2: draft v1 bisa berisi data instansi dari Inisiasi (bug lama), jadi dibuang dengan mengganti kunci.
+const INTERNAL_PENGAJUAN_DRAFT_KEY = 'internal-pengajuan-draft-v2';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const JENIS_KERJASAMA_OPTIONS = ['MoU', 'MoA', 'IA', 'Lainnya'] as const;
 
@@ -327,11 +328,14 @@ export default function AdminAjukanKerjasamaForm({
   const [customNegaraOpts, setCustomNegaraOpts] = useState<string[]>(initialCustomNegaraOptions);
   const [jurusanUnitInput, setJurusanUnitInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // State isSubmitting baru berlaku setelah render; ref ini menahan klik ganda yang masuk sebelum itu.
+  const submittingRef = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [submittedInfo, setSubmittedInfo] = useState<{ judul: string; mitra: string; jenis: string } | null>(null);
   const [showDocumentReminderModal, setShowDocumentReminderModal] = useState(false);
-  const [masterMitraRows, setMasterMitraRows] = useState<MasterMitraRow[]>([]);
+  // Lewat SWR: daftar mitra di-cache, jadi membuka form lagi tidak mengunduh ulang semua mitra.
+  const { data: masterMitraRows } = useMasterMitra({ aktif: true });
   const [selectedMitraId, setSelectedMitraId] = useState<number | null>(null);
   const [inisiasiAsal, setInisiasiAsal] = useState<InisiasiItem | null>(null);
   const [mitraOpen, setMitraOpen] = useState(false);
@@ -399,10 +403,6 @@ export default function AdminAjukanKerjasamaForm({
       (m.kode_mitra || '').toLowerCase().includes(mitraSearch.toLowerCase()),
   );
 
-  useEffect(() => {
-    getMasterMitra({ aktif: true }).then(setMasterMitraRows).catch(() => {});
-  }, []);
-
   // Dibuka dari kartu Inisiasi: ambil datanya, isi kolom mitra yang masih kosong dengan nama instansinya.
   useEffect(() => {
     if (!inisiasiId) {
@@ -426,7 +426,15 @@ export default function AdminAjukanKerjasamaForm({
   useEffect(() => {
     if (!inisiasiAsal || selectedMitraId !== null || masterMitraRows.length === 0) return;
     const cocok = masterMitraRows.find((m) => m.nama_mitra.trim().toLowerCase() === inisiasiAsal.nama_mitra.trim().toLowerCase());
-    if (cocok && formData.namaMitra.trim().toLowerCase() === cocok.nama_mitra.trim().toLowerCase()) setSelectedMitraId(cocok.id);
+    if (cocok && formData.namaMitra.trim().toLowerCase() === cocok.nama_mitra.trim().toLowerCase()) {
+      setSelectedMitraId(cocok.id);
+      // Sama seperti memilih mitra manual dari dropdown: jenis & tingkat ikut terisi dari master mitra.
+      setFormData((prev) => ({
+        ...prev,
+        jenisMitra: prev.jenisMitra || cocok.kategori_mitra || '',
+        tingkatPerusahaan: prev.tingkatPerusahaan || cocok.tingkat_perusahaan || '',
+      }));
+    }
   }, [inisiasiAsal, masterMitraRows, selectedMitraId, formData.namaMitra]);
 
   useEffect(() => {
@@ -443,7 +451,10 @@ export default function AdminAjukanKerjasamaForm({
       }
     };
 
-    void syncNegaraOptions();
+    // Halaman induk sudah membawa daftar negara; unduh ulang hanya kalau belum ada atau master diubah.
+    if (initialCustomNegaraOptions.length === 0) {
+      void syncNegaraOptions();
+    }
 
     const handleMasterNegaraUpdated = () => {
       void syncNegaraOptions();
@@ -580,7 +591,8 @@ export default function AdminAjukanKerjasamaForm({
       return;
     }
 
-    if (typeof window === 'undefined') {
+    // Form dari Inisiasi selalu mulai bersih (diisi dari data Inisiasi), tidak memakai draft tersimpan.
+    if (typeof window === 'undefined' || inisiasiId) {
       return;
     }
 
@@ -606,7 +618,7 @@ export default function AdminAjukanKerjasamaForm({
     } catch {
       // Abaikan draft rusak agar form tetap bisa dipakai normal.
     }
-  }, [initialData, initialFileAttachments]);
+  }, [initialData, initialFileAttachments, inisiasiId]);
 
   useEffect(() => {
     if (!enableAppearanceEdit || typeof window === 'undefined') {
@@ -639,11 +651,17 @@ export default function AdminAjukanKerjasamaForm({
   }, [appearanceStorageKey, enableAppearanceEdit]);
 
   useEffect(() => {
-    if (disableDraftPersistence || initialData) {
+    // Form dari Inisiasi tidak disimpan sebagai draft, supaya data instansinya tidak muncul di form pengajuan biasa.
+    if (disableDraftPersistence || initialData || inisiasiId) {
       return;
     }
 
     if (typeof window === 'undefined') {
+      return;
+    }
+
+    // Form baru direset (kosong) setelah submit: jangan simpan lagi sebagai draft.
+    if (formData === initialForm) {
       return;
     }
 
@@ -674,7 +692,7 @@ export default function AdminAjukanKerjasamaForm({
         window.cancelIdleCallback(idleId);
       }
     };
-  }, [asal, formData, selectedRuangLingkup, customJurusanOpts, customUnitOpts, customNegaraOpts, disableDraftPersistence, initialData]);
+  }, [asal, formData, selectedRuangLingkup, customJurusanOpts, customUnitOpts, customNegaraOpts, disableDraftPersistence, initialData, inisiasiId]);
 
   useEffect(() => {
     if (!enableAppearanceEdit || typeof window === 'undefined') {
@@ -921,7 +939,7 @@ export default function AdminAjukanKerjasamaForm({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
   e.preventDefault();
 
-  if (isSubmitting) {
+  if (isSubmitting || submittingRef.current) {
     return;
   }
 
@@ -963,6 +981,7 @@ export default function AdminAjukanKerjasamaForm({
   }
 
   setSubmitError(null);
+  submittingRef.current = true;
   setIsSubmitting(true);
 
   try {
@@ -1068,10 +1087,14 @@ export default function AdminAjukanKerjasamaForm({
     setDokumenPendukungError(null);
     setMitraSearch('');
     setRlSearch('');
+    setCustomJurusanOpts([]);
+    setCustomUnitOpts([]);
+    setJurusanUnitInput('');
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Gagal mengirim pengajuan ke server.';
     setSubmitError(message);
   } finally {
+    submittingRef.current = false;
     setIsSubmitting(false);
   }
 };

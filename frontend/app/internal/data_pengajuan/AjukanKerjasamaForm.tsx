@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { CalendarDays, CheckCircle, ChevronDown, Download, MessageCircle, Paperclip, Pencil, Plus, Upload, X } from 'lucide-react';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 import { getMasterMitra, type MasterMitra as MasterMitraRow } from '@/services/masterMitraService';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   pengajuanJurusanOptions,
   type PengajuanFileAttachment,
@@ -327,6 +327,8 @@ export default function InternalAjukanKerjasamaForm({
   const [customNegaraOpts, setCustomNegaraOpts] = useState<string[]>(initialCustomNegaraOptions);
   const [jurusanUnitInput, setJurusanUnitInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // State isSubmitting baru berlaku setelah render; ref ini menahan klik ganda yang masuk sebelum itu.
+  const submittingRef = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [submittedInfo, setSubmittedInfo] = useState<{ judul: string; mitra: string; jenis: string } | null>(null);
@@ -620,6 +622,11 @@ export default function InternalAjukanKerjasamaForm({
       return;
     }
 
+    // Form baru direset (kosong) setelah submit: jangan simpan lagi sebagai draft.
+    if (formData === initialForm) {
+      return;
+    }
+
     const draft: InternalPengajuanDraft = {
       asal,
       formData,
@@ -885,7 +892,7 @@ export default function InternalAjukanKerjasamaForm({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (isSubmitting) {
+    if (isSubmitting || submittingRef.current) {
       return;
     }
 
@@ -923,6 +930,7 @@ export default function InternalAjukanKerjasamaForm({
     }
 
     setSubmitError(null);
+    submittingRef.current = true;
     setIsSubmitting(true);
 
     try {
@@ -1024,11 +1032,14 @@ export default function InternalAjukanKerjasamaForm({
       setDokumenPendukungError(null);
       setMitraSearch('');
       setRlSearch('');
-
+      setCustomJurusanOpts([]);
+      setCustomUnitOpts([]);
+      setJurusanUnitInput('');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Gagal mengirim pengajuan ke server.';
       setSubmitError(message);
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
