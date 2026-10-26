@@ -405,7 +405,9 @@ export default function DetailStoryAktivitasPage() {
       noDokumen: storyGroup.nomorDokumen,
       jenis: storyGroup.jenis,
       ruangLingkup: storyGroup.ruangLingkup,
-      pengajuanId: storyGroup.pengajuan[0]?.id,
+      // Di halaman ini pengajuan[].id adalah id dokumen_kerjasama (bukan id pengajuan_v2), jadi
+      // dikirim sebagai dokumenKerjasamaId — kalau dikirim sebagai pengajuanId backend menolaknya.
+      dokumenKerjasamaId: storyGroup.pengajuan[0]?.id,
       aktivitasKey: activeLaporanKey,
     };
   }, [storyGroup, activeLaporanKey]);

@@ -2,7 +2,7 @@
 
 import { openUrl } from '@/lib/api';
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, ChevronRight, Download, ExternalLink, FileText, Save, Send, Upload, X } from 'lucide-react';
+import { CheckCircle2, ChevronRight, Download, ExternalLink, FilePlus, FileText, Save, Send, Upload, X } from 'lucide-react';
 import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploadUtils';
 import { submitLaporanPelaksanaan } from '@/services/laporanPelaksanaanService';
 import { downloadTemplate, templateLaporanPelaksanaan } from '@/lib/templateDokumen';
@@ -269,6 +269,19 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
     }
   }
 
+  // Setelah laporan terkirim, formnya terkunci. Tombol ini mengosongkan form (isian & file) untuk
+  // laporan berikutnya; laporan yang sudah terkirim tetap tersimpan di server dan tidak terhapus.
+  function handleLaporanBaru() {
+    if (!data) return;
+    if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }
+    setUploadedFileRaw(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setSubmitError('');
+    applyState(buildDefault(data));
+    localStorage.removeItem(storageKey(data));
+    showToast('Form baru siap diisi.');
+  }
+
   async function handleDownload() {
     if (!data) return;
     try {
@@ -305,12 +318,13 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
   const isDraftEditable = workflowStatus === 'draft';
 
   return (
-    <div className="fixed inset-x-0 bottom-0 top-16 z-[70] overflow-y-auto bg-slate-900/40 px-3 py-4">
-      {/* Gulir ada di latar belakang (layar), bukan di dalam kartu modal. */}
-      <div className="relative mx-auto w-full max-w-4xl rounded-2xl bg-white shadow-2xl">
+    // Kartu diberi jarak dari navbar (atas) dan footer/tepi layar (bawah), tingginya dibatasi
+    // ke area yang tersisa; yang menggulir hanya isi kartu, header tetap di atas.
+    <div className="fixed inset-x-0 bottom-0 top-16 z-[70] flex items-start justify-center bg-slate-900/40 px-3 pb-10 pt-6">
+      <div className="relative flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
 
         {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-5 py-3">
+        <div className="flex flex-none items-center justify-between border-b border-gray-200 bg-white px-5 py-3">
           <h2 className="text-base font-bold text-[#1E376C]">Laporan Pelaksanaan Kerjasama</h2>
           <div className="flex items-center gap-2">
             {toastMsg && <p className="text-xs font-semibold text-green-600">{toastMsg}</p>}
@@ -331,7 +345,7 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
           </div>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
 
           {/* Workflow Steps */}
           <div className="rounded-xl border border-[#1E376C]/20 bg-[#EEF2FF] p-4">
@@ -589,6 +603,14 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
               <button type="button" onClick={handleKirimPIC} disabled={isSubmitting}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#1E376C] px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-[#28478A] disabled:cursor-not-allowed disabled:opacity-60">
                 <Send size={15}/> {isSubmitting ? 'Mengirim...' : 'Kirim Laporan ke Admin'}
+              </button>
+            </div>
+          )}
+          {!isDraftEditable && (
+            <div className="flex justify-end">
+              <button type="button" onClick={handleLaporanBaru}
+                className="inline-flex items-center gap-2 rounded-xl border border-[#1E376C] bg-white px-5 py-2.5 text-sm font-semibold text-[#1E376C] shadow-sm hover:bg-[#EEF2FF]">
+                <FilePlus size={15}/> Buat Laporan Baru
               </button>
             </div>
           )}
