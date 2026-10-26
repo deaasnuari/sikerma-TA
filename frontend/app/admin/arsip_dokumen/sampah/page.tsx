@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Trash2, Search, RotateCcw, Info, ShieldAlert, FileText, CheckSquare, Square } from 'lucide-react';
 import {
   fetchTrashDokumenFromApi,
@@ -20,6 +20,9 @@ const jenisColor: Record<string, string> = {
 
 export default function SampahDokumenPage() {
   const [search, setSearch] = useState('');
+  const [filterJurusan, setFilterJurusan] = useState('');
+  const [filterProdi, setFilterProdi] = useState('');
+  const [filterUnit, setFilterUnit] = useState('');
   const [data, setData] = useState<TrashDokumenApiItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoreCandidate, setRestoreCandidate] = useState<TrashDokumenApiItem | null>(null);
@@ -76,10 +79,18 @@ export default function SampahDokumenPage() {
     }
   };
 
+  // Pilihan filter diambil dari dokumen yang memang ada di Sampah.
+  const opsiJurusan = useMemo(() => Array.from(new Set(data.flatMap((d) => d.jurusanList))).sort((a, b) => a.localeCompare(b)), [data]);
+  const opsiProdi = useMemo(() => Array.from(new Set(data.flatMap((d) => d.prodiList))).sort((a, b) => a.localeCompare(b)), [data]);
+  const opsiUnit = useMemo(() => Array.from(new Set(data.flatMap((d) => d.unitKerjaList))).sort((a, b) => a.localeCompare(b)), [data]);
+
   const filtered = data.filter(
     (item) =>
-      item.namaMitra.toLowerCase().includes(search.toLowerCase()) ||
-      item.noDokumen.toLowerCase().includes(search.toLowerCase())
+      (item.namaMitra.toLowerCase().includes(search.toLowerCase()) ||
+        item.noDokumen.toLowerCase().includes(search.toLowerCase())) &&
+      (!filterJurusan || item.jurusanList.includes(filterJurusan)) &&
+      (!filterProdi || item.prodiList.includes(filterProdi)) &&
+      (!filterUnit || item.unitKerjaList.includes(filterUnit))
   );
 
   // Yang dihitung "terpilih" hanya yang masih tampil di hasil pencarian saat ini.
@@ -170,7 +181,24 @@ export default function SampahDokumenPage() {
             className="input-field w-full pl-9 pr-4 py-2.5 text-[12px]"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { label: 'Semua Jurusan', value: filterJurusan, set: setFilterJurusan, options: opsiJurusan },
+            { label: 'Semua Prodi', value: filterProdi, set: setFilterProdi, options: opsiProdi },
+            { label: 'Semua Unit Kerja', value: filterUnit, set: setFilterUnit, options: opsiUnit },
+          ].map((f) => (
+            <select
+              key={f.label}
+              value={f.value}
+              onChange={(e) => f.set(e.target.value)}
+              className="input-field h-10 max-w-[220px] rounded-lg px-3 text-[12px]"
+            >
+              <option value="">{f.label}</option>
+              {f.options.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          ))}
           {selectedVisibleIds.length > 0 && (
             <>
               <button
@@ -214,6 +242,7 @@ export default function SampahDokumenPage() {
                 <th className="py-3 px-4 whitespace-nowrap">No. Dokumen</th>
                 <th className="py-3 px-4">Nama Mitra</th>
                 <th className="py-3 px-4 whitespace-nowrap">Jenis</th>
+                <th className="py-3 px-4 whitespace-nowrap">Jurusan / Prodi / Unit</th>
                 <th className="py-3 px-4 whitespace-nowrap">Berlaku Hingga</th>
                 <th className="py-3 px-4 whitespace-nowrap">Dihapus Oleh</th>
                 <th className="py-3 px-4 whitespace-nowrap">Dihapus Pada</th>
@@ -224,14 +253,14 @@ export default function SampahDokumenPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-gray-400">
+                  <td colSpan={10} className="py-10 text-center text-gray-400">
                     Memuat data...
                   </td>
                 </tr>
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-gray-400">
+                  <td colSpan={10} className="py-10 text-center text-gray-400">
                     Sampah kosong
                   </td>
                 </tr>
@@ -259,6 +288,17 @@ export default function SampahDokumenPage() {
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${jenisColor[item.jenis]}`}>
                         {item.jenis}
                       </span>
+                    </td>
+                    <td className="py-3 px-4 text-[10px] text-gray-600 min-w-[180px]">
+                      {[...item.jurusanList, ...item.prodiList, ...item.unitKerjaList].length === 0 ? (
+                        '-'
+                      ) : (
+                        <>
+                          {item.jurusanList.length > 0 && <div className="font-semibold text-gray-700">{item.jurusanList.join(', ')}</div>}
+                          {item.prodiList.length > 0 && <div>{item.prodiList.join(', ')}</div>}
+                          {item.unitKerjaList.length > 0 && <div>{item.unitKerjaList.join(', ')}</div>}
+                        </>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-gray-600 whitespace-nowrap text-[10px]">{item.berlakuHingga}</td>
                     <td className="py-3 px-4 text-[10px] text-gray-600 whitespace-nowrap">

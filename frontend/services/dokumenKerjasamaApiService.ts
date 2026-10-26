@@ -615,6 +615,10 @@ export type TrashDokumenApiItem = {
   dokumenUrl: string | null;
   dokumenDownloadUrl: string | null;
   dokumenNama: string | null;
+  // Jurusan, prodi, dan unit kerja dokumen ini (bisa lebih dari satu) — untuk filter & kolom di Sampah.
+  jurusanList: string[];
+  prodiList: string[];
+  unitKerjaList: string[];
 };
 
 type ApiTrashRow = ApiDokumenRow & {
@@ -656,6 +660,29 @@ export async function fetchTrashDokumenFromApi(): Promise<TrashDokumenApiItem[]>
       dokumenNama = row.file.split('/').pop() || row.file;
     }
 
+    // Aturan sama seperti Rekap Data: prodi -> prodi + jurusan induknya; jurusan -> jurusan; sisanya unit kerja.
+    const unitItems = row.unit_prodi_items && row.unit_prodi_items.length > 0
+      ? row.unit_prodi_items
+      : row.unit_prodi ? [row.unit_prodi] : [];
+    const jurusanList: string[] = [];
+    const prodiList: string[] = [];
+    const unitKerjaList: string[] = [];
+    const pushUnique = (list: string[], value?: string | null) => {
+      if (value && !list.includes(value)) list.push(value);
+    };
+    unitItems.forEach((item) => {
+      const jenisNode = item.jenis_node?.toLowerCase();
+      const kategori = item.kategori_unit?.toLowerCase() ?? '';
+      if (jenisNode === 'prodi') {
+        pushUnique(prodiList, item.nama);
+        pushUnique(jurusanList, item.parent?.nama);
+      } else if (jenisNode === 'unit' && kategori === 'jurusan') {
+        pushUnique(jurusanList, item.nama);
+      } else {
+        pushUnique(unitKerjaList, item.nama);
+      }
+    });
+
     return {
       id: row.id,
       noDokumen: nomor,
@@ -664,6 +691,9 @@ export async function fetchTrashDokumenFromApi(): Promise<TrashDokumenApiItem[]>
       status: mapStatus(row),
       tanggalMulai: toDisplayDate(row.tanggal_mulai),
       berlakuHingga: toDisplayDate(row.tanggal_berakhir),
+      jurusanList,
+      prodiList,
+      unitKerjaList,
       dihapusOlehAdmin: !!row.dihapus_admin_pada,
       dihapusOlehPemilik: !!row.dihapus_user_pada,
       dihapusPada: dihapusPada ? toDisplayDate(dihapusPada) : null,

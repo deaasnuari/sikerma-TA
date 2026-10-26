@@ -234,6 +234,29 @@ class MasterUnitProdiController extends Controller
 
         try {
             DB::transaction(function () use ($targetId, $jenisNode, $kategoriUnit) {
+                // dokumen_kerjasama.unit_prodi_id wajib terisi (NOT NULL), jadi unit/prodi yang masih
+                // dipakai dokumen tidak bisa dihapus — tolak dengan pesan jelas, bukan error database.
+                $idsTerhapus = [$targetId];
+                if ($jenisNode === 'unit' && $kategoriUnit === 'jurusan') {
+                    $idsTerhapus = array_merge($idsTerhapus, DB::table('master_unit_prodi')
+                        ->where('parent_id', $targetId)
+                        ->where('jenis_node', 'prodi')
+                        ->pluck('id')
+                        ->all());
+                }
+                $dokumenTerkait = DB::table('dokumen_kerjasama')->whereIn('unit_prodi_id', $idsTerhapus);
+                $jumlahDokumen = (clone $dokumenTerkait)->count();
+                if ($jumlahDokumen > 0) {
+                    // Dokumen yang sudah dihapus admin tidak tampil di Rekap Data, tapi masih ada di Sampah
+                    // dan tetap menahan penghapusan sampai dihapus permanen.
+                    $jumlahDiSampah = (clone $dokumenTerkait)->whereNotNull('dihapus_admin_pada')->count();
+                    $pesan = sprintf('Tidak bisa dihapus: masih dipakai %d dokumen kerja sama', $jumlahDokumen);
+                    if ($jumlahDiSampah > 0) {
+                        $pesan .= sprintf(' (%d di antaranya ada di Sampah Rekap Data — hapus permanen dari Sampah)', $jumlahDiSampah);
+                    }
+                    throw new RuntimeException($pesan.'. Atau pindahkan dokumennya ke prodi/unit lain, atau nonaktifkan saja.');
+                }
+
                 // Kebijakan hapus dibuat eksplisit untuk mencegah penghapusan massal tidak sengaja.
                 if ($jenisNode === 'prodi') {
                     $deleted = DB::table('master_unit_prodi')

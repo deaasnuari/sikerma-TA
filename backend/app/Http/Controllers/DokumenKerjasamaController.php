@@ -1223,6 +1223,7 @@ class DokumenKerjasamaController extends Controller
             ->with([
                 'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,nama_mitra,email_pengusul,user_pengusul_id',
                 'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
+                'unitProdi.parent:id,nama,jenis_node,kategori_unit',
                 'unitProdiItems:id,nama,jenis_node,kategori_unit,parent_id',
                 'unitProdiItems.parent:id,nama,jenis_node,kategori_unit',
                 'mitra:id,nama_mitra,kode_mitra,kategori_mitra',

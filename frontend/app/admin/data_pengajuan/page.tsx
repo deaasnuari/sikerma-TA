@@ -3162,7 +3162,8 @@ function addEditJurusanUnitOption() {
               </div>
 
               {masterMessage && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] text-slate-700">
+                // Menempel di bawah header modal: pesan hasil hapus/simpan tetap terlihat walau daftar di-scroll ke bawah.
+                <div className="sticky top-[72px] z-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[11px] font-medium text-slate-800 shadow-md">
                   {masterMessage}
                 </div>
               )}
