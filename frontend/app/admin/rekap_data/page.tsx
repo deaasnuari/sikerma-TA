@@ -1515,13 +1515,17 @@ export default function RekapDataPage() {
               )}
 
               {/* Lihat Story */}
-              {detailItem.sourcePengajuanId && (
+              {/* Story & Aktivitas admin berbasis dokumen kerja sama, jadi dibuka dengan id dokumen
+                  (bukan id pengajuan sumber — yang tidak ada untuk dokumen lama/import dan tidak
+                  cocok dengan id di halaman Story). */}
+              {typeof detailItem.id === 'number' && (
                 <div className="border-t border-gray-100 pt-4">
                   <button
                     type="button"
                     onClick={() => {
+                      const dokumenId = detailItem.id;
                       setDetailItem(null);
-                      router.push(`/admin/story_aktivitas/${detailItem.sourcePengajuanId}`);
+                      router.push(`/admin/story_aktivitas/dokumen-${dokumenId}`);
                     }}
                     className="inline-flex items-center gap-2 rounded-xl bg-[#1E376C] px-4 py-2 text-[12px] font-semibold text-white hover:bg-[#2B4A93] transition-colors"
                   >

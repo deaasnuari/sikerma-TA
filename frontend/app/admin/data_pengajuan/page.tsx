@@ -11,7 +11,7 @@ import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { invalidateRekapCache } from '@/services/dokumenKerjasamaApiService';
 import FileRevisiBox from '@/components/FileRevisiBox';
-import { buildPesanWhatsAppPengajuan } from '@/lib/whatsappPesan';
+import { buatUrlWhatsAppMitra, buildPesanWhatsAppPengajuan } from '@/lib/whatsappPesan';
 import InternalAjukanKerjasamaForm from '@/app/internal/data_pengajuan/AjukanKerjasamaForm';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 import { getPageNumbers } from '@/lib/pagination';
@@ -133,18 +133,8 @@ type TemplateDokumenConfig = {
   note: string;
 };
 
-function normalizeWhatsAppNumber(value?: string | null): string {
-  let number = (value || '').replace(/[^\d]/g, '');
-  // Convert 08 to 62 format (Indonesian phone number format)
-  if (number.startsWith('08')) {
-    number = '62' + number.substring(1);
-  }
-  return number;
-}
-
-function buildWhatsAppUrl(value?: string | null, pesan?: string): string | null {
-  const normalized = normalizeWhatsAppNumber(value);
-  return normalized ? `https://wa.me/${normalized}${pesan ? `?text=${encodeURIComponent(pesan)}` : ''}` : null;
+function buildWhatsAppUrl(value?: string | null, pesan?: string, negara?: string | null): string | null {
+  return buatUrlWhatsAppMitra(value, negara, pesan);
 }
 
 // Nomor PIC Polibatam disimpan tanpa kode negara (form-nya sudah memberi awalan +62), mis. "812 3457 6789".
@@ -157,7 +147,7 @@ function buildPolibatamWhatsAppUrl(value?: string | null, pesan?: string): strin
 // ditampilkan ke admin sebagai koresponden mitra supaya jelas siapa yang dihubungi.
 function KoresponMitraCard({ item }: { item: PengajuanItem }) {
   const telepon = item.mitraPicTelepon || item.whatsappPengusul;
-  const waUrl = buildWhatsAppUrl(telepon, buildPesanWhatsAppPengajuan(item, item.mitraPicNama));
+  const waUrl = buildWhatsAppUrl(telepon, buildPesanWhatsAppPengajuan(item, item.mitraPicNama), item.mitraNegara);
 
   return (
     <div className="bg-white rounded-lg px-4 py-3 border border-[#D9DCE4]">
@@ -340,6 +330,9 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const [masterUnitRows, setMasterUnitRows] = useState<MasterUnitProdi[]>(() => getCachedMasterUnitProdiTree().filter((item) => item.jenis_node === 'unit' && item.kategori_unit === 'unit_kerja'));
   const [masterProdiRows, setMasterProdiRows] = useState<MasterUnitProdi[]>(() => getCachedMasterUnitProdiTree().filter((item) => item.jenis_node === 'prodi'));
   const [prodiDraftByJurusan, setProdiDraftByJurusan] = useState<Record<number, { kode: string; nama: string }>>({});
+  const [editingJurusanId, setEditingJurusanId] = useState<number | null>(null);
+  const [editingJurusanKode, setEditingJurusanKode] = useState('');
+  const [editingJurusanNama, setEditingJurusanNama] = useState('');
   const [editingProdiId, setEditingProdiId] = useState<number | null>(null);
   const [editingProdiKode, setEditingProdiKode] = useState('');
   const [editingProdiNama, setEditingProdiNama] = useState('');
@@ -1821,6 +1814,45 @@ function addEditJurusanUnitOption() {
     }
   }
 
+  function startEditJurusan(jurusan: MasterUnitProdi) {
+    setEditingJurusanId(jurusan.id);
+    setEditingJurusanKode(jurusan.kode || '');
+    setEditingJurusanNama(jurusan.nama || '');
+  }
+
+  function cancelEditJurusan() {
+    setEditingJurusanId(null);
+    setEditingJurusanKode('');
+    setEditingJurusanNama('');
+  }
+
+  async function saveEditJurusan(jurusanId: number) {
+    const nama = editingJurusanNama.trim();
+    if (!nama) {
+      setMasterMessage('Nama jurusan wajib diisi.');
+      return;
+    }
+
+    try {
+      setMasterSaving(true);
+      setMasterMessage(null);
+
+      await updateMasterUnitProdi(jurusanId, {
+        kode: editingJurusanKode.trim() || '',
+        nama,
+      });
+
+      await refreshMasterReferenceData();
+      cancelEditJurusan();
+      setMasterMessage('Jurusan berhasil diperbarui.');
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : 'Gagal memperbarui jurusan.';
+      setMasterMessage(message);
+    } finally {
+      setMasterSaving(false);
+    }
+  }
+
   async function handleDeleteProdi(prodiId: number) {
     const confirmed = await mintaKonfirmasi('Yakin ingin menghapus prodi ini?');
     if (!confirmed) {
@@ -2142,7 +2174,13 @@ function addEditJurusanUnitOption() {
           return (
             <div
               key={item.id}
-              className={`card p-4 hover:shadow-md transition-shadow ${isSelected ? 'ring-2 ring-[#1E376C]' : ''}`}
+              // Klik di mana saja pada kotak membuka detail; klik pada tombol/tautan di dalamnya
+              // (pilih, Final, Edit, Hapus, dst.) tetap menjalankan aksinya sendiri.
+              onClick={(event) => {
+                if ((event.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
+                setDetailItem(item);
+              }}
+              className={`card cursor-pointer p-4 hover:shadow-md transition-shadow ${isSelected ? 'ring-2 ring-[#1E376C]' : ''}`}
             >
               {/* Top row */}
               <div className="flex justify-between items-start gap-4">
@@ -2482,9 +2520,9 @@ function addEditJurusanUnitOption() {
                 <div className="mt-3 grid gap-3 text-[10px] sm:grid-cols-2">
                   <div>
                     <p className="text-gray-500">Nomor WhatsApp Aktif Mitra</p>
-                    {buildWhatsAppUrl(detailItem.mitraTelepon, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama)) ? (
+                    {buildWhatsAppUrl(detailItem.mitraTelepon, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama), detailItem.mitraNegara) ? (
                       <a
-                        href={buildWhatsAppUrl(detailItem.mitraTelepon, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama)) || '#'}
+                        href={buildWhatsAppUrl(detailItem.mitraTelepon, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama), detailItem.mitraNegara) || '#'}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-1 inline-flex items-center gap-1 font-semibold text-green-700 underline hover:text-green-800"
@@ -2498,9 +2536,9 @@ function addEditJurusanUnitOption() {
                   </div>
                   <div>
                     <p className="text-gray-500">No WhatsApp PIC Mitra</p>
-                    {buildWhatsAppUrl(detailItem.whatsappPengusul, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama)) ? (
+                    {buildWhatsAppUrl(detailItem.whatsappPengusul, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama), detailItem.mitraNegara) ? (
                       <a
-                        href={buildWhatsAppUrl(detailItem.whatsappPengusul, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama)) || '#'}
+                        href={buildWhatsAppUrl(detailItem.whatsappPengusul, buildPesanWhatsAppPengajuan(detailItem, detailItem.mitraPicNama), detailItem.mitraNegara) || '#'}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-1 inline-flex items-center gap-1 font-semibold text-green-700 underline hover:text-green-800"
@@ -3035,7 +3073,7 @@ function addEditJurusanUnitOption() {
                 <p className="text-[10px] font-semibold text-green-800 mb-2">Hubungi PIC via WhatsApp</p>
                 <div className="flex flex-wrap gap-2">
                   {[
-                    { label: 'WhatsApp PIC Mitra', url: buildWhatsAppUrl(reviewItem.whatsappPengusul, buildPesanWhatsAppPengajuan(reviewItem, reviewItem.mitraPicNama)) },
+                    { label: 'WhatsApp PIC Mitra', url: buildWhatsAppUrl(reviewItem.whatsappPengusul, buildPesanWhatsAppPengajuan(reviewItem, reviewItem.mitraPicNama), reviewItem.mitraNegara) },
                     {
                       label: `WhatsApp PIC Polibatam${reviewItem.picPolibatamNama ? ` (${reviewItem.picPolibatamNama})` : ''}`,
                       url: buildPolibatamWhatsAppUrl(reviewItem.picPolibatamTelepon, buildPesanWhatsAppPengajuan(reviewItem, reviewItem.picPolibatamNama)),
@@ -3184,22 +3222,65 @@ function addEditJurusanUnitOption() {
 
                     return (
                       <div key={jurusan.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 shadow-sm">
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10.5px] text-slate-600">{jurusan.kode || '-'}</span>
-                            <p className="text-[12px] font-semibold text-[#173B82]">{jurusan.nama}</p>
+                        {editingJurusanId === jurusan.id ? (
+                          <div className="mb-2 grid gap-1.5 rounded-lg border border-slate-200 bg-white p-2 sm:grid-cols-[96px_1fr_auto_auto]">
+                            <input
+                              value={editingJurusanKode}
+                              onChange={(e) => setEditingJurusanKode(e.target.value)}
+                              placeholder="Kode"
+                              className="input-field h-8 rounded-md px-2 text-[10.5px]"
+                            />
+                            <input
+                              value={editingJurusanNama}
+                              onChange={(e) => setEditingJurusanNama(e.target.value)}
+                              placeholder="Nama jurusan"
+                              className="input-field h-8 rounded-md px-2 text-[10.5px]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void saveEditJurusan(jurusan.id);
+                              }}
+                              disabled={masterSaving}
+                              className="h-8 rounded-md bg-[#1E376C] px-2 text-[10.5px] font-semibold text-white hover:bg-[#2A4A8F]"
+                            >
+                              Simpan
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditJurusan}
+                              className="h-8 rounded-md border border-slate-300 bg-white px-2 text-[10.5px] font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                              Batal
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void handleDeleteJurusan(jurusan.id);
-                            }}
-                            disabled={masterSaving}
-                            className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10.5px] font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Hapus Jurusan
-                          </button>
-                        </div>
+                        ) : (
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10.5px] text-slate-600">{jurusan.kode || '-'}</span>
+                              <p className="text-[12px] font-semibold text-[#173B82]">{jurusan.nama}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => startEditJurusan(jurusan)}
+                                className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10.5px] font-semibold text-blue-700 hover:bg-blue-100"
+                              >
+                                Edit Jurusan
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleDeleteJurusan(jurusan.id);
+                                }}
+                                disabled={masterSaving}
+                                className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10.5px] font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Hapus Jurusan
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         <div className="grid gap-2 sm:grid-cols-[96px_1fr_auto]">
                           <input

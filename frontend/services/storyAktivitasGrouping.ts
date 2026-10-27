@@ -297,6 +297,15 @@ export function findStoryAktivitasGroupByRouteParam(
   const normalizedParam = routeParam.trim();
   const numericParam = Number(normalizedParam);
 
+  // "dokumen-<id>": buka grup yang berisi dokumen/pengajuan dengan id itu. Dicek PERTAMA dan terpisah
+  // dari id polos, karena id polos juga dicocokkan ke mitraId — id dokumen bisa kebetulan sama dengan
+  // id mitra lain sehingga yang terbuka malah Story mitra yang salah.
+  const dokumenMatch = normalizedParam.match(/^dokumen-(\d+)$/);
+  if (dokumenMatch) {
+    const dokumenId = Number(dokumenMatch[1]);
+    return groups.find((group) => group.pengajuan.some((item) => item.id === dokumenId)) || null;
+  }
+
   return (
     groups.find((group) => group.key === normalizedParam) ||
     groups.find((group) => Number.isFinite(numericParam) && group.mitraId === numericParam) ||

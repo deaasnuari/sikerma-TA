@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Trash2, Search, RotateCcw, Info, ShieldAlert, FileText, CheckSquare, Square } from 'lucide-react';
+import { Trash2, Search, RotateCcw, Info, ShieldAlert, FileText, CheckSquare, Square, Filter } from 'lucide-react';
 import {
   fetchTrashDokumenFromApi,
   restoreDokumenKerjasamaById,
@@ -10,6 +10,8 @@ import {
 } from '@/services/dokumenKerjasamaApiService';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import FileDownloadLink from '@/components/FileDownloadLink';
+import GroupedFilterSelect from '@/components/GroupedFilterSelect';
+import { useMasterUnitProdi } from '@/hooks/useMasterData';
 
 const jenisColor: Record<string, string> = {
   MoA: 'bg-blue-50 text-blue-700',
@@ -18,11 +20,12 @@ const jenisColor: Record<string, string> = {
   Lainnya: 'bg-gray-100 text-gray-700',
 };
 
+const SEMUA_UNIT = 'Semua Jurusan/Prodi/Unit';
+
 export default function SampahDokumenPage() {
   const [search, setSearch] = useState('');
-  const [filterJurusan, setFilterJurusan] = useState('');
-  const [filterProdi, setFilterProdi] = useState('');
-  const [filterUnit, setFilterUnit] = useState('');
+  // Satu dropdown terkelompok seperti di Rekap Data. Nilainya 'jurusan:Nama' / 'prodi:Nama' / 'unit:Nama'.
+  const [filterUnit, setFilterUnit] = useState(SEMUA_UNIT);
   const [data, setData] = useState<TrashDokumenApiItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoreCandidate, setRestoreCandidate] = useState<TrashDokumenApiItem | null>(null);
@@ -79,18 +82,35 @@ export default function SampahDokumenPage() {
     }
   };
 
-  // Pilihan filter diambil dari dokumen yang memang ada di Sampah.
-  const opsiJurusan = useMemo(() => Array.from(new Set(data.flatMap((d) => d.jurusanList))).sort((a, b) => a.localeCompare(b)), [data]);
-  const opsiProdi = useMemo(() => Array.from(new Set(data.flatMap((d) => d.prodiList))).sort((a, b) => a.localeCompare(b)), [data]);
-  const opsiUnit = useMemo(() => Array.from(new Set(data.flatMap((d) => d.unitKerjaList))).sort((a, b) => a.localeCompare(b)), [data]);
+  // Pilihan filter lengkap dari Data Master (bukan hanya yang kebetulan ada di Sampah), sama seperti
+  // di Rekap Data. Kalau tidak ada dokumen yang cocok, tabel menampilkan "tidak ada data".
+  const { data: masterUnitProdi } = useMasterUnitProdi({ aktif: true });
+  const namaTerurut = (rows: { nama: string }[]) =>
+    Array.from(new Set(rows.map((r) => r.nama))).sort((a, b) => a.localeCompare(b));
+  const opsiJurusan = useMemo(
+    () => namaTerurut(masterUnitProdi.filter((r) => r.jenis_node === 'unit' && r.kategori_unit === 'jurusan')),
+    [masterUnitProdi],
+  );
+  const opsiProdi = useMemo(() => namaTerurut(masterUnitProdi.filter((r) => r.jenis_node === 'prodi')), [masterUnitProdi]);
+  const opsiUnit = useMemo(
+    () => namaTerurut(masterUnitProdi.filter((r) => r.jenis_node === 'unit' && r.kategori_unit === 'unit_kerja')),
+    [masterUnitProdi],
+  );
+
+  const cocokUnit = (item: TrashDokumenApiItem, filter: string) => {
+    if (filter === SEMUA_UNIT) return true;
+    const [jenis, ...sisa] = filter.split(':');
+    const nama = sisa.join(':');
+    if (jenis === 'jurusan') return item.jurusanList.includes(nama);
+    if (jenis === 'prodi') return item.prodiList.includes(nama);
+    return item.unitKerjaList.includes(nama);
+  };
 
   const filtered = data.filter(
     (item) =>
       (item.namaMitra.toLowerCase().includes(search.toLowerCase()) ||
         item.noDokumen.toLowerCase().includes(search.toLowerCase())) &&
-      (!filterJurusan || item.jurusanList.includes(filterJurusan)) &&
-      (!filterProdi || item.prodiList.includes(filterProdi)) &&
-      (!filterUnit || item.unitKerjaList.includes(filterUnit))
+      cocokUnit(item, filterUnit)
   );
 
   // Yang dihitung "terpilih" hanya yang masih tampil di hasil pencarian saat ini.
@@ -170,58 +190,64 @@ export default function SampahDokumenPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Cari dokumen di Sampah..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input-field w-full pl-9 pr-4 py-2.5 text-[12px]"
-          />
+      <section className="toolbar-shell p-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-2 text-[12px] font-semibold text-gray-800">
+              <Filter size={15} />
+              Filter:
+            </span>
+
+            <GroupedFilterSelect
+              value={filterUnit}
+              onChange={setFilterUnit}
+              allLabel={SEMUA_UNIT}
+              groups={[
+                { label: 'Jurusan', options: opsiJurusan.map((nama) => ({ value: `jurusan:${nama}`, label: nama })) },
+                { label: 'Program Studi', options: opsiProdi.map((nama) => ({ value: `prodi:${nama}`, label: nama })) },
+                { label: 'Unit Kerja', options: opsiUnit.map((nama) => ({ value: `unit:${nama}`, label: nama })) },
+              ]}
+            />
+          </div>
+
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <label className="relative w-full">
+              <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari dokumen di Sampah..."
+                className="input-field h-10 w-full pl-10 pr-3 text-[12px] text-gray-700 placeholder:text-gray-400"
+              />
+            </label>
+
+            <div className="flex items-center gap-2">
+              {selectedVisibleIds.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setBulkAction('restore')}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-green-300 bg-green-50 px-4 text-[12px] font-semibold text-green-700 hover:bg-green-100"
+                  >
+                    <RotateCcw size={14} />
+                    Pulihkan ({selectedVisibleIds.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBulkAction('delete')}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 text-[12px] font-semibold text-white hover:bg-red-700"
+                  >
+                    <Trash2 size={14} />
+                    Hapus Permanen ({selectedVisibleIds.length})
+                  </button>
+                </>
+              )}
+              <span className="whitespace-nowrap text-[11px] text-gray-500">{filtered.length} dokumen di Sampah</span>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {[
-            { label: 'Semua Jurusan', value: filterJurusan, set: setFilterJurusan, options: opsiJurusan },
-            { label: 'Semua Prodi', value: filterProdi, set: setFilterProdi, options: opsiProdi },
-            { label: 'Semua Unit Kerja', value: filterUnit, set: setFilterUnit, options: opsiUnit },
-          ].map((f) => (
-            <select
-              key={f.label}
-              value={f.value}
-              onChange={(e) => f.set(e.target.value)}
-              className="input-field h-10 max-w-[220px] rounded-lg px-3 text-[12px]"
-            >
-              <option value="">{f.label}</option>
-              {f.options.map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
-          ))}
-          {selectedVisibleIds.length > 0 && (
-            <>
-              <button
-                type="button"
-                onClick={() => setBulkAction('restore')}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-green-300 bg-green-50 px-4 text-[12px] font-semibold text-green-700 hover:bg-green-100"
-              >
-                <RotateCcw size={14} />
-                Pulihkan ({selectedVisibleIds.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setBulkAction('delete')}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 text-[12px] font-semibold text-white hover:bg-red-700"
-              >
-                <Trash2 size={14} />
-                Hapus Permanen ({selectedVisibleIds.length})
-              </button>
-            </>
-          )}
-          <span className="text-[11px] text-gray-500">{filtered.length} dokumen di Sampah</span>
-        </div>
-      </div>
+      </section>
 
       <div className="table-shell">
         <div className="overflow-x-auto">
@@ -261,7 +287,7 @@ export default function SampahDokumenPage() {
               {!loading && filtered.length === 0 && (
                 <tr>
                   <td colSpan={10} className="py-10 text-center text-gray-400">
-                    Sampah kosong
+                    {data.length > 0 ? 'Tidak ada data sesuai filter' : 'Sampah kosong'}
                   </td>
                 </tr>
               )}

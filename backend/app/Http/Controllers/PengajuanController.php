@@ -55,8 +55,9 @@ class PengajuanController extends Controller
     private static ?bool $dokumenLogTableExists = null;
 
     /**
-     * Sinkronkan kategori/bidang usaha/tingkat/alamat/kontak PIC mitra ke master_mitra
-     * langsung dari input pengajuan. Dijalankan di server (bukan lewat endpoint
+     * Lengkapi data mitra (kategori/bidang usaha/tingkat/alamat/kontak PIC) di master_mitra
+     * dari input pengajuan — hanya mengisi yang kosong, tidak menimpa (lihat
+     * MasterMitraResolver::lengkapiDariPengajuan). Dijalankan di server (bukan lewat endpoint
      * /master/mitra yang admin-only) supaya internal & eksternal juga bisa melengkapi
      * data mitranya sendiri lewat pengajuan yang mereka ajukan.
      *
@@ -85,9 +86,8 @@ class PengajuanController extends Controller
         if ($mitraId) {
             $mitra = MasterMitra::find($mitraId);
             if ($mitra) {
-                if (!empty($payload)) {
-                    $mitra->update($payload);
-                }
+                // Tidak menimpa Data Kemitraan: hanya melengkapi yang kosong + PIC baru jadi kontak tambahan.
+                app(MasterMitraResolver::class)->lengkapiDariPengajuan($mitra, $payload);
                 return $mitra->id;
             }
         }
@@ -101,9 +101,7 @@ class PengajuanController extends Controller
         $mitra = app(MasterMitraResolver::class)->findByName($namaMitra);
 
         if ($mitra) {
-            if (!empty($payload)) {
-                $mitra->update($payload);
-            }
+            app(MasterMitraResolver::class)->lengkapiDariPengajuan($mitra, $payload);
             return $mitra->id;
         }
 

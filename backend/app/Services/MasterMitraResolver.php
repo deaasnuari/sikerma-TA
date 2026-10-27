@@ -131,6 +131,17 @@ class MasterMitraResolver
     }
 
     /**
+     * Data mitra dari sebuah pengajuan: TIDAK menimpa Data Kemitraan. Kolom yang masih kosong diisi,
+     * sedangkan PIC yang berbeda dari kontak utama dicatat sebagai kontak tambahan (tanpa dobel).
+     * Mengubah data yang sudah ada tetap lewat Data Kemitraan (admin).
+     */
+    public function lengkapiDariPengajuan(MasterMitra $mitra, array $data): void
+    {
+        $this->fillEmpty($mitra, $data);
+        $this->addKontak($mitra, $data, null);
+    }
+
+    /**
      * Catat pendaftar sebagai kontak mitra, kecuali dia sudah jadi kontak utama
      * (mis. baru saja mengisi kolom kontak utama yang kosong) atau emailnya sudah
      * tercatat sebagai kontak mitra ini.
@@ -149,6 +160,15 @@ class MasterMitraResolver
 
         if ($email !== '' && $mitra->kontak()->whereRaw('LOWER(email) = ?', [$email])->exists()) {
             return;
+        }
+
+        // Tanpa email, orang yang sama dikenali dari nama (kontak utama atau kontak tambahan).
+        if ($email === '' && $nama !== '') {
+            $namaKecil = mb_strtolower($nama);
+            if ($namaKecil === mb_strtolower(trim((string) $mitra->nama_kontak_utama))
+                || $mitra->kontak()->whereRaw('LOWER(nama) = ?', [$namaKecil])->exists()) {
+                return;
+            }
         }
 
         $mitra->kontak()->create([

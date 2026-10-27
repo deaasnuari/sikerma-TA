@@ -44,3 +44,46 @@ export function buildPesanWhatsAppDokumen(judul: string, nomor: string, namaPene
     'Mohon konfirmasi apakah nomor ini benar dapat dihubungi. Terima kasih.',
   ].join('\n\n');
 }
+
+// Kode telepon negara mitra (sama dengan pilihan di form pengajuan, tanpa tanda +).
+const KODE_TELEPON_NEGARA: Record<string, string> = {
+  Indonesia: '62',
+  Malaysia: '60',
+  Singapura: '65',
+  'Amerika Serikat': '1',
+  Jepang: '81',
+  'Korea Selatan': '82',
+  Australia: '61',
+  Jerman: '49',
+  Belanda: '31',
+  Inggris: '44',
+  Tiongkok: '86',
+  Taiwan: '886',
+  Prancis: '33',
+  Filipina: '63',
+  Vietnam: '84',
+  Palestina: '970',
+};
+
+/**
+ * Nomor WhatsApp mitra → format internasional untuk wa.me. Form pengajuan menyimpan nomor TANPA kode
+ * negara (awalan +62 dsb. hanya tampilan), mis. "821-7134-3390" untuk 0821-7134-3390. Kalau dikirim
+ * apa adanya, wa.me membacanya sebagai kode negara (82 = Korea) sehingga muncul "nomor tidak ada di
+ * WhatsApp". Jadi kode negara mitra ditambahkan di sini; negara kosong dianggap Indonesia.
+ */
+export function normalisasiNomorWhatsAppMitra(nomor?: string | null, negara?: string | null): string {
+  const digits = (nomor || '').replace(/\D/g, '');
+  if (!digits) return '';
+
+  const kode = KODE_TELEPON_NEGARA[(negara || '').trim()] ?? (negara?.trim() ? '' : '62');
+  // Negara asing yang kodenya tidak dikenal: nomor dianggap sudah lengkap.
+  if (!kode) return digits;
+
+  const tanpaNol = digits.replace(/^0+/, '');
+  return tanpaNol.startsWith(kode) ? tanpaNol : `${kode}${tanpaNol}`;
+}
+
+export function buatUrlWhatsAppMitra(nomor?: string | null, negara?: string | null, pesan?: string): string | null {
+  const normalized = normalisasiNomorWhatsAppMitra(nomor, negara);
+  return normalized ? `https://wa.me/${normalized}${pesan ? `?text=${encodeURIComponent(pesan)}` : ''}` : null;
+}

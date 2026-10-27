@@ -257,6 +257,21 @@ class MasterUnitProdiTest extends TestCase
         ]);
 
         $response->assertOk()->assertJsonPath('success', true);
+        $this->assertDatabaseHas('master_unit_prodi', ['id' => $unit->id, 'nama' => 'Teknik Baru']);
+    }
+
+    public function test_admin_dapat_update_kode_dan_nama_prodi(): void
+    {
+        $admin   = $this->admin();
+        $jurusan = $this->buatJurusan();
+        $prodi   = $this->buatProdi($jurusan->id, 'D3 Lama');
+
+        $this->actingAs($admin)->putJson("/api/master/unit-prodi/{$prodi->id}", [
+            'kode' => 'XY',
+            'nama' => 'D3 Baru',
+        ])->assertOk()->assertJsonPath('data.id', $prodi->id);
+
+        $this->assertDatabaseHas('master_unit_prodi', ['id' => $prodi->id, 'kode' => 'XY', 'nama' => 'D3 Baru']);
     }
 
     // ------------------------------------------------------------------

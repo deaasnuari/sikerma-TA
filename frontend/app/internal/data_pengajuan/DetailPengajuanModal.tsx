@@ -7,6 +7,7 @@ import { pengajuanDokumenBadge } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
 import FileRevisiBox from '@/components/FileRevisiBox';
 import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
+import { buatUrlWhatsAppMitra } from '@/lib/whatsappPesan';
 
 interface Props {
   item: PengajuanItem;
@@ -44,14 +45,6 @@ function tahapanReviewText(item: PengajuanItem): string | null {
   return reviewTextFromTahapan(item.tahapanStage);
 }
 
-function normalizeWhatsAppNumber(value?: string | null): string {
-  return (value || '').replace(/[^\d]/g, '');
-}
-
-function buildWhatsAppUrl(value?: string | null): string | null {
-  const normalized = normalizeWhatsAppNumber(value);
-  return normalized ? `https://wa.me/${normalized}` : null;
-}
 
 export default function DetailPengajuanModal({ item, onClose, scrollToReview }: Props) {
   const sc = statusConfig[item.statusPengajuan];
@@ -166,10 +159,10 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
                   <InfoRow icon={<User size={15} />} label="Email Pengusul" value={item.emailPengusul} />
                 )}
                 {item.whatsappPengusul && (
-                  <InfoRow icon={<User size={15} />} label="No WhatsApp Person PIC" value={<WhatsAppLink number={item.whatsappPengusul} />} />
+                  <InfoRow icon={<User size={15} />} label="No WhatsApp Person PIC" value={<WhatsAppLink number={item.whatsappPengusul} negara={item.mitraNegara} />} />
                 )}
                 {item.mitraTelepon && (
-                  <InfoRow icon={<Building2 size={15} />} label="Nomor WhatsApp Aktif Mitra" value={<WhatsAppLink number={item.mitraTelepon} />} />
+                  <InfoRow icon={<Building2 size={15} />} label="Nomor WhatsApp Aktif Mitra" value={<WhatsAppLink number={item.mitraTelepon} negara={item.mitraNegara} />} />
                 )}
                 {item.mitraNoTelepon && (
                   <InfoRow icon={<Phone size={15} />} label="Nomor Telepon Mitra" value={<PhoneLink number={item.mitraNoTelepon} />} />
@@ -347,8 +340,8 @@ function InfoRow({
   );
 }
 
-function WhatsAppLink({ number }: { number: string }) {
-  const url = buildWhatsAppUrl(number);
+function WhatsAppLink({ number, negara }: { number: string; negara?: string | null }) {
+  const url = buatUrlWhatsAppMitra(number, negara);
 
   if (!url) {
     return <span>{number || '-'}</span>;

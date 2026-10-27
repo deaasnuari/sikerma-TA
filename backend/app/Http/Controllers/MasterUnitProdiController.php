@@ -20,6 +20,22 @@ class MasterUnitProdiController extends Controller
         return $normalized !== '' && in_array($normalized, self::HIDDEN_JURUSAN_ALIASES, true);
     }
 
+    /**
+     * Parameter rute bernama {unit_prodi}, sedangkan variabel controller $masterUnitProdi, sehingga
+     * implicit route binding Laravel tidak cocok dan yang masuk adalah model KOSONG (belum tersimpan).
+     * Tanpa ini update() tidak mengubah apa pun tapi tetap membalas sukses. Muat modelnya dari id rute.
+     */
+    private function resolveFromRoute(Request $request, MasterUnitProdi $injected): MasterUnitProdi
+    {
+        if ($injected->exists) {
+            return $injected;
+        }
+
+        $routeId = $request->route('unit_prodi');
+
+        return MasterUnitProdi::query()->findOrFail(is_numeric($routeId) ? (int) $routeId : 0);
+    }
+
     private function ensureAdmin(Request $request): ?Response
     {
         $user = $request->user();
@@ -149,8 +165,9 @@ class MasterUnitProdiController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(MasterUnitProdi $masterUnitProdi): Response
+    public function show(Request $request, MasterUnitProdi $masterUnitProdi): Response
     {
+        $masterUnitProdi = $this->resolveFromRoute($request, $masterUnitProdi);
         $masterUnitProdi->load('parent', 'children');
 
         return response([
@@ -168,6 +185,8 @@ class MasterUnitProdiController extends Controller
         if ($response = $this->ensureAdmin($request)) {
             return $response;
         }
+
+        $masterUnitProdi = $this->resolveFromRoute($request, $masterUnitProdi);
 
         $validated = $request->validate([
             'parent_id' => 'nullable|exists:master_unit_prodi,id',

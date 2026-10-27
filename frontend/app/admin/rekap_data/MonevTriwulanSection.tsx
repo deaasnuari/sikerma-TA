@@ -56,7 +56,7 @@ function formatTanggal(value: string): string {
 // Monev Triwulan: menggabungkan aktivitas dari Story (read-only, otomatis dikelompokkan
 // per triwulan berdasarkan tanggal aktivitasnya oleh backend) dengan catatan Monev manual
 // (Catatan Monitoring/Hasil Evaluasi/Kendala/Tindak Lanjut) yang bisa diisi di sini.
-export default function MonevTriwulanSection({ dokumenKerjasamaId, pengajuanId }: Props) {
+export default function MonevTriwulanSection({ dokumenKerjasamaId }: Props) {
   const router = useRouter();
   const [quarters, setQuarters] = useState<MonevQuarter[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -348,19 +348,15 @@ export default function MonevTriwulanSection({ dokumenKerjasamaId, pengajuanId }
         })}
       </div>
 
-      {pengajuanId ? (
+      {dokumenKerjasamaId ? (
         <button
           type="button"
-          onClick={() => router.push(`/admin/story_aktivitas/${pengajuanId}`)}
+          onClick={() => router.push(`/admin/story_aktivitas/dokumen-${dokumenKerjasamaId}`)}
           className="mt-3 inline-flex items-center gap-1.5 text-[10.5px] font-semibold text-[#1E376C] hover:underline"
         >
           <Activity size={12} /> Lihat Story Aktivitas lengkap
         </button>
-      ) : (
-        <p className="mt-3 text-[10.5px] italic text-gray-400">
-          Dokumen ini belum terhubung ke pengajuan sumber, jadi belum ada aktivitas otomatis dari Story — catatan Monev manual di atas tetap bisa diisi.
-        </p>
-      )}
+      ) : null}
 
       <ConfirmDialog
         open={konfirmasiHapus}

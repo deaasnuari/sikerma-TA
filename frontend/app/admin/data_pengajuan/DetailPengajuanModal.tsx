@@ -5,7 +5,7 @@ import type { PengajuanItem, PengajuanStatus } from '@/services/adminPengajuanSe
 import CatatanAdminPanel from '@/components/CatatanAdminPanel';
 import DokumenPerpanjanganSection from '@/components/DokumenPerpanjanganSection';
 import FileRevisiBox from '@/components/FileRevisiBox';
-import { buildPesanWhatsAppPengajuan } from '@/lib/whatsappPesan';
+import { buatUrlWhatsAppMitra, buildPesanWhatsAppPengajuan } from '@/lib/whatsappPesan';
 
 interface Props {
   item: PengajuanItem;
@@ -13,17 +13,8 @@ interface Props {
   scrollToReview?: boolean;
 }
 
-function normalizeWhatsAppNumber(value?: string | null): string {
-  const digits = (value || '').replace(/[^\d]/g, '');
-  if (digits.startsWith('08')) {
-    return `62${digits.slice(1)}`;
-  }
-  return digits;
-}
-
-function buildWhatsAppUrl(value?: string | null, pesan?: string): string | null {
-  const normalized = normalizeWhatsAppNumber(value);
-  return normalized ? `https://wa.me/${normalized}${pesan ? `?text=${encodeURIComponent(pesan)}` : ''}` : null;
+function buildWhatsAppUrl(value?: string | null, pesan?: string, negara?: string | null): string | null {
+  return buatUrlWhatsAppMitra(value, negara, pesan);
 }
 
 // Nomor PIC Polibatam disimpan tanpa kode negara (form-nya sudah memberi awalan +62), mis. "812 3457 6789".
@@ -116,7 +107,7 @@ export default function DetailPengajuanModal({ item, onClose }: Props) {
     ? (item.finalFilePath.startsWith('http') ? item.finalFilePath : `http://127.0.0.1:8000/storage/${item.finalFilePath.replace(/^\/+/, '')}`)
     : null;
 
-  const picWaUrl = buildWhatsAppUrl(item.whatsappPengusul, buildPesanWhatsAppPengajuan(item, item.mitraPicNama));
+  const picWaUrl = buildWhatsAppUrl(item.whatsappPengusul, buildPesanWhatsAppPengajuan(item, item.mitraPicNama), item.mitraNegara);
   const picPolibatamWaUrl = buildPolibatamWhatsAppUrl(item.picPolibatamTelepon, buildPesanWhatsAppPengajuan(item, item.picPolibatamNama));
 
   return (
