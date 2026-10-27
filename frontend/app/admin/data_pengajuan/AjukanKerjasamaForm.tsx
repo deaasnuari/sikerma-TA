@@ -19,7 +19,6 @@ import {
 } from '@/services/masterRuangLingkupService';
 import { getMasterNegara } from '@/services/masterNegaraService';
 import { useMasterMitra } from '@/hooks/useMasterData';
-import { formatTanggalInisiasi, getInisiasi, type InisiasiItem } from '@/services/inisiasiService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 import { downloadTemplate, templateFilesByJenis, templateHintByLabel, type TemplateFile } from '@/lib/templateDokumen';
 
@@ -136,7 +135,6 @@ const initialForm = {
   picPolibatamTelepon: '',
 };
 
-// v2: draft v1 bisa berisi data instansi dari Inisiasi (bug lama), jadi dibuang dengan mengganti kunci.
 const INTERNAL_PENGAJUAN_DRAFT_KEY = 'internal-pengajuan-draft-v2';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const JENIS_KERJASAMA_OPTIONS = ['MoU', 'MoA', 'IA', 'Lainnya'] as const;
@@ -182,8 +180,6 @@ function formatFileSize(bytes: number) {
 }
 
 type InternalAjukanKerjasamaFormProps = {
-  // Pengajuan dibuat admin dari satu Inisiasi (tautan disimpan; nama instansi mengisi kolom mitra).
-  inisiasiId?: number | null;
   onCancel?: () => void;
   onSubmitted?: () => void;
   enableAppearanceEdit?: boolean;
@@ -283,7 +279,6 @@ const defaultAppearanceSettings: FormAppearanceSettings = {
 const DEFAULT_APPEARANCE_STORAGE_KEY = 'internal-pengajuan-appearance-v1';
 
 export default function AdminAjukanKerjasamaForm({
-  inisiasiId = null,
   onCancel,
   onSubmitted,
   enableAppearanceEdit = false,
@@ -337,7 +332,6 @@ export default function AdminAjukanKerjasamaForm({
   // Lewat SWR: daftar mitra di-cache, jadi membuka form lagi tidak mengunduh ulang semua mitra.
   const { data: masterMitraRows } = useMasterMitra({ aktif: true });
   const [selectedMitraId, setSelectedMitraId] = useState<number | null>(null);
-  const [inisiasiAsal, setInisiasiAsal] = useState<InisiasiItem | null>(null);
   const [mitraOpen, setMitraOpen] = useState(false);
   const [mitraSearch, setMitraSearch] = useState('');
   const allJurusanOptions = [...jurusanOptions, ...customJurusanOpts];
@@ -402,40 +396,6 @@ export default function AdminAjukanKerjasamaForm({
       m.nama_mitra.toLowerCase().includes(mitraSearch.toLowerCase()) ||
       (m.kode_mitra || '').toLowerCase().includes(mitraSearch.toLowerCase()),
   );
-
-  // Dibuka dari kartu Inisiasi: ambil datanya, isi kolom mitra yang masih kosong dengan nama instansinya.
-  useEffect(() => {
-    if (!inisiasiId) {
-      setInisiasiAsal(null);
-      return;
-    }
-    let aktif = true;
-    getInisiasi(inisiasiId)
-      .then((item) => {
-        if (!aktif) return;
-        setInisiasiAsal(item);
-        setFormData((prev) => (prev.namaMitra ? prev : { ...prev, namaMitra: item.nama_mitra }));
-      })
-      .catch(() => {});
-    return () => {
-      aktif = false;
-    };
-  }, [inisiasiId]);
-
-  // Cocokkan nama instansi dengan master mitra (sekali, setelah keduanya termuat) supaya tertaut ke mitra yang sama.
-  useEffect(() => {
-    if (!inisiasiAsal || selectedMitraId !== null || masterMitraRows.length === 0) return;
-    const cocok = masterMitraRows.find((m) => m.nama_mitra.trim().toLowerCase() === inisiasiAsal.nama_mitra.trim().toLowerCase());
-    if (cocok && formData.namaMitra.trim().toLowerCase() === cocok.nama_mitra.trim().toLowerCase()) {
-      setSelectedMitraId(cocok.id);
-      // Sama seperti memilih mitra manual dari dropdown: jenis & tingkat ikut terisi dari master mitra.
-      setFormData((prev) => ({
-        ...prev,
-        jenisMitra: prev.jenisMitra || cocok.kategori_mitra || '',
-        tingkatPerusahaan: prev.tingkatPerusahaan || cocok.tingkat_perusahaan || '',
-      }));
-    }
-  }, [inisiasiAsal, masterMitraRows, selectedMitraId, formData.namaMitra]);
 
   useEffect(() => {
     setCustomNegaraOpts(initialCustomNegaraOptions);
@@ -591,8 +551,7 @@ export default function AdminAjukanKerjasamaForm({
       return;
     }
 
-    // Form dari Inisiasi selalu mulai bersih (diisi dari data Inisiasi), tidak memakai draft tersimpan.
-    if (typeof window === 'undefined' || inisiasiId) {
+    if (typeof window === 'undefined') {
       return;
     }
 
@@ -618,7 +577,7 @@ export default function AdminAjukanKerjasamaForm({
     } catch {
       // Abaikan draft rusak agar form tetap bisa dipakai normal.
     }
-  }, [initialData, initialFileAttachments, inisiasiId]);
+  }, [initialData, initialFileAttachments]);
 
   useEffect(() => {
     if (!enableAppearanceEdit || typeof window === 'undefined') {
@@ -651,8 +610,7 @@ export default function AdminAjukanKerjasamaForm({
   }, [appearanceStorageKey, enableAppearanceEdit]);
 
   useEffect(() => {
-    // Form dari Inisiasi tidak disimpan sebagai draft, supaya data instansinya tidak muncul di form pengajuan biasa.
-    if (disableDraftPersistence || initialData || inisiasiId) {
+    if (disableDraftPersistence || initialData) {
       return;
     }
 
@@ -692,7 +650,7 @@ export default function AdminAjukanKerjasamaForm({
         window.cancelIdleCallback(idleId);
       }
     };
-  }, [asal, formData, selectedRuangLingkup, customJurusanOpts, customUnitOpts, customNegaraOpts, disableDraftPersistence, initialData, inisiasiId]);
+  }, [asal, formData, selectedRuangLingkup, customJurusanOpts, customUnitOpts, customNegaraOpts, disableDraftPersistence, initialData]);
 
   useEffect(() => {
     if (!enableAppearanceEdit || typeof window === 'undefined') {
@@ -1025,7 +983,6 @@ export default function AdminAjukanKerjasamaForm({
         namaPengusul: formData.namaKontak || 'Internal Polibatam',
         namaMitra: formData.namaMitra,
         mitraId: selectedMitraId ?? undefined,
-        inisiasiId: inisiasiId ?? undefined,
         // Alamat & PIC mitra disinkronkan ke Data Kemitraan oleh BACKEND (lihat
         // PengajuanController), bukan lewat panggilan langsung ke endpoint /master/mitra.
         mitraAlamat: formData.alamatMitra.trim() || undefined,
@@ -1189,12 +1146,6 @@ export default function AdminAjukanKerjasamaForm({
           <p className="mb-4 text-xs text-slate-500">{appearanceSettings.sectionInformasiMitraSubtitle}</p>
 
           <div className="grid gap-4 md:grid-cols-2">
-            {inisiasiAsal && (
-              <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                Pengajuan dari Inisiasi: <span className="font-semibold">{inisiasiAsal.judul}</span> ({formatTanggalInisiasi(inisiasiAsal.tanggal_kegiatan)}).
-                Pilih jurusan/prodi/unit pelaksana pada form ini; pengajuan akan terlihat oleh unit tersebut.
-              </div>
-            )}
             <div className="md:col-span-2">
               <label className="mb-1 block text-sm font-semibold text-slate-700">{appearanceSettings.labelNamaMitra}<span className="ml-0.5 text-rose-500">*</span></label>
               <div className="relative">

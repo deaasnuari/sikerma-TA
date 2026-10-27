@@ -4,7 +4,6 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BerkasController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\CarouselImageController;
-use App\Http\Controllers\InisiasiController;
 use App\Http\Controllers\DokumenKerjasamaController;
 use App\Http\Controllers\MasterMitraController;
 use App\Http\Controllers\MasterNegaraController;
@@ -98,11 +97,6 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::delete('/admin/carousel-images/{carouselImage}', [CarouselImageController::class, 'destroy']);
 	Route::post('/notifications/send-email', [NotificationController::class, 'sendEmail']);
 	Route::post('/notifications/send-bulk', [NotificationController::class, 'sendBulk']);
-
-	// Inisiasi (dokumentasi penjajakan kerja sama): hanya admin, dicek di controller. Update dengan foto
-	// dikirim sebagai POST + _method=PATCH (multipart).
-	Route::post('/inisiasi/hapus-massal', [InisiasiController::class, 'hapusMassal']);
-	Route::apiResource('/inisiasi', InisiasiController::class)->parameters(['inisiasi' => 'inisiasi']);
 
 	// Buka berkas di storage (dokumen, lampiran pengajuan, laporan) — wajib login + dicek per berkas.
 	Route::get('/berkas', [BerkasController::class, 'show']);
