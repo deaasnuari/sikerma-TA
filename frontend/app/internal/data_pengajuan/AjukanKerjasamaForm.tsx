@@ -1060,6 +1060,7 @@ export default function InternalAjukanKerjasamaForm({
           <p className="text-[12px] font-semibold text-[#173B82]">{appearanceSettings.topBadgeText}</p>
           <h1 className="mt-1 text-[17px] font-bold text-slate-900">{appearanceSettings.pageTitle}</h1>
           <p className="mt-1 text-[12px] text-slate-500">{appearanceSettings.pageSubtitle}</p>
+          <p className="mt-1 text-[11px] text-slate-500"><span className="text-rose-500">*</span> Wajib diisi</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1142,7 +1143,7 @@ export default function InternalAjukanKerjasamaForm({
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="md:col-span-2">
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelNamaMitra}</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelNamaMitra}<span className="ml-0.5 text-rose-500">*</span></label>
               <div className="relative">
                 <button
                   type="button"
@@ -1215,7 +1216,7 @@ export default function InternalAjukanKerjasamaForm({
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelJenisMitra}</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelJenisMitra}<span className="ml-0.5 text-rose-500">*</span></label>
               <select
                 value={(JENIS_MITRA_OPTIONS.filter(o => o !== 'Lainnya') as string[]).includes(formData.jenisMitra) || formData.jenisMitra === '' ? formData.jenisMitra : 'Lainnya'}
                 onChange={(e) => handleChange('jenisMitra', e.target.value)}
@@ -1262,7 +1263,7 @@ export default function InternalAjukanKerjasamaForm({
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelTeleponMitra}</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelTeleponMitra}<span className="ml-0.5 text-rose-500">*</span></label>
               <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-100">
                 {countryPhoneCodeMap[formData.negara] && (
                   <span className="flex shrink-0 items-center border-r border-slate-200 bg-slate-100 px-2.5 text-[11px] font-semibold text-slate-600">
@@ -1288,15 +1289,15 @@ export default function InternalAjukanKerjasamaForm({
               />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelEmailMitra}</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelEmailMitra}<span className="ml-0.5 text-rose-500">*</span></label>
               <input type="email" value={formData.emailMitra} onChange={(e) => handleChange('emailMitra', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]" placeholder="mitra@email.com" required />
             </div>
             <div className="md:col-span-2">
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelAlamatMitra}</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelAlamatMitra}<span className="ml-0.5 text-rose-500">*</span></label>
               <textarea value={formData.alamatMitra} onChange={(e) => handleChange('alamatMitra', e.target.value)} className="input-field min-h-[90px] w-full rounded-lg px-3 py-2 text-[12px]" placeholder="Masukkan alamat lengkap mitra" required />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">Negara Mitra</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">Negara Mitra<span className="ml-0.5 text-rose-500">*</span></label>
               <select value={formData.negara} onChange={(e) => handleChange('negara', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]">
                 {allNegaraOptions.map((option) => (
                   <option key={option} value={option}>{option}</option>
@@ -1315,7 +1316,7 @@ export default function InternalAjukanKerjasamaForm({
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelJenisKerjasama}</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelJenisKerjasama}<span className="ml-0.5 text-rose-500">*</span></label>
               <div className={`rounded-xl border border-slate-200 bg-white p-3 ${lockJenisKerjasama ? 'bg-slate-100' : ''}`}>
                 <div className="flex flex-wrap gap-2">
 {JENIS_KERJASAMA_OPTIONS.map((item) => {
@@ -1393,7 +1394,7 @@ export default function InternalAjukanKerjasamaForm({
               {asal === 'Jurusan' ? (
                 <div className="space-y-3">
                   <div>
-                    <label className="mb-1 block text-[12px] font-semibold text-slate-700">Jurusan</label>
+                    <label className="mb-1 block text-[12px] font-semibold text-slate-700">Jurusan<span className="ml-0.5 text-rose-500">*</span></label>
                     <MultiSelectDropdown
                       options={jurusanSelectOptions}
                       selected={selectedJurusanIds}
@@ -1406,7 +1407,7 @@ export default function InternalAjukanKerjasamaForm({
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-[12px] font-semibold text-slate-700">Prodi</label>
+                    <label className="mb-1 block text-[12px] font-semibold text-slate-700">Prodi<span className="ml-0.5 text-rose-500">*</span></label>
                     <MultiSelectDropdown
                       options={prodiSelectOptions}
                       selected={selectedProdiIds}
@@ -1515,7 +1516,7 @@ export default function InternalAjukanKerjasamaForm({
               </div>
             </div>
             <div className="md:col-span-2">
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelJudulKerjasama}</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelJudulKerjasama}<span className="ml-0.5 text-rose-500">*</span></label>
               <input value={formData.judulKerjasama} onChange={(e) => handleChange('judulKerjasama', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]" placeholder="Judul atau nama kerjasama" required />
             </div>
             <div className="md:col-span-2">
@@ -1621,19 +1622,19 @@ export default function InternalAjukanKerjasamaForm({
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelNamaKontak}</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelNamaKontak}<span className="ml-0.5 text-rose-500">*</span></label>
               <input value={formData.namaKontak} onChange={(e) => handleChange('namaKontak', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]" placeholder="Nama kontak person" required />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelJabatanKontak}</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelJabatanKontak}<span className="ml-0.5 text-rose-500">*</span></label>
               <input value={formData.jabatanKontak} onChange={(e) => handleChange('jabatanKontak', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]" placeholder="Jabatan di perusahaan" required />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelEmailKontak}</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelEmailKontak}<span className="ml-0.5 text-rose-500">*</span></label>
               <input type="email" value={formData.emailKontak} onChange={(e) => handleChange('emailKontak', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]" placeholder="email@contoh.com" required />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelTeleponKontak}</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">{appearanceSettings.labelTeleponKontak}<span className="ml-0.5 text-rose-500">*</span></label>
               <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-100">
                 {countryPhoneCodeMap[formData.negara] && (
                   <span className="flex shrink-0 items-center border-r border-slate-200 bg-slate-100 px-2.5 text-[11px] font-semibold text-slate-600">
@@ -1659,7 +1660,7 @@ export default function InternalAjukanKerjasamaForm({
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">Nama Lengkap</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">Nama Lengkap<span className="ml-0.5 text-rose-500">*</span></label>
               <input value={formData.picPolibatamNama} onChange={(e) => handleChange('picPolibatamNama', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]" placeholder="Nama PIC Polibatam" required={!initialData} />
             </div>
             <div>
@@ -1667,11 +1668,11 @@ export default function InternalAjukanKerjasamaForm({
               <input value={formData.picPolibatamJabatan} onChange={(e) => handleChange('picPolibatamJabatan', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]" placeholder="Jabatan di Polibatam" />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">Email</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">Email<span className="ml-0.5 text-rose-500">*</span></label>
               <input type="email" value={formData.picPolibatamEmail} onChange={(e) => handleChange('picPolibatamEmail', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-[12px]" placeholder="email@polibatam.ac.id" required={!initialData} />
             </div>
             <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-700">WhatsApp</label>
+              <label className="mb-1 block text-[12px] font-semibold text-slate-700">WhatsApp<span className="ml-0.5 text-rose-500">*</span></label>
               <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-100">
                 <span className="flex shrink-0 items-center border-r border-slate-200 bg-slate-100 px-2.5 text-[11px] font-semibold text-slate-600">
                   +62

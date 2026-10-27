@@ -1,8 +1,7 @@
 import { templateLaporanPelaksanaan, templateUrl } from '@/lib/templateDokumen';
 
 // Mengisi file Word asli Draft LPK (public/templates) dengan data form, lalu
-// mengembalikannya sebagai .docx. File .docx = ZIP; dibuka/ditulis ulang pakai
-// modul CFB bawaan SheetJS (xlsx) supaya tidak perlu dependency tambahan.
+// mengembalikannya sebagai .docx. File .docx = ZIP; dibuka/ditulis ulang pakai JSZip.
 
 export interface LaporanPelaksanaanDocxValues {
   judulKerjasama: string;
@@ -21,7 +20,6 @@ export interface LaporanPelaksanaanDocxValues {
 // Jabatan "Mengetahui" di template dipecah dua paragraf; hanya diganti bila diubah user.
 export const DEFAULT_JABATAN_MENGETAHUI = 'Wakil Direktur Bidang Kemahasiswaan, Alumni dan Kerja Sama';
 
-type CfbEntry = { content: Uint8Array | number[] };
 
 function escapeXml(v: string): string {
   return v.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -73,12 +71,12 @@ export async function buildLaporanPelaksanaanDocx(values: LaporanPelaksanaanDocx
   if (!res.ok) throw new Error('Template laporan pelaksanaan tidak ditemukan.');
   const buffer = new Uint8Array(await res.arrayBuffer());
 
-  const { CFB } = await import('xlsx');
-  const container = CFB.read(buffer, { type: 'array' });
-  const entry = CFB.find(container, '/word/document.xml') as CfbEntry | null;
+  const { default: JSZip } = await import('jszip');
+  const zip = await JSZip.loadAsync(buffer);
+  const entry = zip.file('word/document.xml');
   if (!entry) throw new Error('Template laporan pelaksanaan tidak valid.');
 
-  let xml = new TextDecoder().decode(Uint8Array.from(entry.content));
+  let xml = await entry.async('string');
 
   xml = fillRow(xml, 'JUDUL KERJASAMA', values.judulKerjasama);
   xml = fillRow(xml, 'REFERENSI KERJA SAMA (MOA/IA)', values.referensiKerjasama);
@@ -99,9 +97,10 @@ export async function buildLaporanPelaksanaanDocx(values: LaporanPelaksanaanDocx
     xml = xml.replace('>dan Kerja Sama</w:t>', '></w:t>');
   }
 
-  entry.content = new TextEncoder().encode(xml);
-  const out = CFB.write(container, { fileType: 'zip', type: 'array', compression: true }) as ArrayBuffer | number[];
-  return new Blob([out instanceof ArrayBuffer ? out : new Uint8Array(out)], {
-    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  zip.file('word/document.xml', xml);
+  return zip.generateAsync({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    compression: 'DEFLATE',
   });
 }

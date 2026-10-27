@@ -32,6 +32,12 @@ class AppServiceProvider extends ServiceProvider
         // ke satu akun, mis. menebak OTP 6 digit).
         $identitas = fn (Request $r): string => strtolower(trim((string) ($r->input('email') ?: $r->input('username') ?: '')));
 
+        // Batas umum seluruh API (termasuk endpoint publik): per pengguna yang login, atau per IP bila
+        // belum login. Longgar untuk pemakaian normal (polling dashboard) tapi menahan scraping/banjir.
+        RateLimiter::for('api', fn (Request $r) => $r->user()
+            ? Limit::perMinute(600)->by('api-user|'.$r->user()->id)
+            : Limit::perMinute(120)->by('api-ip|'.$r->ip()));
+
         RateLimiter::for('login', fn (Request $r) => [
             Limit::perMinute(10)->by('login-ip|'.$r->ip()),
             Limit::perMinute(5)->by('login-id|'.$identitas($r)),

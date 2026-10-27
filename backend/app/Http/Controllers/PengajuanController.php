@@ -588,6 +588,12 @@ class PengajuanController extends Controller
     private function normalizeAttachmentPath(array $row): string
     {
         $rawPath = trim((string) ($row['path'] ?? $row['path_file'] ?? ''));
+        // Path dari klien tidak boleh keluar dari folder penyimpanan (path traversal / nol-byte).
+        if ($rawPath !== '' && (str_contains($rawPath, chr(0)) || preg_match('#(^|[/\\\\])\.\.([/\\\\]|$)#', $rawPath))) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'file_attachments' => 'Path berkas tidak valid.',
+            ]);
+        }
         if ($rawPath !== '') {
             // If a relative storage path was passed directly, keep it.
             if (!str_starts_with($rawPath, 'http') && !str_starts_with($rawPath, 'data:')) {
@@ -644,6 +650,37 @@ class PengajuanController extends Controller
         };
     }
 
+    /**
+     * Lampiran yang dikirim klien berupa PATH (bukan unggahan baru) hanya boleh merujuk berkas yang
+     * memang sudah menjadi milik pengajuan ini. Tanpa ini, pengguna bisa menulis path berkas milik
+     * pengajuan lain lalu membukanya lewat /berkas karena sekarang "tercatat" di pengajuannya sendiri.
+     * Tautan http(s) biasa (bukan berkas di storage) dibiarkan.
+     *
+     * @param  array<int, string>  $pathMilikPengajuan  path_file yang sudah ada pada pengajuan ini
+     */
+    private function pastikanRujukanBerkasMilikPengajuan(string $path, array $pathMilikPengajuan): void
+    {
+        if (preg_match('#^https?://#i', $path) === 1) {
+            return;
+        }
+
+        if (! in_array($path, $pathMilikPengajuan, true)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'file_attachments' => 'Berkas yang dirujuk tidak termasuk pengajuan ini.',
+            ]);
+        }
+    }
+
+    /** @return array<int, string> */
+    private function pathBerkasMilik(Pengajuan $pengajuan): array
+    {
+        return $pengajuan->pengajuanFiles()->pluck('path_file')->filter()->map(fn ($p) => (string) $p)->all();
+    }
+
+    private const EKSTENSI_LAMPIRAN_DIIZINKAN = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'webp'];
+
+    private const UKURAN_LAMPIRAN_MAKS_BYTE = 10 * 1024 * 1024;
+
     private function persistDataUrlAttachment(array $attachment): ?string
     {
         $rawUrl = trim((string) ($attachment['url'] ?? ''));
@@ -667,6 +704,20 @@ class PengajuanController extends Controller
         $base = pathinfo($name, PATHINFO_FILENAME);
         $extFromName = strtolower((string) pathinfo($name, PATHINFO_EXTENSION));
         $extension = $extFromName !== '' ? $extFromName : $this->guessAttachmentExtensionFromMime($mimeType);
+
+        // Nama berkas dikirim klien, jadi ekstensinya tidak boleh dipercaya begitu saja: hanya tipe
+        // dokumen/gambar biasa yang diterima (bukan .php/.html/.svg/.js yang bisa dieksekusi atau
+        // dirender sebagai halaman), dan ukurannya dibatasi.
+        if (! in_array($extension, self::EKSTENSI_LAMPIRAN_DIIZINKAN, true)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'file_attachments' => "Jenis berkas \"{$extension}\" tidak diizinkan. Gunakan PDF, Word, Excel, PowerPoint, atau gambar (JPG/PNG/WEBP).",
+            ]);
+        }
+        if (strlen($binary) > self::UKURAN_LAMPIRAN_MAKS_BYTE) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'file_attachments' => 'Ukuran berkas maksimal 10 MB.',
+            ]);
+        }
         $fileName = $this->sanitizeAttachmentBasename($base) . '-' . Str::random(10) . '.' . $extension;
 
         $relativePath = 'pengajuan/' . date('Y/m') . '/' . $fileName;
@@ -750,6 +801,9 @@ class PengajuanController extends Controller
             return;
         }
 
+        // Diambil SEBELUM lampiran lama dihapus/diganti di bawah.
+        $pathMilik = $this->pathBerkasMilik($pengajuan);
+
         $payload = [];
         foreach ($attachments as $attachment) {
             if (! is_array($attachment)) {
@@ -770,7 +824,11 @@ class PengajuanController extends Controller
                 continue;
             }
 
-            $path = $this->persistDataUrlAttachment($attachment) ?? $this->normalizeAttachmentPath($attachment);
+            $path = $this->persistDataUrlAttachment($attachment);
+            if ($path === null) {
+                $path = $this->normalizeAttachmentPath($attachment);
+                $this->pastikanRujukanBerkasMilikPengajuan($path, $pathMilik);
+            }
 
             $payload[] = [
                 'peran_berkas' => isset($attachment['peran_berkas']) && is_string($attachment['peran_berkas']) ? $attachment['peran_berkas'] : 'pengajuan_awal',
@@ -809,7 +867,11 @@ class PengajuanController extends Controller
             return;
         }
 
-        $path = $this->persistDataUrlAttachment($attachment) ?? $this->normalizeAttachmentPath($attachment);
+        $path = $this->persistDataUrlAttachment($attachment);
+        if ($path === null) {
+            $path = $this->normalizeAttachmentPath($attachment);
+            $this->pastikanRujukanBerkasMilikPengajuan($path, $this->pathBerkasMilik($pengajuan));
+        }
 
         $pengajuan->pengajuanFiles()->where('peran_berkas', 'dokumen_revisi')->delete();
         $pengajuan->pengajuanFiles()->create([
@@ -837,6 +899,9 @@ class PengajuanController extends Controller
             return;
         }
 
+        // Diambil SEBELUM lampiran lama dihapus/diganti di bawah.
+        $pathMilik = $this->pathBerkasMilik($pengajuan);
+
         $payload = [];
         foreach ($attachments as $attachment) {
             if (! is_array($attachment)) {
@@ -854,7 +919,11 @@ class PengajuanController extends Controller
                 continue;
             }
 
-            $path = $this->persistDataUrlAttachment($attachment) ?? $this->normalizeAttachmentPath($attachment);
+            $path = $this->persistDataUrlAttachment($attachment);
+            if ($path === null) {
+                $path = $this->normalizeAttachmentPath($attachment);
+                $this->pastikanRujukanBerkasMilikPengajuan($path, $pathMilik);
+            }
 
             $payload[] = [
                 'peran_berkas' => 'dokumen_final',

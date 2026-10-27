@@ -1,109 +1,34 @@
-const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '/api/backend';
+// Semua permintaan lewat proxy Next (/api/backend/*). Proxy-lah yang memegang token login di cookie
+// HttpOnly dan memasangnya ke backend — JavaScript di browser tidak pernah melihat atau menyimpan
+// token. Karena itu API TIDAK boleh dipanggil langsung ke backend dari browser (cookie tidak ikut
+// dan permintaannya akan ditolak). Alamat backend sebenarnya diatur di sisi server lewat
+// BACKEND_INTERNAL_URL (lihat app/api/backend/[...path]/route.ts).
+const API_BASE_URL = '/api/backend';
 
-interface StoredAuthUser {
-  accessToken?: string;
-}
-
-function normalizeBaseUrl(url: string): string {
-  return url.replace(/\/+$/, '');
-}
-
-function buildApiBaseUrlCandidates(): string[] {
-  const configured = normalizeBaseUrl(rawApiBaseUrl);
-  const candidates = [
-    configured,
-    configured.startsWith('/')
-      ? configured
-      : configured.endsWith('/api')
-        ? configured
-        : `${configured}/api`,
-    'http://127.0.0.1:8000/api',
-    'http://localhost:8000/api',
-  ];
-
-  return Array.from(new Set(candidates.map(normalizeBaseUrl)));
-}
-
-const API_BASE_URL = normalizeBaseUrl(rawApiBaseUrl);
-const API_BASE_URL_CANDIDATES = buildApiBaseUrlCandidates();
-
-function getAccessTokenFromStorage(): string | undefined {
-  if (typeof window === 'undefined') {
-    return undefined;
-  }
-
-  const rawUser = window.localStorage.getItem('user');
-  if (!rawUser) {
-    return undefined;
-  }
+async function fetchWithFallback(endpoint: string, options: RequestInit, buildHeaders: () => HeadersInit): Promise<Response> {
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
   try {
-    const parsed = JSON.parse(rawUser) as StoredAuthUser;
-    return typeof parsed.accessToken === 'string' && parsed.accessToken.trim().length > 0
-      ? parsed.accessToken
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-// Coba tiap kandidat base URL sampai ada yang berhasil merespons — dipakai bersama oleh
-// apiRequest (JSON/text) dan downloadFileWithAuth (blob) supaya logic fallback-nya satu tempat.
-async function fetchWithFallback(endpoint: string, options: RequestInit, buildHeaders: (accessToken?: string) => HeadersInit): Promise<Response> {
-  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  let response: Response | null = null;
-  let lastError: unknown = null;
-  const accessToken = getAccessTokenFromStorage();
-
-  for (const baseUrl of API_BASE_URL_CANDIDATES) {
-    try {
-      const candidateResponse = await fetch(`${baseUrl}${normalizedEndpoint}`, {
-        ...options,
-        cache: options.cache ?? 'no-store',
-        headers: buildHeaders(accessToken),
-      });
-
-      // Jika kandidat relative proxy gagal (404/5xx),
-      // coba kandidat berikutnya seperti URL backend langsung.
-      const isRelativeCandidate = baseUrl.startsWith('/');
-      const shouldFallbackToNextCandidate =
-        !candidateResponse.ok &&
-        isRelativeCandidate &&
-        (candidateResponse.status === 404 || candidateResponse.status >= 500);
-
-      if (shouldFallbackToNextCandidate) {
-        response = candidateResponse;
-        continue;
-      }
-
-      response = candidateResponse;
-      break;
-    } catch (error) {
-      lastError = error;
-
-      if (!(error instanceof TypeError)) {
-        throw error;
-      }
-    }
-  }
-
-  if (!response) {
-    if (lastError instanceof TypeError) {
+    return await fetch(`${API_BASE_URL}${normalizedEndpoint}`, {
+      ...options,
+      cache: options.cache ?? 'no-store',
+      credentials: 'same-origin',
+      headers: buildHeaders(),
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
       throw new Error('Gagal terhubung ke server API. Pastikan backend aktif dan URL API benar.');
     }
 
-    throw lastError;
+    throw error;
   }
-
-  return response;
 }
 
 export async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const isFormData = options.body instanceof FormData;
-  const response = await fetchWithFallback(endpoint, options, (accessToken) => ({
+  const response = await fetchWithFallback(endpoint, options, () => ({
     Accept: 'application/json',
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     ...(options.headers || {}),
   }));
 
@@ -145,9 +70,7 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
 // dihormati browser untuk URL same-origin — begitu jadi object URL dari blob, unduhannya otomatis
 // dianggap same-origin jadi nama filenya konsisten dipakai di semua browser.
 export async function downloadFileWithAuth(endpoint: string, fileName: string): Promise<void> {
-  const response = await fetchWithFallback(endpoint, {}, (accessToken) => ({
-    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-  }));
+  const response = await fetchWithFallback(endpoint, {}, () => ({}));
 
   if (!response.ok) {
     if (response.status === 401 && typeof window !== 'undefined') {
@@ -210,9 +133,7 @@ export async function openProtectedFile(path: string): Promise<void> {
   const tab = window.open('', '_blank');
 
   try {
-    const response = await fetchWithFallback(berkasEndpoint(path), {}, (accessToken) => ({
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    }));
+    const response = await fetchWithFallback(berkasEndpoint(path), {}, () => ({}));
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -264,9 +185,7 @@ export function getProtectedObjectUrl(path: string): Promise<string> {
   if (cached) return cached;
 
   const request = (async () => {
-    const response = await fetchWithFallback(berkasEndpoint(path), {}, (accessToken) => ({
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    }));
+    const response = await fetchWithFallback(berkasEndpoint(path), {}, () => ({}));
 
     if (!response.ok) {
       throw new Error(response.status === 404 ? 'Gambar tidak ditemukan.' : 'Gagal memuat gambar.');

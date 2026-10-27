@@ -250,6 +250,14 @@ class AdminUserController extends Controller
 
         $user->update($validated);
 
+        // Password diganti admin: cabut sesi lama pengguna itu. Token yang sedang dipakai admin untuk
+        // permintaan ini dikecualikan, supaya admin yang mengganti password dirinya sendiri tidak ikut keluar.
+        if (array_key_exists('password', $validated)) {
+            $user->tokens()
+                ->when($request->user()?->is($user) ? $request->user()->currentAccessToken() : null, fn ($q, $token) => $q->where('id', '!=', $token->id))
+                ->delete();
+        }
+
         return response()->json([
             'message' => 'User berhasil diperbarui.',
             'user' => $this->toUserPayload($user),

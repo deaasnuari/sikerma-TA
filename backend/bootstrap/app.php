@@ -12,7 +12,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Header keamanan di semua respons API + pembatas laju umum (limiter 'api', lihat AppServiceProvider).
+        $middleware->api(append: [\App\Http\Middleware\SecurityHeaders::class]);
+        $middleware->throttleApi('api');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

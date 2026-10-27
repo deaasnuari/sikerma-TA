@@ -10,7 +10,6 @@ export interface AuthUser {
   name: string;
   username?: string;
   email: string;
-  accessToken?: string;
   role: UserRole;
   institution_name?: string;
   phone?: string;

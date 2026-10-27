@@ -393,7 +393,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'email'                 => ['required', 'string', 'email'],
             'otp'                   => ['required', 'string', 'size:6'],
-            'password'              => ['required', 'string', 'confirmed', Password::min(8)],
+            'password'              => ['required', 'string', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()->symbols()],
             'password_confirmation' => ['required', 'string'],
         ]);
 
@@ -433,6 +433,9 @@ class AuthController extends Controller
         }
 
         $user->update(['password' => Hash::make($validated['password'])]);
+        // Password diganti = sesi lama tidak boleh tetap hidup (mis. pemilik akun mereset karena akunnya
+        // dibajak). Semua token login dicabut; pengguna harus login ulang dengan password baru.
+        $user->tokens()->delete();
         $otpRecord->update(['is_used' => true]);
 
         return response()->json([

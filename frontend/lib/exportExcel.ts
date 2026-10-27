@@ -1,37 +1,45 @@
-import * as XLSX from 'xlsx';
-
-export function exportToExcel(
+// Ekspor tabel ke .xlsx memakai exceljs (menggantikan SheetJS `xlsx` yang punya celah keamanan
+// tanpa perbaikan). Library dimuat saat dibutuhkan saja supaya tidak membebani halaman.
+export async function exportToExcel(
   headers: string[],
   rows: (string | number | null | undefined)[][],
   filename: string,
   sheetName = 'Data',
-): void {
-  const worksheetData = [headers, ...rows.map((row) =>
-    row.map((cell) => (cell === null || cell === undefined ? '' : cell))
-  )];
+): Promise<void> {
+  const { default: ExcelJS } = await import('exceljs');
 
-  const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-
-  // Auto-size each column based on the longest content
-  const colWidths = headers.map((header, colIdx) => {
-    const maxLen = Math.max(
-      header.length,
-      ...rows.map((row) => String(row[colIdx] ?? '').length),
-    );
-    return { wch: Math.min(maxLen + 4, 60) };
+  const workbook = new ExcelJS.Workbook();
+  // Nama sheet Excel maksimal 31 karakter dan tidak boleh memuat : \ / ? * [ ]
+  const worksheet = workbook.addWorksheet(sheetName.replace(/[:\/?*[\]]/g, ' ').slice(0, 31) || 'Data', {
+    views: [{ state: 'frozen', ySplit: 1 }],
   });
-  worksheet['!cols'] = colWidths;
 
-  // Bold header row
-  const range = XLSX.utils.decode_range(worksheet['!ref'] ?? 'A1');
-  for (let col = range.s.c; col <= range.e.c; col++) {
-    const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
-    if (!worksheet[cellRef]) continue;
-    worksheet[cellRef].s = { font: { bold: true } };
+  worksheet.addRow(headers);
+  rows.forEach((row) => {
+    worksheet.addRow(row.map((cell) => (cell === null || cell === undefined ? '' : cell)));
+  });
+
+  // Lebar tiap kolom mengikuti isi terpanjang (maks. 60 karakter)
+  headers.forEach((header, colIdx) => {
+    const maxLen = Math.max(header.length, ...rows.map((row) => String(row[colIdx] ?? '').length));
+    worksheet.getColumn(colIdx + 1).width = Math.min(maxLen + 4, 60);
+  });
+
+  worksheet.getRow(1).font = { bold: true };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
-
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-
-  XLSX.writeFile(workbook, filename);
 }

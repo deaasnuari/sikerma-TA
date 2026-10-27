@@ -1,6 +1,6 @@
 'use client';
 
-import * as XLSX from 'xlsx';
+import { exportToExcel } from '@/lib/exportExcel';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Archive, Bell, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Eye, Filter, HandshakeIcon, Mail, MessageCircle, Phone, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import LaporanPelaksanaanModal from '@/components/LaporanPelaksanaanModal';
@@ -393,11 +393,9 @@ export default function MonitoringdanstatusPage() {
                 item.ruangLingkup.join('; '),
               ]),
             ];
-            const ws = XLSX.utils.aoa_to_sheet(rows);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Monitoring');
             const fileName = `monitoring-kerjasama-${tabFileNameMap[activeTab] ?? activeTab.toLowerCase().replace(/\s+/g, '-')}.xlsx`;
-            XLSX.writeFile(wb, fileName);
+            const [headerRow, ...dataRows] = rows;
+            void exportToExcel(headerRow.map(String), dataRows, fileName, 'Monitoring');
           }}
         >
           Export Data

@@ -37,7 +37,14 @@ export function getStoredUser(): AuthUser | null {
   if (!storedUser) return null;
 
   try {
-    return JSON.parse(storedUser) as AuthUser;
+    const parsed = JSON.parse(storedUser) as AuthUser & { accessToken?: string };
+    // Sesi lama menyimpan token di sini. Token sekarang hidup hanya di cookie HttpOnly, jadi
+    // buang sisa token itu dari localStorage (pengguna cukup login ulang satu kali).
+    if ('accessToken' in parsed) {
+      delete parsed.accessToken;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    }
+    return parsed;
   } catch {
     localStorage.removeItem(STORAGE_KEY);
     return null;
@@ -93,10 +100,6 @@ export async function loginUser(payload: LoginPayload): Promise<AuthUser> {
       body: JSON.stringify(apiPayload),
     });
 
-    const token =
-      (response as { access_token?: string; token?: string }).access_token ||
-      (response as { access_token?: string; token?: string }).token;
-
     const userData = response.user || response.data;
     if (userData?.email) {
       return {
@@ -109,7 +112,6 @@ export async function loginUser(payload: LoginPayload): Promise<AuthUser> {
         position: userData.position,
         account_type: userData.account_type,
         approval_status: userData.approval_status as 'active' | 'pending' | 'rejected' | undefined,
-        accessToken: typeof token === 'string' ? token : undefined,
         role: normalizeRole(userData.role),
         unit_kerja: userData.unit_kerja,
       };
@@ -187,10 +189,6 @@ export async function loginWithCampusAccount(payload: {
     body: JSON.stringify(payload),
   });
 
-  const token =
-    (response as { access_token?: string; token?: string }).access_token ||
-    (response as { access_token?: string; token?: string }).token;
-
   const userData = response.user || response.data;
   if (!userData?.email && !userData?.username) {
     throw new Error('Login akun kampus gagal diproses');
@@ -206,7 +204,6 @@ export async function loginWithCampusAccount(payload: {
     position: userData.position,
     account_type: userData.account_type,
     approval_status: userData.approval_status as 'active' | 'pending' | 'rejected' | undefined,
-    accessToken: typeof token === 'string' ? token : undefined,
     role: normalizeRole(userData.role),
     unit_kerja: userData.unit_kerja,
   };
@@ -232,8 +229,9 @@ export async function resetPassword(payload: {
 }
 
 export async function verifyCurrentUser(): Promise<'valid' | 'invalid' | 'offline'> {
-  const stored = getStoredUser();
-  if (!stored?.accessToken) return 'valid';
+  // Tidak ada profil tersimpan = belum login, tidak ada yang perlu diverifikasi. Token ada di cookie
+  // HttpOnly (tidak terbaca di sini); /me akan menjawab 401 kalau sesinya sudah habis.
+  if (!getStoredUser()) return 'valid';
 
   try {
     await apiRequest<{ user: unknown }>('/me');
