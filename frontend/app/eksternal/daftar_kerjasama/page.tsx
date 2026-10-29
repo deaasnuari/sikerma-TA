@@ -1,5 +1,7 @@
 'use client';
 
+import JenisBadges from '@/components/JenisBadges';
+
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -28,7 +30,7 @@ import {
 import LaporanPelaksanaanModal, { type LaporanPelaksanaanData } from '@/components/LaporanPelaksanaanModal';
 import { exportToExcel } from '@/lib/exportExcel';
 import type { PengajuanItem } from '../../../services/adminPengajuanService';
-import { deletePengajuanItemApi, fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
+import { daftarJenisDokumen, deletePengajuanItemApi, fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
 import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
 import PerbaikanPengajuanModal, { bolehDiubahPengusul } from '@/components/PerbaikanPengajuanModal';
@@ -54,6 +56,7 @@ interface KerjasamaItem {
   jenisMitra: string;
   tingkatPerusahaan: string;
   jenis: 'MoU' | 'MoA' | 'IA';
+  jenisList: Array<'MoU' | 'MoA' | 'IA'>;
   unit: string;
   tanggalMulai: string;
   berlakuHingga: string;
@@ -61,7 +64,7 @@ interface KerjasamaItem {
   emailPengusul: string;
   whatsappPengusul: string;
   ruangLingkup: string[];
-  fileAttachments: { name: string; url: string; isAcc?: boolean }[];
+  fileAttachments: { name: string; url: string; isAcc?: boolean; jenisDokumen?: string }[];
   revisiFiles?: { name: string; url: string }[];
   finalFileName?: string | null;
   finalFilePath?: string | null;
@@ -122,6 +125,7 @@ function mapPengajuanToItem(item: PengajuanItem): KerjasamaItem {
     jenisMitra: item.mitraKategori || '-',
     tingkatPerusahaan: item.mitraTingkatPerusahaan || '-',
     jenis,
+    jenisList: daftarJenisDokumen(item).filter((j): j is 'MoU' | 'MoA' | 'IA' => j === 'MoU' || j === 'MoA' || j === 'IA'),
     unit: item.namaUnitProdi,
     tanggalMulai: toDisplayDate(item.tanggalMulai),
     berlakuHingga: toDisplayDate(item.tanggalBerakhir),
@@ -131,7 +135,7 @@ function mapPengajuanToItem(item: PengajuanItem): KerjasamaItem {
     ruangLingkup: item.ruangLingkup?.length ? item.ruangLingkup : [],
     fileAttachments:
       item.fileAttachments?.length
-        ? item.fileAttachments.map((file) => ({ name: file.name, url: file.url || '', isAcc: file.isAcc }))
+        ? item.fileAttachments.map((file) => ({ name: file.name, url: file.url || '', isAcc: file.isAcc, jenisDokumen: file.jenisDokumen }))
         : (item.fileName || '')
             .split(',')
             .map((name) => name.trim())
@@ -395,7 +399,7 @@ export default function DaftarKerjasamaEksternalPage() {
       item.namaMitra,
       item.jenisMitra,
       item.tingkatPerusahaan,
-      item.jenis,
+      item.jenisList.join(' + '),
       item.unit,
       item.tanggalMulai,
       item.berlakuHingga,
@@ -599,9 +603,7 @@ export default function DaftarKerjasamaEksternalPage() {
                       </p>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="rounded-md bg-slate-100 px-2 py-1 text-[10.5px] font-semibold text-slate-700">
-                        {item.jenis}
-                      </span>
+                      <JenisBadges jenis={item.jenisList} warna={{}} className="rounded-md px-2 py-1 text-[10.5px] font-semibold" />
                     </td>
                     <td className="max-w-[200px] px-4 py-3">
                       <p className="line-clamp-2" title={item.unit}>{item.unit}</p>
@@ -755,9 +757,7 @@ export default function DaftarKerjasamaEksternalPage() {
                   {statusDetailConfig[detailItem.status].icon}
                   {statusDetailConfig[detailItem.status].label}
                 </span>
-                <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${jenisStyle[detailItem.jenis]}`}>
-                  {detailItem.jenis}
-                </span>
+                <JenisBadges jenis={detailItem.jenisList} warna={jenisStyle} className="inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold" />
               </div>
 
               {detailItem.status === 'Revisi' && (
@@ -796,7 +796,7 @@ export default function DaftarKerjasamaEksternalPage() {
                   <InfoRow icon={<Tag size={15} />} label="Tingkat Perusahaan" value={detailItem.tingkatPerusahaan} />
                   <InfoRow icon={<User size={15} />} label="Pengusul" value={detailItem.namaPengusul} />
                   <InfoRow icon={<Tag size={15} />} label="Jurusan / Prodi / Unit" value={detailItem.unit} />
-                  <InfoRow icon={<FileText size={15} />} label="Jenis Dokumen" value={detailItem.jenis} />
+                  <InfoRow icon={<FileText size={15} />} label="Jenis Dokumen" value={detailItem.jenisList.join(' + ')} />
                   <InfoRow icon={<CalendarDays size={15} />} label="Tanggal Mulai" value={detailItem.tanggalMulai} />
                   <InfoRow icon={<CalendarDays size={15} />} label="Tanggal Berakhir" value={detailItem.berlakuHingga} />
                 </div>
@@ -871,7 +871,7 @@ export default function DaftarKerjasamaEksternalPage() {
                   </div>
                   {(() => {
                     // Dedup by name, keep the last (terbaru) — sama seperti tampilan admin.
-                    const accFilesMap = new Map<string, { name: string; url: string; isAcc?: boolean }>();
+                    const accFilesMap = new Map<string, { name: string; url: string; isAcc?: boolean; jenisDokumen?: string }>();
                     for (const f of detailItem.fileAttachments.filter((f) => f.isAcc)) {
                       accFilesMap.set(f.name, f);
                     }
@@ -891,6 +891,9 @@ export default function DaftarKerjasamaEksternalPage() {
                             >
                               <Paperclip size={13} className="shrink-0 text-emerald-600" />
                               <span className="truncate">{file.name}</span>
+                              {file.jenisDokumen && (
+                                <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] font-bold text-white">{file.jenisDokumen}</span>
+                              )}
                               <Download size={13} className="ml-auto shrink-0" />
                             </a>
                           ))}

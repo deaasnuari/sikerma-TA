@@ -1,5 +1,6 @@
 import { getAktivitasByKerjasamaId, type AktivitasItem } from './adminStoryAktivitasService';
 import type { PengajuanItem, PengajuanStatus } from './adminPengajuanService';
+import { daftarJenisDokumen } from './adminPengajuanService';
 import type { RekapDokumen } from './adminRekapDataService';
 import { formatSisaMasaBerlaku } from '@/lib/sisaMasaBerlaku';
 
@@ -17,6 +18,8 @@ export interface StoryAktivitasGroup {
   namaMitra: string;
   nomorDokumen: string;
   jenis: 'MoA' | 'MoU' | 'IA';
+  // Semua jenis dokumen primary: dua bila dokumennya memuat MoU + MoA sekaligus.
+  jenisList: Array<'MoA' | 'MoU' | 'IA'>;
   // Semua jenis dokumen yang ada di grup ini (satu mitra bisa punya beberapa dokumen kerja
   // sama dengan jenis berbeda-beda, mis. MoU dan MoA sekaligus) — dipakai untuk filter
   // "Jenis" di halaman daftar Story & Aktivitas, supaya mitra tidak lolos dari filter
@@ -192,7 +195,9 @@ function buildGroup(items: PengajuanItem[], key: string): StoryAktivitasGroup {
     namaMitra: primary?.namaMitra ?? '-',
     nomorDokumen: primary?.nomorPengajuan ?? '-',
     jenis: toDocJenis(primary?.jenisDokumen),
-    jenisTerlibat: uniqueStrings(pengajuan.map((item) => toDocJenis(item.jenisDokumen))),
+    jenisList: uniqueStrings((primary ? daftarJenisDokumen(primary) : []).map(toDocJenis)) as StoryAktivitasGroup['jenisList'],
+    // Dokumen gabungan (MoU + MoA) menyumbang kedua jenisnya.
+    jenisTerlibat: uniqueStrings(pengajuan.flatMap((item) => daftarJenisDokumen(item).map(toDocJenis))),
     // Pakai status dari kolom (kalau ada, jalur Rekap Data) supaya konsisten dengan
     // halaman lain; fallback hitung-dari-tanggal untuk jalur pengajuan (internal/eksternal).
     status: (primary as { statusKerjasama?: StoryAktivitasGroup['status'] } | undefined)?.statusKerjasama
@@ -246,6 +251,7 @@ function mapRekapDokumenToPengajuanItem(dok: RekapDokumen): PengajuanItem {
     mitraId: dok.mitraId,
     namaMitra: dok.namaMitra,
     jenisDokumen: dok.jenis,
+    jenisDokumenList: dok.jenisList,
     unitProdiId: dok.unitProdiId,
     namaUnitProdi: dok.unit,
     // diajukanPada dipakai buat urutkan Story & Aktivitas dari yang paling baru diajukan

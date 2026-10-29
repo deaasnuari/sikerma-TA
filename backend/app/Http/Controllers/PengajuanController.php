@@ -10,6 +10,7 @@ use App\Models\MasterMitra;
 use App\Services\MasterMitraResolver;
 use App\Models\MasterRuangLingkup;
 use App\Models\MasterUnitProdi;
+use App\Support\JenisDokumenSelection;
 use App\Support\UnitProdiSelection;
 use App\Models\Pengajuan;
 use App\Models\User;
@@ -54,39 +55,23 @@ class PengajuanController extends Controller
     private static ?bool $dokumenLogTableExists = null;
 
     /**
-     * Lengkapi data mitra (kategori/bidang usaha/tingkat/alamat/kontak PIC) di master_mitra
-     * dari input pengajuan — hanya mengisi yang kosong, tidak menimpa (lihat
-     * MasterMitraResolver::lengkapiDariPengajuan). Dijalankan di server (bukan lewat endpoint
-     * /master/mitra yang admin-only) supaya internal & eksternal juga bisa melengkapi
-     * data mitranya sendiri lewat pengajuan yang mereka ajukan.
+     * Tautkan pengajuan ke master_mitra tanpa mengubah Data Kemitraan: isian form pengajuan
+     * (alamat, kontak, WhatsApp, kategori, dst) tidak pernah ditulis ke master_mitra; perubahan
+     * data mitra hanya lewat Data Kemitraan (admin).
      *
-     * Field mitra_alamat/mitra_nama_kontak_utama/dst di $input adalah field transien —
-     * tidak disimpan ke pengajuan_v2, cuma dipakai di sini lalu dibuang oleh caller.
+     * Mitra yang dipilih dari daftar dipakai apa adanya. Nama yang diketik manual dicocokkan
+     * dengan mitra yang ada (aturan MasterMitraResolver: abaikan huruf besar/kecil, spasi &
+     * tanda baca); bila belum ada, dibuat baris baru yang hanya berisi nama supaya pengajuan
+     * punya mitra_id.
      */
     private function syncMasterMitraFromPengajuanInput(array $input): ?int
     {
         $namaMitra = trim((string) ($input['nama_mitra'] ?? ''));
         $mitraId = $input['mitra_id'] ?? null;
 
-        $payload = array_filter([
-            'kategori_mitra' => trim((string) ($input['jenis_mitra'] ?? '')) ?: null,
-            'bidang_usaha' => trim((string) ($input['bidang_usaha'] ?? '')) ?: null,
-            'tingkat_perusahaan' => trim((string) ($input['tingkat_perusahaan'] ?? '')) ?: null,
-            'whatsapp_mitra' => trim((string) ($input['whatsapp_mitra'] ?? '')) ?: null,
-            'no_telepon_mitra' => trim((string) ($input['no_telepon_mitra'] ?? '')) ?: null,
-            'alamat' => trim((string) ($input['mitra_alamat'] ?? '')) ?: null,
-            'nama_kontak_utama' => trim((string) ($input['mitra_nama_kontak_utama'] ?? '')) ?: null,
-            'jabatan_kontak_utama' => trim((string) ($input['mitra_jabatan_kontak_utama'] ?? '')) ?: null,
-            'email_kontak_utama' => trim((string) ($input['mitra_email_kontak_utama'] ?? '')) ?: null,
-            'telepon_kontak_utama' => trim((string) ($input['mitra_telepon_kontak_utama'] ?? '')) ?: null,
-        ], static fn ($value) => $value !== null);
-
-        // Mitra sudah dipilih dari daftar (mitra_id ada) — update record itu langsung.
         if ($mitraId) {
             $mitra = MasterMitra::find($mitraId);
             if ($mitra) {
-                // Tidak menimpa Data Kemitraan: hanya melengkapi yang kosong + PIC baru jadi kontak tambahan.
-                app(MasterMitraResolver::class)->lengkapiDariPengajuan($mitra, $payload);
                 return $mitra->id;
             }
         }
@@ -95,16 +80,8 @@ class PengajuanController extends Controller
             return $mitraId;
         }
 
-        // Nama mitra diketik manual — cari yang namanya sama (aturan MasterMitraResolver:
-        // abaikan huruf besar/kecil, spasi & tanda baca), kalau ada pakai itu, kalau tidak buat baru.
-        $mitra = app(MasterMitraResolver::class)->findByName($namaMitra);
-
-        if ($mitra) {
-            app(MasterMitraResolver::class)->lengkapiDariPengajuan($mitra, $payload);
-            return $mitra->id;
-        }
-
-        $mitra = MasterMitra::create(array_merge(['nama_mitra' => $namaMitra, 'aktif' => true], $payload));
+        $mitra = app(MasterMitraResolver::class)->findByName($namaMitra)
+            ?? MasterMitra::create(['nama_mitra' => $namaMitra, 'aktif' => true]);
 
         return $mitra->id;
     }
@@ -454,6 +431,35 @@ class PengajuanController extends Controller
             return;
         }
 
+        // Jenis dokumen yang tersimpan mengikuti jenis BERKAS FINAL yang dipilih admin (MoU / MoA / IA). Pengajuan
+        // multi-jenis (MoU + MoA) wajib: semua berkas final harus sudah diberi jenisnya sebelum ACC.
+        $jenisPengajuan = array_map('strtoupper', (array) $pengajuan->jenis_dokumen_list);
+        $jenisUtamaDokumen = strtoupper((string) ($pengajuan->jenis_dokumen ?? 'MOU'));
+        $jenisListDokumen = $pengajuan->jenis_dokumen_list ?: null;
+        $berkasFinal = $pengajuanFiles->where('peran_berkas', 'dokumen_final');
+        $jenisValid = ['MOU', 'MOA', 'IA'];
+
+        if (count($jenisPengajuan) > 1) {
+            $tanpaJenis = $berkasFinal->filter(fn ($f) => ! in_array(strtoupper((string) $f->jenis_dokumen), $jenisValid, true));
+            if ($tanpaJenis->isNotEmpty()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'acc_file_attachments' => 'Pilih jenis dokumen (MoU / MoA / IA) untuk setiap berkas final sebelum ACC: '
+                        .$tanpaJenis->pluck('nama_file')->implode(', ').'.',
+                ]);
+            }
+        }
+
+        // Urutan: jenis pilihan pengajuan dulu, lalu MoU, MoA, IA — jenis pertama jadi jenis utama dokumen.
+        $urutanJenis = array_values(array_unique(array_merge($jenisPengajuan, $jenisValid)));
+        $jenisBerkasFinal = array_values(array_filter(
+            $urutanJenis,
+            fn ($j) => $berkasFinal->contains(fn ($f) => strtoupper((string) $f->jenis_dokumen) === $j)
+        ));
+        if ($jenisBerkasFinal !== []) {
+            $jenisUtamaDokumen = $jenisBerkasFinal[0];
+            $jenisListDokumen = count($jenisBerkasFinal) > 1 ? $jenisBerkasFinal : null;
+        }
+
         $primaryPath = trim((string) ($pengajuanFiles->where('peran_berkas', 'dokumen_final')->first()?->path_file ?? ''));
         if ($primaryPath === '') {
             $primaryPath = trim((string) ($pengajuanFiles->first()?->path_file ?? ''));
@@ -493,7 +499,8 @@ class PengajuanController extends Controller
             'no_permohonan' => $nomorPengajuan,
             'nomor_dokumen' => $nomorDokumen,
             'nama_dokumen' => trim((string) ($pengajuan->judul_pengajuan ?? 'Dokumen Kerjasama ' . $nomorPengajuan)),
-            'jenis_dokumen' => strtoupper((string) ($pengajuan->jenis_dokumen ?? 'MOU')),
+            'jenis_dokumen' => $jenisUtamaDokumen,
+            'jenis_dokumen_list' => $jenisListDokumen,
             'judul_dokumen' => trim((string) ($pengajuan->judul_pengajuan ?? '')),
             'manfaat' => trim((string) ($pengajuan->manfaat ?? '')) ?: null,
             'luaran_kerja_sama' => trim((string) ($pengajuan->luaran_kerja_sama ?? '')) ?: null,
@@ -502,7 +509,7 @@ class PengajuanController extends Controller
             'tanggal_berakhir' => $pengajuan->tanggal_berakhir,
             'status_siklus' => 'active',
             'sumber_pengajuan_id' => $pengajuan->id,
-            'unit_prodi_id' => $pengajuan->unit_prodi_id,
+            'unit_prodi_ids' => $pengajuan->unitProdiIdsUrut() ?: null,
             'mitra_id' => $pengajuan->mitra_id,
             // Snapshot data pengajuan — tetap tersimpan meski record pengajuan dihapus.
             'snap_nama_mitra' => $snapNamaMitra !== '' ? $snapNamaMitra : null,
@@ -555,6 +562,7 @@ class PengajuanController extends Controller
                     ->map(fn ($file) => [
                         'dokumen_id' => $dokumen->id,
                         'peran_berkas' => $file->peran_berkas ?? 'lampiran',
+                        'jenis_dokumen' => $file->jenis_dokumen,
                         'nama_file' => (string) $file->nama_file,
                         'path_file' => (string) $file->path_file,
                         'mime_type' => $file->mime_type,
@@ -924,8 +932,12 @@ class PengajuanController extends Controller
                 $this->pastikanRujukanBerkasMilikPengajuan($path, $pathMilik);
             }
 
+            // Admin memilih jenis tiap berkas: MoU/MoA/IA = dokumen final; TOR/KAK/Proposal/Laporan Kegiatan/Lainnya
+            // = dokumen pendukung (tidak dihitung sebagai dokumen kerja sama).
+            $jenisBerkas = JenisDokumenSelection::untukBerkas($attachment['jenis_dokumen'] ?? null);
             $payload[] = [
-                'peran_berkas' => 'dokumen_final',
+                'peran_berkas' => JenisDokumenSelection::adalahPendukung($jenisBerkas) ? 'dokumen_pendukung' : 'dokumen_final',
+                'jenis_dokumen' => $jenisBerkas,
                 'nama_file' => $name,
                 'path_file' => $path,
                 'mime_type' => isset($attachment['type']) && is_string($attachment['type']) ? $attachment['type'] : null,
@@ -935,15 +947,19 @@ class PengajuanController extends Controller
         }
 
         if (! empty($payload)) {
-            // Replace existing dokumen_final entries so re-submissions don't accumulate duplicates.
-            $pengajuan->pengajuanFiles()->where('peran_berkas', 'dokumen_final')->delete();
+            // Ganti berkas hasil ACC sebelumnya supaya pengiriman ulang tidak menumpuk: dokumen final, dan dokumen
+            // pendukung yang diberi jenis lewat ACC. Dokumen pendukung dari pengusul (tanpa jenis) dibiarkan.
+            $pengajuan->pengajuanFiles()
+                ->where(fn ($q) => $q->where('peran_berkas', 'dokumen_final')
+                    ->orWhere(fn ($q2) => $q2->where('peran_berkas', 'dokumen_pendukung')->whereNotNull('jenis_dokumen')))
+                ->delete();
             $pengajuan->pengajuanFiles()->createMany($payload);
         }
     }
 
     private function shouldLoadPengajuanRelations(): bool
     {
-        return $this->hasPengajuanColumn('unit_prodi_id') && $this->hasPengajuanColumn('mitra_id');
+        return $this->hasPengajuanColumn('unit_prodi_ids') && $this->hasPengajuanColumn('mitra_id');
     }
 
     private function ensureAdmin(Request $request): ?Response
@@ -1187,7 +1203,7 @@ class PengajuanController extends Controller
             $hasDistribusiColumn = $this->hasPengajuanColumn('distribusi_user_ids');
 
             $scopedUnitProdiIds = null;
-            if (in_array($normalizedRole, ['internal', 'unit', 'jurusan', 'prodi'], true) && $user && $this->hasPengajuanColumn('unit_prodi_id')) {
+            if (in_array($normalizedRole, ['internal', 'unit', 'jurusan', 'prodi'], true) && $user && $this->hasPengajuanColumn('unit_prodi_ids')) {
                 $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
                 $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
             }
@@ -1214,9 +1230,9 @@ class PengajuanController extends Controller
                 'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra,nama_kontak_utama,jabatan_kontak_utama,email_kontak_utama,telepon_kontak_utama',
                 'userPengusul:id,name,username',
                 'dokumenFiles',
-                'dokumenKerjasama:id,no_permohonan,nomor_dokumen,file',
+                'dokumenKerjasama:id,sumber_pengajuan_id,no_permohonan,nomor_dokumen,file',
                 'dokumenKerjasama.dokumenFiles' => function ($q) {
-                    $q->select(['id', 'dokumen_id', 'nama_file', 'path_file', 'peran_berkas', 'mime_type', 'ukuran_file_bytes'])
+                    $q->select(['id', 'dokumen_id', 'nama_file', 'path_file', 'peran_berkas', 'jenis_dokumen', 'mime_type', 'ukuran_file_bytes'])
                       ->whereIn('peran_berkas', ['dokumen_final', 'dokumen_perpanjangan']);
                 },
             ]);
@@ -1320,9 +1336,9 @@ class PengajuanController extends Controller
                 'mitra:id,nama_mitra,kategori_mitra,tingkat_perusahaan,negara,alamat,email_mitra,whatsapp_mitra,no_telepon_mitra,nama_kontak_utama,jabatan_kontak_utama,email_kontak_utama,telepon_kontak_utama',
                 'userPengusul:id,name,username',
                 'dokumenFiles',
-                'dokumenKerjasama:id,no_permohonan,nomor_dokumen,file',
+                'dokumenKerjasama:id,sumber_pengajuan_id,no_permohonan,nomor_dokumen,file',
                 'dokumenKerjasama.dokumenFiles' => function ($q) {
-                    $q->select(['id', 'dokumen_id', 'nama_file', 'path_file', 'peran_berkas', 'mime_type', 'ukuran_file_bytes'])
+                    $q->select(['id', 'dokumen_id', 'nama_file', 'path_file', 'peran_berkas', 'jenis_dokumen', 'mime_type', 'ukuran_file_bytes'])
                       ->whereIn('peran_berkas', ['dokumen_final', 'dokumen_perpanjangan']);
                 },
             ]);
@@ -1392,6 +1408,7 @@ class PengajuanController extends Controller
             'manfaat' => ['nullable', 'string'],
             'luaran_kerja_sama' => ['nullable', 'string'],
             'jenis_dokumen' => ['required', 'in:MOU,MOA,IA,LAINNYA'],
+            ...JenisDokumenSelection::rules(),
             'kategori_pengajuan' => ['nullable', 'in:internal,eksternal'],
             'tanggal_mulai' => ['nullable', 'date'],
             'tanggal_berakhir' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
@@ -1401,6 +1418,7 @@ class PengajuanController extends Controller
         ]);
 
         $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
+        JenisDokumenSelection::apply($validated);
         $validated['ruang_lingkup_ids'] = $ruangLingkupIds;
         $unitProdiIds = UnitProdiSelection::extract($validated);
 
@@ -1637,6 +1655,7 @@ class PengajuanController extends Controller
             'manfaat' => ['nullable', 'string'],
             'luaran_kerja_sama' => ['nullable', 'string'],
             'jenis_dokumen' => ['sometimes', 'required', 'in:MOU,MOA,IA,LAINNYA'],
+            ...JenisDokumenSelection::rules(),
             'kategori_pengajuan' => ['nullable', 'in:internal,eksternal'],
             'tanggal_mulai' => ['nullable', 'date'],
             'tanggal_berakhir' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
@@ -1673,6 +1692,35 @@ class PengajuanController extends Controller
             }
         }
 
+        // Jenis tiap berkas final dipilih admin dari MoU / MoA / IA — dashboard menghitung dari jenis ini.
+        // Pengajuan yang memuat beberapa jenis (MoU + MoA) WAJIB memilihnya di setiap berkas; pengajuan satu
+        // jenis boleh mengosongkannya, tetapi kalau diisi harus salah satu dari ketiganya.
+        $pengajuanMultiJenis = count((array) (
+            array_key_exists('jenis_dokumen_list', $validated) ? $validated['jenis_dokumen_list'] : $pengajuan->jenis_dokumen_list
+        )) > 1;
+        $adaDokumenUtama = false;
+        $adaBerkas = false;
+        foreach ((array) $request->input('acc_file_attachments', []) as $index => $accFile) {
+            $adaBerkas = true;
+            $jenisDikirim = is_array($accFile) ? trim((string) ($accFile['jenis_dokumen'] ?? '')) : '';
+            $jenisBerkas = JenisDokumenSelection::untukBerkas($jenisDikirim);
+
+            if (($pengajuanMultiJenis && $jenisBerkas === null) || ($jenisDikirim !== '' && $jenisBerkas === null)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    "acc_file_attachments.{$index}.jenis_dokumen" => 'Pilih jenis dokumen untuk setiap berkas final (MoU / MoA / IA, atau TOR / KAK / Proposal / Laporan Kegiatan / Lainnya).',
+                ]);
+            }
+            if (! JenisDokumenSelection::adalahPendukung($jenisBerkas)) {
+                $adaDokumenUtama = true;
+            }
+        }
+        // Hanya berkas pendukung (TOR dst.) tanpa satu pun dokumen final tidak membentuk dokumen kerja sama.
+        if ($adaBerkas && ! $adaDokumenUtama) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'acc_file_attachments' => 'Unggah minimal satu dokumen final bertipe MoU, MoA, atau IA.',
+            ]);
+        }
+
         if (! $isAdmin) {
             // Field keputusan/administrasi tetap milik admin — diabaikan kalau dikirim pengusul.
             foreach (self::FIELD_KHUSUS_ADMIN as $field) {
@@ -1692,7 +1740,14 @@ class PengajuanController extends Controller
 
         if (array_key_exists('jenis_dokumen', $validated)) {
             $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
+            // Edit yang hanya mengirim ulang jenis utama yang SAMA tidak boleh menghapus daftar jenis
+            // (MoU + MoA); jenis utama yang berubah berarti daftar lama tidak berlaku lagi.
+            if (! array_key_exists('jenis_dokumen_list', $validated)
+                && ($pengajuan->jenis_dokumen_list[0] ?? null) !== $validated['jenis_dokumen']) {
+                $validated['jenis_dokumen_list'] = null;
+            }
         }
+        JenisDokumenSelection::apply($validated);
 
         $unitProdiIds = UnitProdiSelection::extract($validated, $pengajuan->unit_prodi_id);
 
@@ -1837,6 +1892,8 @@ class PengajuanController extends Controller
             });
         } catch (PengajuanKonflikException) {
             return $this->konflikResponse();
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            throw $exception;
         } catch (QueryException $exception) {
             return response([
                 'success' => false,

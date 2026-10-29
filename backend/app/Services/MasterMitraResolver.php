@@ -97,7 +97,7 @@ class MasterMitraResolver
      * Mitra dari registrasi eksternal: pakai mitra yang dipilih (mitraId) atau yang
      * namanya cocok; kalau sudah ada, HANYA kolom yang masih kosong yang diisi —
      * data yang sudah diisi admin tidak ditimpa, dan pendaftar dicatat sebagai
-     * kontak tambahan di kontak_mitra. Kalau belum ada, buat baru (pendaftar jadi
+     * kontak tambahan (kolom kontak_tambahan). Kalau belum ada, buat baru (pendaftar jadi
      * kontak utama).
      */
     public function resolveForRegistration(?int $mitraId, string $nama, array $data, ?int $userId = null): MasterMitra
@@ -131,17 +131,6 @@ class MasterMitraResolver
     }
 
     /**
-     * Data mitra dari sebuah pengajuan: TIDAK menimpa Data Kemitraan. Kolom yang masih kosong diisi,
-     * sedangkan PIC yang berbeda dari kontak utama dicatat sebagai kontak tambahan (tanpa dobel).
-     * Mengubah data yang sudah ada tetap lewat Data Kemitraan (admin).
-     */
-    public function lengkapiDariPengajuan(MasterMitra $mitra, array $data): void
-    {
-        $this->fillEmpty($mitra, $data);
-        $this->addKontak($mitra, $data, null);
-    }
-
-    /**
      * Catat pendaftar sebagai kontak mitra, kecuali dia sudah jadi kontak utama
      * (mis. baru saja mengisi kolom kontak utama yang kosong) atau emailnya sudah
      * tercatat sebagai kontak mitra ini.
@@ -158,7 +147,8 @@ class MasterMitraResolver
             return;
         }
 
-        if ($email !== '' && $mitra->kontak()->whereRaw('LOWER(email) = ?', [$email])->exists()) {
+        $kontakAda = collect($mitra->kontak);
+        if ($email !== '' && $kontakAda->contains(fn ($k) => strtolower(trim((string) ($k['email'] ?? ''))) === $email)) {
             return;
         }
 
@@ -166,12 +156,12 @@ class MasterMitraResolver
         if ($email === '' && $nama !== '') {
             $namaKecil = mb_strtolower($nama);
             if ($namaKecil === mb_strtolower(trim((string) $mitra->nama_kontak_utama))
-                || $mitra->kontak()->whereRaw('LOWER(nama) = ?', [$namaKecil])->exists()) {
+                || $kontakAda->contains(fn ($k) => mb_strtolower(trim((string) ($k['nama'] ?? ''))) === $namaKecil)) {
                 return;
             }
         }
 
-        $mitra->kontak()->create([
+        $mitra->tambahKontak([
             'user_id' => $userId,
             'nama' => $nama !== '' ? $nama : $email,
             'jabatan' => $data['jabatan_kontak_utama'] ?? null,

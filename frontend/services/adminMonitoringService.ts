@@ -122,6 +122,8 @@ export interface Kerjasama {
   namaMitra: string;
   noDokumen: string;
   jenis: 'MoU' | 'MoA' | 'IA';
+  // Semua jenis bila dokumen memuat beberapa jenis (mis. MoU + MoA); kosong = hanya `jenis`.
+  jenisList?: Array<'MoU' | 'MoA' | 'IA'>;
   status: StatusKerjasama;
   tanggalMulai: string;
   tanggalBerakhir: string;
@@ -519,6 +521,9 @@ export async function fetchMonitoringDataFromApi(options?: { forceRefresh?: bool
         namaMitra: namaMitra || '-',
         noDokumen: row.nomor_dokumen || row.pengajuan?.nomor_pengajuan || `DOK-${row.id}`,
         jenis: (row.jenis_dokumen?.toUpperCase() === 'MOA' ? 'MoA' : row.jenis_dokumen?.toUpperCase() === 'IA' ? 'IA' : 'MoU'),
+        jenisList: Array.isArray(row.jenis_dokumen_list) && row.jenis_dokumen_list.length > 1
+          ? Array.from(new Set(row.jenis_dokumen_list.map((j: string) => (j.toUpperCase() === 'MOA' ? 'MoA' : j.toUpperCase() === 'IA' ? 'IA' : 'MoU')))) as Array<'MoU' | 'MoA' | 'IA'>
+          : undefined,
         status: status,
         tanggalMulai: formatDisplayDate(row.tanggal_mulai),
         tanggalBerakhir: formatDisplayDate(row.tanggal_berakhir),
@@ -635,7 +640,8 @@ export function getMonitoringYearOptions(items: Kerjasama[]): number[] {
 // Filter tambahan (jenis, unit/prodi, jenis mitra, tingkat perusahaan, tahun) di atas filter tab status.
 export function filterMonitoringData(items: Kerjasama[], filters: MonitoringFilterOptions): Kerjasama[] {
   return items.filter((item) => {
-    const matchesJenis = filters.filterJenis === 'Semua Jenis' || item.jenis === filters.filterJenis;
+    // Dokumen gabungan (MoU + MoA) ikut tampil di filter kedua jenisnya.
+    const matchesJenis = filters.filterJenis === 'Semua Jenis' || (item.jenisList ?? [item.jenis]).some((j) => j === filters.filterJenis);
     const matchesUnit = filters.filterUnit === 'Semua Jurusan/Prodi/Unit' || item.unit === filters.filterUnit;
     const matchesJenisMitra = filters.filterJenisMitra === 'Semua Jenis Mitra' || item.jenisMitra === filters.filterJenisMitra;
     const matchesTingkat =

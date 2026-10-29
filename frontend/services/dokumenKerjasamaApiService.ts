@@ -1,4 +1,5 @@
 import { apiRequest, API_BASE_URL } from '@/lib/api';
+import { jenisBerkasKeApi, labelJenisBerkas } from '@/lib/jenisBerkas';
 import { getCachedMasterRuangLingkup, getMasterRuangLingkup } from '@/services/masterRuangLingkupService';
 
 function getBackendOrigin(): string {
@@ -47,6 +48,8 @@ type ApiDokumenRow = {
   nomor_dokumen?: string | null;
   nama_dokumen?: string | null;
   jenis_dokumen: string;
+  // Semua jenis bila dokumen memuat beberapa jenis sekaligus (mis. MoU + MoA); null = hanya jenis_dokumen.
+  jenis_dokumen_list?: string[] | null;
   tanggal_mulai?: string | null;
   tanggal_berakhir?: string | null;
   // Kapan baris dokumen_kerjasama ini benar-benar dibuat di sistem — dipakai untuk urutkan
@@ -136,10 +139,17 @@ type ApiDokumenRow = {
     nama_file: string;
     path_file: string;
     peran_berkas?: string | null;
+    // Berkas ini MoU atau MoA (bila dokumennya memuat beberapa jenis); null = tidak dibedakan.
+    jenis_dokumen?: string | null;
     mime_type?: string | null;
     ukuran_file_bytes?: number | null;
   }> | null;
 };
+
+// Semua jenis bila dokumen memuat beberapa jenis sekaligus (mis. MoU + MoA); undefined = hanya jenis utama.
+function mapJenisList(list?: string[] | null): Array<'MoA' | 'MoU' | 'IA' | 'Lainnya'> | undefined {
+  return Array.isArray(list) && list.length > 1 ? Array.from(new Set(list.map((j) => mapJenis(j)))) : undefined;
+}
 
 function mapJenis(value?: string | null): 'MoA' | 'MoU' | 'IA' | 'Lainnya' {
   const upper = (value || '').toUpperCase();
@@ -241,6 +251,9 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       .filter((f) => f.peran_berkas === 'dokumen_pendukung')
       .map((f) => ({
         nama: f.nama_file,
+        id: f.id,
+        ids: [f.id],
+        jenisDokumen: labelJenisBerkas(f.jenis_dokumen),
         jenisBerkas: 'pendukung' as const,
         url: buildLegacyFileUrl(f.path_file || ''),
         // Dipakai untuk mengunduh dengan nama ASLI berkasnya (lewat downloadFileWithAuth) —
@@ -251,6 +264,13 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
         tanggal: toDisplayDate(tanggalMulaiRaw),
       }));
     if (finalFiles.length > 0) {
+      // Baris dengan path yang sama hanya ditampilkan sekali; semua id-nya dikumpulkan supaya tombol
+      // hapus membuang seluruh barisnya (kalau tidak, duplikatnya muncul lagi setelah dimuat ulang).
+      const idsPerPath = new Map<string, number[]>();
+      for (const f of finalFiles) {
+        const key = f.path_file || f.nama_file;
+        idsPerPath.set(key, [...(idsPerPath.get(key) ?? []), f.id]);
+      }
       const seenPaths = new Set<string>();
       dokumenTerkait = finalFiles
         .filter((f) => {
@@ -266,6 +286,9 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
           ? `${Math.round(f.ukuran_file_bytes / 1024)} KB`
           : 'Ukuran tidak tersedia';
         return {
+          id: f.id,
+          ids: idsPerPath.get(f.path_file || f.nama_file) ?? [f.id],
+          jenisDokumen: labelJenisBerkas(f.jenis_dokumen),
           nama: f.nama_file,
           jenisBerkas: jenisBerkasDariPeran(f.peran_berkas),
           url: fileUrl,
@@ -360,9 +383,12 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       // Prioritas bukti dokumen: dokumen_final (dokumen_files) → file (legacy) → laporan pelaksanaan (PDF)
       const jenisUpper = (row.jenis_dokumen || '').toUpperCase();
       const primaryLink = dokumenTerkait.length > 0 ? dokumenTerkait[0].url : null;
-      const buktiMou = jenisUpper === 'MOU' ? primaryLink : null;
-      const buktiMoaPks = jenisUpper === 'MOA' ? primaryLink : null;
-      const buktiIa = jenisUpper === 'IA' ? primaryLink : null;
+      // Dokumen gabungan (MoU + MoA): tiap jenis memakai berkas finalnya sendiri bila berkasnya sudah
+      // ditandai; kalau belum, jenis utama yang memakai berkas pertama (perilaku lama).
+      const linkJenis = (jenis: 'MoU' | 'MoA' | 'IA') => dokumenTerkait.find((d: any) => d.jenisDokumen === jenis)?.url ?? null;
+      const buktiMou = linkJenis('MoU') ?? (jenisUpper === 'MOU' ? primaryLink : null);
+      const buktiMoaPks = linkJenis('MoA') ?? (jenisUpper === 'MOA' ? primaryLink : null);
+      const buktiIa = linkJenis('IA') ?? (jenisUpper === 'IA' ? primaryLink : null);
 
       return {
       id: row.id,
@@ -370,6 +396,9 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       noDokumen: nomor,
       namaMitra: namaMitra || '-',
       jenis: mapJenis(row.jenis_dokumen),
+      jenisList: Array.isArray(row.jenis_dokumen_list) && row.jenis_dokumen_list.length > 1
+        ? Array.from(new Set(row.jenis_dokumen_list.map(mapJenis)))
+        : undefined,
       unit: unitItems.length > 0 ? unitItems.map((item) => item.nama).join(', ') : '-',
       kategoriUnit,
       tanggalMulai: toDisplayDate(tanggalMulaiRaw),
@@ -561,16 +590,34 @@ export async function uploadDokumenFile(
   id: number,
   blob: Blob,
   fileName: string,
-  peranBerkas?: 'dokumen_final' | 'dokumen_pendukung' | 'bukti_tidak_diperpanjang'
+  peranBerkas?: 'dokumen_final' | 'dokumen_pendukung' | 'bukti_tidak_diperpanjang',
+  // tambah: berkas baru HANYA ditambahkan (berkas lama sejenis dibiarkan). Tanpa ini, server mengganti
+  // SEMUA berkas berperan sama dengan upload ini.
+  options?: { tambah?: boolean; jenisDokumen?: string }
 ): Promise<void> {
   const formData = new FormData();
   formData.append('file', blob, fileName);
   if (peranBerkas) {
     formData.append('peran_berkas', peranBerkas);
   }
+  if (options?.tambah) {
+    formData.append('tambah', '1');
+  }
+  // Jenis berkas (MoU/MoA) — wajib untuk berkas final dokumen yang memuat beberapa jenis.
+  if (options?.jenisDokumen) {
+    formData.append('jenis_dokumen', jenisBerkasKeApi(options.jenisDokumen) ?? '');
+  }
   await apiRequest<unknown>(`/dokumen-kerjasama/${id}/upload-file`, {
     method: 'POST',
     body: formData,
+  });
+  rekapDokumenCache = null;
+}
+
+// Hapus SATU berkas dokumen (tombol silang di form edit Rekap Data); berkas lain tidak tersentuh.
+export async function deleteDokumenFileById(dokumenId: number, fileId: number): Promise<void> {
+  await apiRequest<unknown>(`/dokumen-kerjasama/${dokumenId}/documents/${fileId}`, {
+    method: 'DELETE',
   });
   rekapDokumenCache = null;
 }
@@ -601,6 +648,7 @@ export type TrashDokumenApiItem = {
   noDokumen: string;
   namaMitra: string;
   jenis: 'MoA' | 'MoU' | 'IA' | 'Lainnya';
+  jenisList?: Array<'MoA' | 'MoU' | 'IA' | 'Lainnya'>;
   status: 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
   tanggalMulai: string;
   berlakuHingga: string;
@@ -688,6 +736,7 @@ export async function fetchTrashDokumenFromApi(): Promise<TrashDokumenApiItem[]>
       noDokumen: nomor,
       namaMitra,
       jenis: mapJenis(row.jenis_dokumen),
+      jenisList: mapJenisList(row.jenis_dokumen_list),
       status: mapStatus(row),
       tanggalMulai: toDisplayDate(row.tanggal_mulai),
       berlakuHingga: toDisplayDate(row.tanggal_berakhir),
@@ -725,6 +774,7 @@ export type ArsipDokumenApiItem = {
   noDokumen: string;
   namaMitra: string;
   jenis: 'MoA' | 'MoU' | 'IA' | 'Lainnya';
+  jenisList?: Array<'MoA' | 'MoU' | 'IA' | 'Lainnya'>;
   // Status yang SAMA dengan Rekap Data/Monitoring (dari status_efektif backend) — Arsip
   // Dokumen HARUS baca ini, bukan menghitung ulang sendiri dari tanggal, supaya jumlah
   // "Kadaluarsa" konsisten di semua halaman.
@@ -756,6 +806,7 @@ export async function fetchArsipDokumenFromApi(): Promise<ArsipDokumenApiItem[]>
       // Sudah difilter di atas ke 'Akan Berakhir' | 'Kadaluarsa' saja.
       status: item.status as 'Akan Berakhir' | 'Kadaluarsa',
       jenis: item.jenis,
+      jenisList: item.jenisList,
       tanggalMulai: item.tanggalMulai,
       berlakuHingga: item.berlakuHingga,
       alasanArsip: (item as any).alasanArsip || null,

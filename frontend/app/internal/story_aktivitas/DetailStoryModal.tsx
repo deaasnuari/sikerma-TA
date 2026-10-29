@@ -1,5 +1,7 @@
 'use client';
 
+import JenisBadges from '@/components/JenisBadges';
+
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -249,9 +251,7 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
         <div className="grid grid-cols-2 gap-4 border-t border-gray-100 px-6 py-4 md:grid-cols-4">
           <div>
             <p className="text-[10.5px] text-gray-500">Jenis Dokumen</p>
-            <span className={`mt-1 inline-block rounded-md px-2 py-0.5 text-[10px] font-bold ${jenisBadgeMap[story.jenis]}`}>
-              {story.jenis}
-            </span>
+            <JenisBadges jenis={story.jenisList} warna={jenisBadgeMap} className="mt-1 inline-block rounded-md px-2 py-0.5 text-[10px] font-bold" />
           </div>
           <div>
             <p className="text-[10.5px] text-gray-500">Kategori Mitra</p>
@@ -379,6 +379,7 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
               key={d.id}
               noDokumen={d.noDokumen}
               jenis={d.jenis}
+              jenisList={d.jenisList}
               status={d.status}
               diajukanPada={d.diajukanPada}
               tanggalMulai={d.tanggalMulaiRaw}

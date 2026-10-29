@@ -300,35 +300,41 @@ class MasterMitraTest extends TestCase
     public function test_admin_dapat_ubah_tambah_dan_hapus_kontak_tambahan(): void
     {
         $mitra = $this->buatMitra();
-        $diubah = $mitra->kontak()->create(['nama' => 'Budi', 'email' => 'budi@x.id']);
-        $dihapus = $mitra->kontak()->create(['nama' => 'Citra', 'email' => 'citra@x.id']);
+        $diubah = $mitra->tambahKontak(['nama' => 'Budi', 'email' => 'budi@x.id']);
+        $dihapus = $mitra->tambahKontak(['nama' => 'Citra', 'email' => 'citra@x.id']);
         $mitraLain = $this->buatMitra(['nama_mitra' => 'CV Lain']);
-        $milikLain = $mitraLain->kontak()->create(['nama' => 'Dodi']);
+        $mitraLain->tambahKontak(['nama' => 'Dodi']);
+        // id kontak 99 tidak dikenal di mitra ini: diperlakukan sebagai kontak baru.
+        $idAsing = 99;
 
         $this->actingAs($this->admin())->putJson("/api/master/mitra/{$mitra->id}", [
             'kontak' => [
-                ['id' => $diubah->id, 'nama' => 'Budi Santoso', 'jabatan' => 'HRD', 'email' => 'BUDI@x.id', 'telepon' => '0811'],
+                ['id' => $diubah['id'], 'nama' => 'Budi Santoso', 'jabatan' => 'HRD', 'email' => 'BUDI@x.id', 'telepon' => '0811'],
                 ['nama' => 'Eka', 'email' => 'eka@x.id'],
-                // id milik mitra lain tidak boleh ikut terubah; diperlakukan sebagai kontak baru.
-                ['id' => $milikLain->id, 'nama' => 'Fani'],
+                // id yang tidak dikenal di mitra ini diperlakukan sebagai kontak baru.
+                ['id' => $idAsing, 'nama' => 'Fani'],
             ],
         ])->assertOk()->assertJsonCount(3, 'data.kontak');
 
-        $this->assertDatabaseHas('kontak_mitra', ['id' => $diubah->id, 'nama' => 'Budi Santoso', 'jabatan' => 'HRD', 'email' => 'budi@x.id']);
-        $this->assertDatabaseMissing('kontak_mitra', ['id' => $dihapus->id]);
-        $this->assertDatabaseHas('kontak_mitra', ['mitra_id' => $mitra->id, 'nama' => 'Eka']);
-        $this->assertDatabaseHas('kontak_mitra', ['id' => $milikLain->id, 'mitra_id' => $mitraLain->id, 'nama' => 'Dodi']);
-        $this->assertDatabaseHas('kontak_mitra', ['mitra_id' => $mitra->id, 'nama' => 'Fani']);
+        $kontak = collect($mitra->fresh()->kontak);
+        $budi = $kontak->firstWhere('id', $diubah['id']);
+        $this->assertSame(['Budi Santoso', 'HRD', 'budi@x.id'], [$budi['nama'], $budi['jabatan'], $budi['email']], 'id lama dipertahankan dan datanya diubah');
+        $this->assertNull($kontak->firstWhere('id', $dihapus['id']), 'yang tidak ada di daftar dibuang');
+        $this->assertNotNull($kontak->firstWhere('nama', 'Eka'));
+        $this->assertNotNull($kontak->firstWhere('nama', 'Fani'));
+        $this->assertCount(3, $kontak->pluck('id')->unique(), 'id kontak unik');
+        // Kontak mitra lain tidak tersentuh.
+        $this->assertSame(['Dodi'], collect($mitraLain->fresh()->kontak)->pluck('nama')->all());
     }
 
     public function test_update_tanpa_field_kontak_tidak_mengubah_kontak_tambahan(): void
     {
         $mitra = $this->buatMitra();
-        $mitra->kontak()->create(['nama' => 'Budi']);
+        $mitra->tambahKontak(['nama' => 'Budi']);
 
         $this->actingAs($this->admin())->putJson("/api/master/mitra/{$mitra->id}", ['negara' => 'Jepang'])->assertOk();
 
-        $this->assertSame(1, $mitra->kontak()->count());
+        $this->assertCount(1, $mitra->fresh()->kontak);
     }
 
     public function test_kontak_tambahan_wajib_punya_nama(): void

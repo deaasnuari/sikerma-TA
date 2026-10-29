@@ -1,5 +1,7 @@
 'use client';
 
+import JenisBadges from '@/components/JenisBadges';
+
 import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
@@ -159,9 +161,7 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
         <div className="grid grid-cols-2 gap-4 border-t border-gray-100 px-6 py-4 md:grid-cols-4">
           <div>
             <p className="text-[10.5px] text-gray-500">Jenis Dokumen</p>
-            <span className={`mt-1 inline-block rounded-md px-2 py-0.5 text-[10px] font-bold ${jenisBadgeMap[story.jenis]}`}>
-              {story.jenis}
-            </span>
+            <JenisBadges jenis={story.jenisList} warna={jenisBadgeMap} className="mt-1 inline-block rounded-md px-2 py-0.5 text-[10px] font-bold" />
           </div>
           <div>
             <p className="text-[10.5px] text-gray-500">Kategori Mitra</p>
@@ -256,9 +256,11 @@ export default function DetailStoryModal({ story, onBack }: DetailStoryModalProp
                   <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${kerjasamaStatusBadge[d.status]}`}>
                     {d.status}
                   </span>
-                  <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600">
-                    {d.jenis}
-                  </span>
+                  {(d.jenisList?.length ? d.jenisList : [d.jenis]).map((jenis) => (
+                    <span key={jenis} className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600">
+                      {jenis}
+                    </span>
+                  ))}
                 </div>
               </div>
               <p className="mt-1 text-[10px] text-gray-500">

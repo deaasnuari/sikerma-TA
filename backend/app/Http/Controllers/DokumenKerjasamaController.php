@@ -231,7 +231,7 @@ class DokumenKerjasamaController extends Controller
             // spesifik) ikut boleh lihat dokumen kerjasama dalam cakupan
             // jurusan/prodi/unit yang dia pimpin, selain dokumen milik sendiri.
             $scopedUnitProdiIds = null;
-            if ($user && Schema::hasColumn('dokumen_kerjasama', 'unit_prodi_id')) {
+            if ($user && Schema::hasColumn('dokumen_kerjasama', 'unit_prodi_ids')) {
                 $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
                 $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
             }
@@ -270,7 +270,9 @@ class DokumenKerjasamaController extends Controller
         }
 
         if ($request->filled('jenis_dokumen')) {
-            $query->where('jenis_dokumen', strtoupper($request->string('jenis_dokumen')->toString()));
+            $jenisFilter = strtoupper($request->string('jenis_dokumen')->toString());
+            // Dokumen gabungan (MoU + MoA) ikut tampil di filter kedua jenisnya.
+            $query->where(fn ($q) => $q->where('jenis_dokumen', $jenisFilter)->orWhereJsonContains('jenis_dokumen_list', $jenisFilter));
         }
 
         if ($request->filled('search')) {
@@ -457,6 +459,7 @@ class DokumenKerjasamaController extends Controller
                 return [
                     'id' => $f->id,
                     'peran_berkas' => $f->peran_berkas,
+                    'jenis_dokumen' => $f->jenis_dokumen,
                     'nama_file' => $f->nama_file,
                     'mime_type' => $f->mime_type,
                     'ukuran_file_bytes' => $f->ukuran_file_bytes,
@@ -838,7 +841,7 @@ class DokumenKerjasamaController extends Controller
                 'unitProdi:id,nama',
                 'unitProdiItems:id,nama',
             ])
-            ->select('id', 'jenis_dokumen', 'snap_nama_mitra', 'mitra_id', 'unit_prodi_id', 'ruang_lingkup_ids', 'keterangan')
+            ->select('id', 'jenis_dokumen', 'jenis_dokumen_list', 'snap_nama_mitra', 'mitra_id', 'unit_prodi_ids', 'ruang_lingkup_ids', 'keterangan')
             ->whereNull('dihapus_admin_pada')
             ->whereNull('dihapus_user_pada');
 
@@ -865,11 +868,17 @@ class DokumenKerjasamaController extends Controller
                 ? 'Dalam Negeri'
                 : 'Luar Negeri';
 
-            $jenis = match (strtoupper((string) ($row->jenis_dokumen ?? ''))) {
+            $labelJenis = fn ($kode) => match (strtoupper((string) $kode)) {
                 'MOA'    => 'MoA',
                 'IA'     => 'IA',
                 default  => 'MoU',
             };
+            $jenis = $labelJenis($row->jenis_dokumen);
+            // Dokumen yang memuat beberapa jenis (MoU + MoA) terhitung di SETIAP jenisnya.
+            $jenisList = array_values(array_unique(array_map(
+                $labelJenis,
+                is_array($row->jenis_dokumen_list) && $row->jenis_dokumen_list !== [] ? $row->jenis_dokumen_list : [$row->jenis_dokumen]
+            )));
 
             $bidangIds = is_array($row->ruang_lingkup_ids) ? $row->ruang_lingkup_ids : [];
             $bidang = implode(', ', array_filter(
@@ -882,6 +891,7 @@ class DokumenKerjasamaController extends Controller
                 'nama'    => $namaMitra,
                 'bidang'  => $bidang,
                 'jenis'   => $jenis,
+                'jenis_list' => $jenisList,
                 'unit'    => $unit,
                 'wilayah' => $wilayah,
             ];
@@ -1146,20 +1156,42 @@ class DokumenKerjasamaController extends Controller
             // 'dokumen_pendukung' dipakai buat TOR/KAK/Proposal (peran terpisah dari dokumen utama
             // 'dokumen_final') supaya upload keduanya tidak saling timpa — lihat delete-by-peran di bawah.
             'peran_berkas' => ['nullable', 'in:dokumen_final,dokumen_pendukung,bukti_tidak_diperpanjang'],
+            // tambah=1: berkas baru HANYA ditambahkan, berkas lama dengan peran yang sama dibiarkan (yang
+            // mau dibuang dihapus satu per satu lewat DELETE .../documents/{dokumen_file}). Tanpa ini
+            // perilaku lama berlaku: semua berkas berperan sama diganti oleh upload ini.
+            'tambah' => ['nullable', 'boolean'],
+            // Jenis berkas (MoU/MoA) — WAJIB untuk berkas final dokumen yang memuat beberapa jenis.
+            'jenis_dokumen' => ['nullable', 'string', 'max:30'],
         ]);
 
         $peranBerkas = $validated['peran_berkas'] ?? 'dokumen_final';
+        $jenisBerkas = \App\Support\JenisDokumenSelection::untukBerkas($validated['jenis_dokumen'] ?? null);
+        if (trim((string) ($validated['jenis_dokumen'] ?? '')) !== '' && $jenisBerkas === null) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'jenis_dokumen' => 'Jenis dokumen tidak dikenal (MoU / MoA / IA, atau TOR / KAK / Proposal / Laporan Kegiatan / Lainnya).',
+            ]);
+        }
+        $jenisDokumenList = array_map('strtoupper', (array) $dokumen_kerjasama->jenis_dokumen_list);
+        if ($peranBerkas === 'dokumen_final' && count($jenisDokumenList) > 1
+            && ($jenisBerkas === null || \App\Support\JenisDokumenSelection::adalahPendukung($jenisBerkas))) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'jenis_dokumen' => 'Pilih jenis dokumen (MoU / MoA / IA) untuk berkas final ini.',
+            ]);
+        }
         $uploadedFile = $request->file('file');
         $path = $uploadedFile->store('pengajuan/' . now()->format('Y/m'), 'public');
 
-        DokumenFile::query()
-            ->where('dokumen_id', $dokumen_kerjasama->id)
-            ->where('peran_berkas', $peranBerkas)
-            ->delete();
+        if (! $request->boolean('tambah')) {
+            DokumenFile::query()
+                ->where('dokumen_id', $dokumen_kerjasama->id)
+                ->where('peran_berkas', $peranBerkas)
+                ->delete();
+        }
 
         $dokumenFile = DokumenFile::create([
             'dokumen_id'           => $dokumen_kerjasama->id,
             'peran_berkas'         => $peranBerkas,
+            'jenis_dokumen'        => $jenisBerkas,
             'nama_file'            => $uploadedFile->getClientOriginalName(),
             'path_file'            => $path,
             'mime_type'            => $uploadedFile->getMimeType(),
@@ -1171,6 +1203,47 @@ class DokumenKerjasamaController extends Controller
             'success' => true,
             'data'    => $dokumenFile,
             'message' => 'File uploaded successfully',
+        ]);
+    }
+
+    /**
+     * Hapus SATU berkas dokumen (tombol silang di tiap berkas pada form edit Rekap Data), tanpa
+     * menyentuh berkas lain. Hanya baris dokumen_file yang dihapus; file fisiknya dibiarkan karena
+     * path yang sama bisa masih dipakai berkas pengajuan asalnya.
+     */
+    public function destroyDocument(Request $request, DokumenKerjasama $dokumen_kerjasama, DokumenFile $dokumen_file): Response
+    {
+        if ($response = $this->ensureAdmin($request)) {
+            return $response;
+        }
+
+        if ((int) $dokumen_file->dokumen_id !== (int) $dokumen_kerjasama->id) {
+            return response([
+                'success' => false,
+                'message' => 'Berkas tidak ditemukan pada dokumen ini.',
+            ], 404);
+        }
+
+        $pathDihapus = (string) $dokumen_file->path_file;
+        $dokumen_file->delete();
+
+        // Kolom 'file' menunjuk berkas utama; kalau yang dihapus justru berkas itu, arahkan ke berkas
+        // yang tersisa (dokumen final lebih dulu) supaya tautan utama di Rekap Data tidak patah.
+        if ((string) $dokumen_kerjasama->file === $pathDihapus) {
+            $pengganti = DokumenFile::query()
+                ->where('dokumen_id', $dokumen_kerjasama->id)
+                ->orderByRaw("CASE WHEN peran_berkas = 'dokumen_final' THEN 0 ELSE 1 END")
+                ->orderBy('id')
+                ->value('path_file');
+            if ($pengganti) {
+                $dokumen_kerjasama->update(['file' => $pengganti]);
+            }
+        }
+
+        return response([
+            'success' => true,
+            'data' => null,
+            'message' => 'Berkas dihapus',
         ]);
     }
 

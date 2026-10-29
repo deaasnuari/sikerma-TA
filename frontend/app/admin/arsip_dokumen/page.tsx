@@ -1,5 +1,7 @@
 'use client';
 
+import JenisBadges from '@/components/JenisBadges';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -23,6 +25,7 @@ interface ArsipDokumen {
   noDokumen: string;
   namaMitra: string;
   jenis: 'MoA' | 'MoU' | 'IA' | 'Lainnya';
+  jenisList?: Array<'MoA' | 'MoU' | 'IA' | 'Lainnya'>;
   // Status dari backend (status_efektif) — sumber yang sama dengan Rekap Data & Monitoring,
   // supaya jumlah "Kadaluarsa" konsisten di semua halaman (lihat getDocumentStatus di bawah).
   status: 'Akan Berakhir' | 'Kadaluarsa';
@@ -103,6 +106,7 @@ export default function ArsipDokumenPage() {
             noDokumen: item.noDokumen,
             namaMitra: item.namaMitra,
             jenis: item.jenis,
+            jenisList: item.jenisList,
             status: item.status,
             tanggalMulai: item.tanggalMulai,
             berlakuHingga: item.berlakuHingga,
@@ -167,7 +171,7 @@ export default function ArsipDokumenPage() {
       index + 1,
       item.noDokumen,
       item.namaMitra,
-      item.jenis,
+      (item.jenisList ?? [item.jenis]).join(' + '),
       item.tanggalMulai,
       item.berlakuHingga,
       item.alasanArsip || '-',
@@ -359,9 +363,7 @@ export default function ArsipDokumenPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${jenisColor[item.jenis]}`}>
-                        {item.jenis}
-                      </span>
+                      <JenisBadges jenis={item.jenisList ?? [item.jenis]} warna={jenisColor} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold" />
                     </td>
                     <td className="py-3 px-4 text-gray-600 whitespace-nowrap text-[10px]">{item.tanggalMulai}</td>
                     <td className="py-3 px-4 whitespace-nowrap text-[10px] font-semibold">

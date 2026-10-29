@@ -965,7 +965,9 @@ export default function InternalAjukanKerjasamaForm({
         return;
       }
 
-      for (const jenisKerjasama of selectedJenisKerjasama) {
+      // Satu form = SATU pengajuan, walau memilih beberapa jenis (mis. MoU + MoA sekaligus): jenis pertama
+      // jadi jenis utama, daftar lengkapnya ikut dikirim. Dulu dibuat satu pengajuan per jenis (data ganda).
+      {
         await submitInternalPengajuan({
           judulPengajuan: formData.judulKerjasama,
           mitraId: selectedMitraId ?? undefined,
@@ -987,7 +989,8 @@ export default function InternalAjukanKerjasamaForm({
           mitraKategori: formData.jenisMitra.trim() || undefined,
           mitraBidangUsaha: formData.bidangUsaha.trim() || undefined,
           mitraTingkatPerusahaan: formData.tingkatPerusahaan.trim() || undefined,
-          jenisDokumen: jenisKerjasama,
+          jenisDokumen: selectedJenisKerjasama[0],
+          jenisDokumenList: selectedJenisKerjasama,
           namaUnitProdi: formData.unitPelaksana,
           unitProdiId: unitProdiIdsToSend[0] ?? null,
           unitProdiIds: unitProdiIdsToSend,

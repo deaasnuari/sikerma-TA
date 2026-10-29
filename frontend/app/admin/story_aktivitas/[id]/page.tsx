@@ -1,5 +1,7 @@
 'use client';
 
+import { daftarJenisDokumen } from '@/services/adminPengajuanService';
+
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -698,9 +700,11 @@ export default function DetailStoryAktivitasPage() {
                       {statusDok}
                     </span>
                   )}
-                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-                    {pengajuan.jenisDokumen}
-                  </span>
+                  {daftarJenisDokumen(pengajuan).map((jenis) => (
+                    <span key={jenis} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+                      {jenis}
+                    </span>
+                  ))}
                 </div>
               </div>
 

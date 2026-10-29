@@ -24,6 +24,9 @@ function invalidateUserScopedCaches() {
   invalidateMonitoringCache();
 }
 
+// Area yang wajib login (folder di app/). Selain ini (beranda, login, register) publik.
+const PROTECTED_PREFIXES = ['/admin', '/internal', '/eksternal', '/pimpinan'];
+
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
@@ -51,7 +54,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (status === 'invalid') {
         clearStoredUser();
         setUser(null);
-        router.replace('/login?reason=expired');
+        // Sesi habis hanya perlu dikabarkan kalau pengunjung sedang di area yang butuh login.
+        // Di beranda/login/registrasi (publik) cukup bersihkan profil basi, jangan dilempar ke login.
+        if (PROTECTED_PREFIXES.some((prefix) => window.location.pathname.startsWith(prefix))) {
+          router.replace('/login?reason=expired');
+        }
       } else {
         setUser(storedUser);
       }

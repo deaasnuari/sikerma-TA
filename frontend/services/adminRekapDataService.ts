@@ -1,5 +1,8 @@
 import { addAdminNotification } from '@/services/adminService';
 
+// Hitungan Komposisi Dokumen (MoU/MoA/IA) dipakai bersama oleh semua dashboard — lihat lib/hitungJenisDokumen.ts.
+export { hitungJenisDokumen, persenJenis, type RingkasanJenis } from '@/lib/hitungJenisDokumen';
+
 // Status dokumen kerjasama yang ditampilkan di rekap data.
 export type RekapStatus = 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
 export type RekapJenis = 'MoA' | 'MoU' | 'IA' | 'Lainnya';
@@ -8,6 +11,11 @@ export type RekapJenis = 'MoA' | 'MoU' | 'IA' | 'Lainnya';
 export type JenisBerkas = 'final' | 'pengajuan' | 'perpanjangan' | 'pendukung';
 
 export interface DokumenTerkait {
+  // id baris dokumen_file (kosong untuk berkas lama dari kolom 'file'); ids = semua baris berpath sama.
+  id?: number;
+  ids?: number[];
+  // Jenis berkas: MoU/MoA/IA (dokumen kerja sama) atau TOR/KAK/Proposal/Laporan Kegiatan/Lainnya (pendukung); kosong = tidak dibedakan.
+  jenisDokumen?: string;
   nama: string;
   // Asal berkas: dokumen final (hasil ACC / dokumen utama), berkas pengajuan awal, atau dokumen perpanjangan.
   jenisBerkas?: JenisBerkas;
@@ -25,7 +33,9 @@ export interface RekapDokumen {
   mitraId?: number;
   noDokumen: string;
   namaMitra: string;
+  // Jenis UTAMA dokumen. Bila satu dokumen memuat beberapa jenis (mis. MoU + MoA) semuanya ada di jenisList.
   jenis: RekapJenis;
+  jenisList?: RekapJenis[];
   unit: string;
   kategoriUnit?: 'Jurusan' | 'Unit';
   tanggalMulai: string;
@@ -143,6 +153,14 @@ export interface DokumenData {
   ruangLingkupIds?: number[];
   dokumenTerkait?: DokumenTerkait[];
   dokumenPendukung?: DokumenTerkait[];
+  // id dokumen_file yang ditandai dihapus lewat tombol silang di form edit; dihapus satu per satu saat disimpan.
+  hapusFileIds?: number[];
+  // Semua jenis dokumen bila dokumennya memuat beberapa jenis (MoU + MoA); berkas final baru wajib diberi salah satunya.
+  jenisList?: string[];
+  // Jenis (MoU/MoA/IA) untuk berkas final yang baru dipilih di form edit.
+  jenisBerkasBaru?: string;
+  // Jenis (TOR/KAK/Proposal/Laporan Kegiatan/Lainnya) untuk dokumen pendukung yang baru dipilih; boleh kosong.
+  jenisPendukungBaru?: string;
   judulKegiatan?: string;
   manfaatKerjasama?: string;
   luaranKerjaSama?: string;
@@ -559,7 +577,8 @@ export function getAvailableYears(items: RekapDokumen[]): number[] {
 // Filter rekap data berdasarkan jenis, unit, status, tahun, dan pencarian nama/nomor dokumen.
 export function filterRekapData(items: RekapDokumen[], filters: RekapFilterOptions): RekapDokumen[] {
   return items.filter((item) => {
-    const matchesJenis = filters.filterJenis === 'Semua Jenis' || item.jenis === filters.filterJenis;
+    // Dokumen gabungan (MoU + MoA) ikut tampil di filter kedua jenisnya.
+    const matchesJenis = filters.filterJenis === 'Semua Jenis' || daftarJenisRekap(item).some((jenis) => jenis === filters.filterJenis);
     const matchesUnit = filters.filterUnit === 'Semua Jurusan/Prodi/Unit' || item.unit === filters.filterUnit;
     const matchesStatus = filters.filterStatus === 'Semua Status' || item.status === filters.filterStatus;
     const matchesTahun = filters.filterTahun === null || item.tahun === filters.filterTahun;
@@ -594,7 +613,7 @@ export function filterRekapData(items: RekapDokumen[], filters: RekapFilterOptio
       item.unitKerjaNama,
       item.unit,
       item.status,
-      item.jenis,
+      labelJenisRekap(item),
     ]
       .filter(Boolean)
       .join(' ')
@@ -613,6 +632,16 @@ export function filterRekapData(items: RekapDokumen[], filters: RekapFilterOptio
       matchesSearch
     );
   });
+}
+
+// Semua jenis sebuah dokumen: satu biasanya, beberapa bila MoU + MoA ditandatangani sekaligus.
+export function daftarJenisRekap(item: Pick<RekapDokumen, 'jenis' | 'jenisList'>): RekapJenis[] {
+  return item.jenisList && item.jenisList.length > 1 ? item.jenisList : [item.jenis];
+}
+
+// Label tampilan, mis. "MoU + MoA".
+export function labelJenisRekap(item: Pick<RekapDokumen, 'jenis' | 'jenisList'>): string {
+  return daftarJenisRekap(item).join(' + ');
 }
 
 // Hitung ringkasan total dokumen berdasarkan status untuk stat card.
@@ -707,6 +736,7 @@ if (item.sourcePengajuanId) {
     ruangLingkupIds: item.ruangLingkupIds || [],
     dokumenTerkait: item.dokumenTerkait,
     dokumenPendukung: item.dokumenPendukungTerkait,
+    jenisList: item.jenisList && item.jenisList.length > 1 ? [...item.jenisList] : undefined,
     judulKegiatan: item.judulKegiatan || '',
     manfaatKerjasama: item.manfaatSebenarnya || item.manfaatKerjasama || pengajuanData?.manfaat || '',
     luaranKerjaSama: item.luaranKerjaSama || pengajuanData?.luaranKerjaSama || '',

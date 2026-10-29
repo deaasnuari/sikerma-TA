@@ -1,5 +1,7 @@
 'use client';
 
+import { hitungJenisDokumen, type RingkasanJenis } from '@/lib/hitungJenisDokumen';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -109,7 +111,7 @@ export default function AdminDashboard() {
     instansi_nasional: 0,
     instansi_internasional: 0,
   });
-  const [jenisDistribution, setJenisDistribution] = useState({ MoU: 0, MoA: 0, IA: 0 });
+  const [jenisDistribution, setJenisDistribution] = useState<RingkasanJenis>({ MoU: 0, MoA: 0, IA: 0, total: 0, jumlahDokumen: 0, gabungan: 0 });
   const [topRuangLingkup, setTopRuangLingkup] = useState<[string, number][]>([]);
   // "Kerjasama Baru" — supaya admin juga bisa lihat jumlah kerjasama baru per bulan,
   // sama seperti KPI "Kerjasama Baru" di dashboard Pimpinan, tapi dengan filter bulan.
@@ -194,7 +196,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     let mounted = true;
 
-    type KerjasamaRow = { id: number; nama: string; bidang: string; jenis: string; unit: string; wilayah: string };
+    type KerjasamaRow = { id: number; nama: string; bidang: string; jenis: string; jenis_list?: string[]; unit: string; wilayah: string };
 
     apiRequest<{ success: boolean; data: typeof publicStats }>('/dokumen-kerjasama/stats/mitra')
       .then((res) => {
@@ -229,13 +231,8 @@ export default function AdminDashboard() {
         const rows = res.data?.data;
         if (!Array.isArray(rows)) return;
 
-        const jenisCounts = { MoU: 0, MoA: 0, IA: 0 };
-        rows.forEach((r) => {
-          if (r.jenis === 'MoU') jenisCounts.MoU++;
-          else if (r.jenis === 'MoA') jenisCounts.MoA++;
-          else if (r.jenis === 'IA') jenisCounts.IA++;
-        });
-        setJenisDistribution(jenisCounts);
+        // Komposisi Dokumen dihitung per jenis: satu data yang memuat MoU + MoA menambah MoU dan MoA masing-masing.
+        setJenisDistribution(hitungJenisDokumen(rows.map((r) => ({ jenis: r.jenis, jenisList: r.jenis_list }))));
 
         const scopeCounts: Record<string, number> = {};
         rows.forEach((r) => {

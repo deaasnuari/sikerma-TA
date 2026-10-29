@@ -1,5 +1,7 @@
 'use client';
 
+import OpsiJenisBerkas from '@/components/OpsiJenisBerkas';
+import { adalahBerkasPendukung } from '@/lib/jenisBerkas';
 import { openUrl } from '@/lib/api';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
@@ -55,6 +57,7 @@ import {
   type PengajuanItem,
   type PengajuanStatus,
   type PengajuanFileAttachment,
+  daftarJenisDokumen,
 } from '@/services/adminPengajuanService';
 import { updateMasterMitra, upsertMasterMitraByName } from '@/services/masterMitraService';
 import { getDistribusiKandidat, provisionDistribusiUser, type DistribusiKandidat } from '@/services/distribusiKandidatService';
@@ -270,6 +273,15 @@ async function buildPersistentFileAttachments(files: File[]) {
   );
 }
 
+// Pilihan jenis untuk tiap dokumen final di form ACC.
+const JENIS_BERKAS_FINAL = ['MoU', 'MoA', 'IA'] as const;
+
+// Pengajuan satu jenis: jenis berkas final terisi otomatis dengan jenis pengajuannya (boleh diubah admin).
+function jenisBawaanBerkas(item: PengajuanItem | null | undefined): string {
+  if (!item || daftarJenisDokumen(item).length > 1) return '';
+  return (JENIS_BERKAS_FINAL as readonly string[]).includes(item.jenisDokumen) ? item.jenisDokumen : '';
+}
+
 export default function PengajuanKerjasama() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -292,9 +304,12 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   const [reviewItem, setReviewItem] = useState<PengajuanItem | null>(null);
   const [reviewDecision, setReviewDecision] = useState<PengajuanStatus>('Disetujui');
   const [reviewComment, setReviewComment] = useState('');
-  const [reviewFinalFile, setReviewFinalFile] = useState<File | null>(null);
-  const [reviewFinalFilePreview, setReviewFinalFilePreview] = useState<{ name: string; url: string } | null>(null);
+  // Berkas final bisa lebih dari satu (mis. MoU dan MoA ditandatangani sekaligus).
+  // jenis = penanda berkas ini MoU atau MoA (hanya bila pengajuannya memuat beberapa jenis).
+  const [reviewFinalFiles, setReviewFinalFiles] = useState<Array<{ file: File; url: string; jenis?: string }>>([]);
   const [reviewFinalLink, setReviewFinalLink] = useState('');
+  // Jenis (MoU/MoA) untuk dokumen final berupa tautan — wajib bila pengajuannya memuat beberapa jenis.
+  const [reviewFinalLinkJenis, setReviewFinalLinkJenis] = useState('');
   // Berkas Word opsional yang dilampirkan admin saat meminta revisi.
   const [reviewRevisiFile, setReviewRevisiFile] = useState<{ file: File; url: string } | null>(null);
   const [reviewDistribusiUserIds, setReviewDistribusiUserIds] = useState<number[]>([]);
@@ -926,7 +941,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   }, [filterJurusan, filterUnitProdi, filterStatus, filterTahun, search]);
 
 
-  const detailFileEntries = detailItem
+  const detailFileEntries: PengajuanFileAttachment[] = detailItem
     ? detailItem.fileAttachments?.length
       ? detailItem.fileAttachments
       : (detailItem.fileName || '')
@@ -986,9 +1001,8 @@ function openReview(item: PengajuanItem) {
     setReviewItem(item);
     setReviewDecision(item.statusPengajuan === 'Ditolak' ? 'Ditolak' : 'Disetujui');
     setReviewComment('');
-    setReviewFinalFile(null);
-    setReviewFinalFilePreview(null);
-    setReviewFinalLink('');
+    setReviewFinalFiles([]);
+    setReviewFinalLink(''); setReviewFinalLinkJenis('');
     setReviewRevisiFile(null);
     setReviewDistribusiUserIds(item.distribusiUserIds ?? []);
     setReviewDistribusiSearch('');
@@ -998,31 +1012,42 @@ function openReview(item: PengajuanItem) {
     const selected = Array.from(files || []);
     if (selected.length === 0) return;
 
-    const file = selected[0];
-    // Berkas final yang di-ACC wajib PDF (versi final bertanda tangan), bukan Word.
-    if (!/\.pdf$/i.test(file.name)) {
-      setInfoModalMessage(`${file.name}: Berkas final harus berformat PDF.`);
-      return;
-    }
-    const validationError = validateSelectedFile(file, {
-      accept: '.pdf',
-      maxSizeBytes: MAX_EDIT_FILE_SIZE,
-    });
-    if (validationError) {
-      setInfoModalMessage(`${file.name}: ${validationError}`);
-      return;
-    }
-
-    setReviewFinalFile(file);
-    // Create preview URL
-    const reader = new FileReader();
-    reader.onload = () => {
-      setReviewFinalFilePreview({
-        name: file.name,
-        url: reader.result as string,
+    const valid: File[] = [];
+    for (const file of selected) {
+      // Berkas final yang di-ACC wajib PDF (versi final bertanda tangan), bukan Word.
+      if (!/\.pdf$/i.test(file.name)) {
+        setInfoModalMessage(`${file.name}: Berkas final harus berformat PDF.`);
+        continue;
+      }
+      const validationError = validateSelectedFile(file, {
+        accept: '.pdf',
+        maxSizeBytes: MAX_EDIT_FILE_SIZE,
       });
-    };
-    reader.readAsDataURL(file);
+      if (validationError) {
+        setInfoModalMessage(`${file.name}: ${validationError}`);
+        continue;
+      }
+      valid.push(file);
+    }
+    if (valid.length === 0) return;
+
+    // Dibaca ke data URL (untuk dikirim ke server); berkas bernama sama dengan yang sudah dipilih dilewati.
+    void Promise.all(valid.map((file) => new Promise<{ file: File; url: string; jenis?: string }>((resolve, reject) => {
+      const reader = new FileReader();
+      // Tebakan awal dari nama berkas (mis. "final-moa.pdf" -> MoA); admin bisa mengubahnya di daftar.
+      const jenis = JENIS_BERKAS_FINAL.find((j) => j.length >= 3 && file.name.toLowerCase().includes(j.toLowerCase()))
+        ?? (jenisBawaanBerkas(reviewItem) || undefined);
+      reader.onload = () => resolve({ file, url: reader.result as string, jenis });
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    }))).then((added) => {
+      setReviewFinalFiles((prev) => [
+        ...prev,
+        ...added.filter((item) => !prev.some((existing) => existing.file.name === item.file.name)),
+      ]);
+    }).catch(() => {
+      setInfoModalMessage('Gagal membaca berkas final yang dipilih.');
+    });
   }
 
   function handleReviewRevisiFileUpload(files: FileList | null) {
@@ -1048,9 +1073,8 @@ function openReview(item: PengajuanItem) {
     reader.readAsDataURL(file);
   }
 
-  function handleRemoveReviewFinalFile() {
-    setReviewFinalFile(null);
-    setReviewFinalFilePreview(null);
+  function handleRemoveReviewFinalFile(index: number) {
+    setReviewFinalFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
 function revisiFilePayload() {
@@ -1162,52 +1186,55 @@ async function saveReview() {
       }
     } else {
       const trimmedLink = reviewFinalLink.trim();
-      const usingLink = !reviewFinalFile && trimmedLink.length > 0;
+      const hasFinalFiles = reviewFinalFiles.length > 0;
+      const usingLink = !hasFinalFiles && trimmedLink.length > 0;
 
       try {
         // Upload ACC dan keputusan adalah dua PATCH berurutan; token dari balasan upload
         // dipakai untuk PATCH berikutnya supaya tidak dianggap konflik dengan dirinya sendiri.
         let lockToken = reviewItem.updatedAt;
-        if (reviewFinalFile && reviewFinalFilePreview) {
-          const uploaded = await uploadAccFileApi(reviewItem.id, {
-            name: reviewFinalFile.name,
-            url: reviewFinalFilePreview.url,
-            type: reviewFinalFile.type,
-            size: reviewFinalFile.size,
-          }, lockToken);
+        if (hasFinalFiles) {
+          // Semua berkas final dikirim sekaligus: server mengganti seluruh berkas final lama dengan
+          // daftar yang dikirim, jadi dikirim satu per satu hanya menyisakan yang terakhir.
+          const uploaded = await uploadAccFileApi(reviewItem.id, reviewFinalFiles.map(({ file, url, jenis }) => ({
+            name: file.name,
+            url,
+            type: file.type,
+            size: file.size,
+            jenisDokumen: jenis,
+          })), lockToken);
           lockToken = uploaded.updatedAt ?? lockToken;
         } else if (usingLink) {
           const uploaded = await uploadAccFileApi(reviewItem.id, {
             name: 'Tautan Dokumen Final',
             url: trimmedLink,
+            jenisDokumen: reviewFinalLinkJenis || jenisBawaanBerkas(reviewItem) || undefined,
           }, lockToken);
           lockToken = uploaded.updatedAt ?? lockToken;
         }
         const reviewUpdated = await savePengajuanReviewApi(reviewItem.id, reviewDecision, reviewComment, reviewDistribusiUserIds, lockToken);
-        if ((reviewFinalFile && reviewFinalFilePreview) || usingLink) {
-          const accAttachment = reviewFinalFile && reviewFinalFilePreview
-            ? {
-                name: reviewFinalFile.name,
-                url: reviewFinalFilePreview.url,
-                type: reviewFinalFile.type,
-                size: reviewFinalFile.size,
+        if (hasFinalFiles || usingLink) {
+          const accAttachments = hasFinalFiles
+            ? reviewFinalFiles.map(({ file, url, jenis }) => ({
+                name: file.name,
+                url,
+                type: file.type,
+                size: file.size,
                 isAcc: true,
-              }
-            : {
+                jenisDokumen: jenis,
+              }))
+            : [{
                 name: 'Tautan Dokumen Final',
                 url: trimmedLink,
                 isAcc: true,
-              };
+                jenisDokumen: reviewFinalLinkJenis || jenisBawaanBerkas(reviewItem) || undefined,
+              }];
           const existingAttachments = reviewUpdated.fileAttachments || reviewItem.fileAttachments || [];
-          // Hindari duplikat: hanya tambahkan jika server belum menyertakannya
-          const alreadyInServer = existingAttachments.some(
-            (f) => f.isAcc && f.name === accAttachment.name
+          // Hindari duplikat: hanya tambahkan yang belum disertakan server
+          const missing = accAttachments.filter(
+            (acc) => !existingAttachments.some((f) => f.isAcc && f.name === acc.name)
           );
-          if (!alreadyInServer) {
-            reviewUpdated.fileAttachments = [...existingAttachments, accAttachment];
-          } else {
-            reviewUpdated.fileAttachments = existingAttachments;
-          }
+          reviewUpdated.fileAttachments = missing.length > 0 ? [...existingAttachments, ...missing] : existingAttachments;
         }
         setPengajuanData((prev) => prev.map((item) => {
           if (item.id !== reviewUpdated.id) return item;
@@ -1227,7 +1254,7 @@ async function saveReview() {
         }));
 
         const catatanAcc = reviewComment.trim();
-        if (reviewFinalFile || usingLink) {
+        if (hasFinalFiles || usingLink) {
           addAdminNotification({
             title: 'Dokumen Final Diupload',
             message: `Dokumen final untuk "${judulShort}" telah diupload dan di-ACC oleh admin.${catatanAcc ? ` Catatan: ${catatanAcc}` : ''}`,
@@ -1274,9 +1301,8 @@ async function saveReview() {
     }
     setReviewItem(null);
     setReviewComment('');
-    setReviewFinalFile(null);
-    setReviewFinalFilePreview(null);
-    setReviewFinalLink('');
+    setReviewFinalFiles([]);
+    setReviewFinalLink(''); setReviewFinalLinkJenis('');
     setReviewDistribusiUserIds([]);
     setReviewDistribusiSearch('');
   }
@@ -1944,12 +1970,12 @@ function addEditJurusanUnitOption() {
     <div className="space-y-4">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col min-[1340px]:flex-row min-[1340px]:items-center justify-between gap-3">
         <div>
           <h1 className="page-title">Pengajuan Kerjasama</h1>
           <p className="page-subtitle mt-1">Kelola data pengajuan kerjasama dari seluruh jurusan dan unit di Polibatam</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setMasterModalOpen(true)}
@@ -2255,8 +2281,12 @@ function addEditJurusanUnitOption() {
                   </div>
                   <div>
                     <p className="text-[10px] text-gray-400 mb-1">Jenis Dokumen</p>
-                    <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${pengajuanDokumenBadge[item.jenisDokumen] || 'bg-[#1E376C] text-white'}`}>
-                      {item.jenisDokumen}
+                    <span className="inline-flex flex-wrap gap-1">
+                      {daftarJenisDokumen(item).map((jenis) => (
+                        <span key={jenis} className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${pengajuanDokumenBadge[jenis] || 'bg-[#1E376C] text-white'}`}>
+                          {jenis}
+                        </span>
+                      ))}
                     </span>
                   </div>
                   <div>
@@ -2586,8 +2616,12 @@ function addEditJurusanUnitOption() {
                   </div>
                   <div>
                     <p className="text-gray-500">Jenis Dokumen</p>
-                    <span className={`inline-flex mt-1 px-2 py-0.5 rounded text-[10.5px] font-semibold ${pengajuanDokumenBadge[detailItem.jenisDokumen] || 'bg-[#1E376C] text-white'}`}>
-                      {detailItem.jenisDokumen}
+                    <span className="inline-flex flex-wrap gap-1 mt-1">
+                      {daftarJenisDokumen(detailItem).map((jenis) => (
+                        <span key={jenis} className={`inline-flex px-2 py-0.5 rounded text-[10.5px] font-semibold ${pengajuanDokumenBadge[jenis] || 'bg-[#1E376C] text-white'}`}>
+                          {jenis}
+                        </span>
+                      ))}
                     </span>
                   </div>
                   <div>
@@ -2696,6 +2730,9 @@ function addEditJurusanUnitOption() {
                                 >
                                   {doc.name}
                                 </a>
+                                {doc.jenisDokumen && (
+                                  <span className="ml-auto shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] font-bold text-white">{doc.jenisDokumen}</span>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -2747,8 +2784,12 @@ function addEditJurusanUnitOption() {
                 </div>
                 <div>
                   <p className="text-gray-500">Jenis Dokumen</p>
-                  <span className={`inline-flex mt-1 px-2 py-0.5 rounded text-[10.5px] font-semibold ${pengajuanDokumenBadge[reviewItem.jenisDokumen] || 'bg-[#1E376C] text-white'}`}>
-                    {reviewItem.jenisDokumen}
+                  <span className="inline-flex flex-wrap gap-1 mt-1">
+                    {daftarJenisDokumen(reviewItem).map((jenis) => (
+                      <span key={jenis} className={`inline-flex px-2 py-0.5 rounded text-[10.5px] font-semibold ${pengajuanDokumenBadge[jenis] || 'bg-[#1E376C] text-white'}`}>
+                        {jenis}
+                      </span>
+                    ))}
                   </span>
                 </div>
               </div>
@@ -2865,10 +2906,11 @@ function addEditJurusanUnitOption() {
 
 <label className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-white px-4 py-4 text-[12px] font-medium text-slate-600 hover:border-[#173B82] hover:text-[#173B82]">
                     <Upload size={16} />
-                    Klik untuk Pilih File (PDF)
+                    Klik untuk Pilih File (PDF, boleh lebih dari satu)
                     <input
                       type="file"
                       accept=".pdf,application/pdf"
+                      multiple
                       className="hidden"
                       onChange={(e) => {
                         handleReviewFinalFileUpload(e.target.files);
@@ -2884,29 +2926,65 @@ function addEditJurusanUnitOption() {
                       value={reviewFinalLink}
                       onChange={(e) => setReviewFinalLink(e.target.value)}
                       placeholder="https://drive.google.com/..."
-                      disabled={Boolean(reviewFinalFile)}
+                      disabled={reviewFinalFiles.length > 0}
                       className="mt-1 w-full rounded-lg border border-[#D2D7E5] bg-white px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-[#1E376C] disabled:bg-gray-50 disabled:text-gray-400"
                     />
-                    {reviewFinalFile && (
+                    {reviewFinalFiles.length > 0 && (
                       <p className="mt-1 text-[9.5px] text-gray-400">Hapus file yang dipilih untuk memakai tautan.</p>
+                    )}
+                    {reviewFinalFiles.length === 0 && reviewFinalLink.trim() && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <label className="text-[10px] font-semibold text-gray-700">
+                          Jenis dokumen pada tautan ini{daftarJenisDokumen(reviewItem).length > 1 ? ' *' : ''}
+                        </label>
+                        <select
+                          value={reviewFinalLinkJenis || jenisBawaanBerkas(reviewItem)}
+                          onChange={(e) => setReviewFinalLinkJenis(e.target.value)}
+                          className={`rounded border bg-white px-1.5 py-0.5 text-[10px] ${reviewFinalLinkJenis || jenisBawaanBerkas(reviewItem) || daftarJenisDokumen(reviewItem).length <= 1 ? 'border-slate-300 text-slate-700' : 'border-red-400 text-red-600 ring-1 ring-red-200'}`}
+                        >
+                          <option value="">{daftarJenisDokumen(reviewItem).length > 1 ? 'Pilih jenis *' : 'Jenis'}</option>
+                          {JENIS_BERKAS_FINAL.map((j) => (
+                            <option key={j} value={j}>{j}</option>
+                          ))}
+                        </select>
+                      </div>
                     )}
                   </div>
 
-                  {reviewFinalFilePreview && (
+                  {reviewFinalFiles.length > 0 && (
                     <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                      <p className="text-[10px] font-semibold text-green-700 mb-1">File Dipilih:</p>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0 flex items-center gap-2">
-                          <Paperclip size={14} className="shrink-0 text-green-600" />
-                          <span className="truncate text-[10px] font-medium text-green-700">{reviewFinalFilePreview.name}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleRemoveReviewFinalFile}
-                          className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <X size={14} />
-                        </button>
+                      <p className="text-[10px] font-semibold text-green-700 mb-1">File Dipilih ({reviewFinalFiles.length}):</p>
+                      <div className="space-y-1">
+                        {reviewFinalFiles.map(({ file, jenis }, index) => (
+                          <div key={file.name} className="flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex items-center gap-2">
+                              <Paperclip size={14} className="shrink-0 text-green-600" />
+                              <span className="truncate text-[10px] font-medium text-green-700">{file.name}</span>
+                            </div>
+                            {(
+                              <select
+                                value={jenis ?? ''}
+                                onChange={(e) => {
+                                  const nilai = e.target.value || undefined;
+                                  setReviewFinalFiles((prev) => prev.map((item, i) => (i === index ? { ...item, jenis: nilai } : item)));
+                                }}
+                                aria-label={`Jenis dokumen ${file.name}`}
+                                className={`ml-auto shrink-0 rounded border bg-white px-1.5 py-0.5 text-[10px] ${jenis || daftarJenisDokumen(reviewItem).length <= 1 ? 'border-green-300 text-green-800' : 'border-red-400 text-red-600 ring-1 ring-red-200'}`}
+                              >
+                                <option value="">{daftarJenisDokumen(reviewItem).length > 1 ? 'Pilih jenis *' : 'Jenis'}</option>
+                                <OpsiJenisBerkas />
+                              </select>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveReviewFinalFile(index)}
+                              className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
+                              aria-label={`Hapus ${file.name}`}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -3124,9 +3202,23 @@ function addEditJurusanUnitOption() {
                       }
                       setUploadConfirmOpen(true);
                     } else {
-                      if (reviewDecision === 'Disetujui' && !reviewFinalFile && !reviewFinalLink.trim()) {
+                      if (reviewDecision === 'Disetujui' && reviewFinalFiles.length === 0 && !reviewFinalLink.trim()) {
                         setInfoModalMessage('Upload file dokumen final atau isi tautan dokumen terlebih dahulu sebelum ACC.');
                         return;
+                      }
+                      // TOR/KAK/Proposal/Laporan Kegiatan/Lainnya hanya dokumen pendukung: harus ada minimal satu dokumen final.
+                      if (reviewDecision === 'Disetujui' && reviewFinalFiles.length > 0
+                        && reviewFinalFiles.every((item) => adalahBerkasPendukung(item.jenis))) {
+                        setInfoModalMessage('Minimal satu dokumen final bertipe MoU, MoA, atau IA harus diunggah (TOR dan sejenisnya hanya dokumen pendukung).');
+                        return;
+                      }
+                      // Pengajuan MoU + MoA: tiap dokumen final wajib diberi jenisnya (dashboard menghitung dari jenis ini).
+                      if (reviewDecision === 'Disetujui' && daftarJenisDokumen(reviewItem).length > 1) {
+                        const tanpaJenis = reviewFinalFiles.filter((item) => !item.jenis).map((item) => item.file.name);
+                        if (tanpaJenis.length > 0 || (reviewFinalFiles.length === 0 && reviewFinalLink.trim() && !reviewFinalLinkJenis)) {
+                          setInfoModalMessage(`Pilih jenis dokumen (MoU / MoA / IA, atau TOR / KAK / dst. untuk dokumen pendukung) untuk setiap dokumen final${tanpaJenis.length > 0 ? `: ${tanpaJenis.join(', ')}` : ''}.`);
+                          return;
+                        }
                       }
                       setUploadConfirmOpen(true);
                     }
@@ -4105,13 +4197,13 @@ function addEditJurusanUnitOption() {
                   <p className="text-[12px] text-slate-700">
                     Yakin ingin ACC dan upload dokumen final? Status pengajuan akan berubah menjadi <span className="font-semibold text-emerald-600">Disetujui</span> Pastikan data dan dokumen sudah benar sebelum melanjutkan.
                   </p>
-                  {reviewFinalFilePreview && (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 flex items-center gap-2 text-[10px]">
+                  {reviewFinalFiles.map(({ file }) => (
+                    <div key={file.name} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 flex items-center gap-2 text-[10px]">
                       <span className="font-semibold text-emerald-700">File:</span>
-                      <span className="truncate text-emerald-600">{reviewFinalFilePreview.name}</span>
+                      <span className="truncate text-emerald-600">{file.name}</span>
                     </div>
-                  )}
-                  {!reviewFinalFile && reviewFinalLink.trim() && (
+                  ))}
+                  {reviewFinalFiles.length === 0 && reviewFinalLink.trim() && (
                     <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 flex items-center gap-2 text-[10px]">
                       <span className="font-semibold text-emerald-700">Tautan:</span>
                       <span className="truncate text-emerald-600">{reviewFinalLink.trim()}</span>

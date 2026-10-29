@@ -973,7 +973,9 @@ export default function AdminAjukanKerjasamaForm({
       return;
     }
 
-    for (const jenisKerjasama of selectedJenisKerjasama) {
+    // Satu form = SATU pengajuan, walau memilih beberapa jenis (mis. MoU + MoA sekaligus): jenis pertama
+    // jadi jenis utama, daftar lengkapnya ikut dikirim. Dulu dibuat satu pengajuan per jenis (data ganda).
+    {
       const submitPayload: Parameters<typeof submitPengajuanApi>[0] = {
         judulPengajuan: formData.judulKerjasama,
         // deskripsiPengajuan dibatasi 100 karakter di backend (kolom lama) — kirim versi
@@ -997,7 +999,8 @@ export default function AdminAjukanKerjasamaForm({
         mitraKategori: formData.jenisMitra.trim() || undefined,
         mitraBidangUsaha: formData.bidangUsaha.trim() || undefined,
         mitraTingkatPerusahaan: formData.tingkatPerusahaan.trim() || undefined,
-        jenisDokumen: jenisKerjasama,
+        jenisDokumen: selectedJenisKerjasama[0],
+        jenisDokumenList: selectedJenisKerjasama,
         namaUnitProdi: formData.unitPelaksana,
         unitProdiId: unitProdiIdsToSend[0] ?? null,
         unitProdiIds: unitProdiIdsToSend,

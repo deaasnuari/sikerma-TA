@@ -1,4 +1,5 @@
 import { addAdminNotification, getUnreadNotificationCount } from '@/services/adminService';
+import { jenisBerkasKeApi, labelJenisBerkas } from '@/lib/jenisBerkas';
 import { removeMonitoringByPengajuanId, upsertMonitoringFromPengajuan } from '@/services/adminMonitoringService';
 import { bulanOptions, removeRekapByPengajuanId, semuaBulanLabel, upsertRekapFromPengajuan } from '@/services/adminRekapDataService';
 import { hideStoryByPengajuanId, initAktivitasOnApproval } from '@/services/adminStoryAktivitasService';
@@ -22,6 +23,8 @@ export type PengajuanFileAttachment = {
   type?: string;
   size?: number;
   isAcc?: boolean;
+  // Jenis berkas (mis. berkas final MoU vs MoA) bila pengajuannya memuat beberapa jenis; kosong = tidak dibedakan.
+  jenisDokumen?: string;
 };
 
 // Tipe utama untuk satu data pengajuan kerjasama (Struktur Baru).
@@ -40,7 +43,10 @@ export interface PengajuanItem {
   diajukanPada: string;
   mitraId?: number;
   namaMitra: string;
+  // Jenis UTAMA (jenis pertama yang dipilih) — dipakai semua logika lama (template, filter, penomoran).
   jenisDokumen: string;
+  // Semua jenis bila satu pengajuan memuat beberapa jenis sekaligus (mis. ['MoU', 'MoA']); kosong = hanya jenisDokumen.
+  jenisDokumenList?: string[];
   mitraKategori?: string;
   mitraBidangUsaha?: string;
   mitraTingkatPerusahaan?: string;
@@ -155,6 +161,7 @@ function saveAttachmentCacheEntry(id: number, entry: AttachmentCacheEntry): void
       type: item.type,
       size: item.size,
       isAcc: item.isAcc,
+      jenisDokumen: item.jenisDokumen,
     }));
 
   const nextEntry: AttachmentCacheEntry = {
@@ -254,6 +261,7 @@ type ApiPengajuanRow = {
   manfaat?: string | null;
   luaran_kerja_sama?: string | null;
   jenis_dokumen: string;
+  jenis_dokumen_list?: string[] | null;
   kategori_pengajuan?: 'internal' | 'eksternal' | null;
   ruang_lingkup_ids?: number[] | null;
   tanggal_mulai?: string | null;
@@ -309,12 +317,14 @@ type ApiPengajuanRow = {
     nama_file: string;
     path_file: string;
     peran_berkas?: string;
+    jenis_dokumen?: string | null;
   }[];
   pengajuan_files?: {
     id: number;
     nama_file: string;
     path_file: string;
     peran_berkas?: string;
+    jenis_dokumen?: string | null;
   }[];
   dokumen_kerjasama?: {
     id: number;
@@ -325,6 +335,7 @@ type ApiPengajuanRow = {
       nama_file: string;
       path_file: string;
       peran_berkas?: string | null;
+      jenis_dokumen?: string | null;
       mime_type?: string | null;
       ukuran_file_bytes?: number | null;
     }[] | null;
@@ -366,6 +377,16 @@ function extractApiRows(response: ApiListResponse<ApiPengajuanRow>): ApiPengajua
   }
 
   return response.data?.data ?? [];
+}
+
+// Semua jenis dokumen sebuah pengajuan: satu jenis biasanya, beberapa bila MoU + MoA dikirim sekaligus.
+export function daftarJenisDokumen(item: Pick<PengajuanItem, 'jenisDokumen' | 'jenisDokumenList'>): string[] {
+  return item.jenisDokumenList && item.jenisDokumenList.length > 1 ? item.jenisDokumenList : [item.jenisDokumen];
+}
+
+// Label tampilan, mis. "MoU + MoA".
+export function labelJenisDokumen(item: Pick<PengajuanItem, 'jenisDokumen' | 'jenisDokumenList'>): string {
+  return daftarJenisDokumen(item).join(' + ');
 }
 
 function mapJenisDokumenFromApi(value: string): string {
@@ -469,6 +490,7 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
         url: buildAttachmentUrl(file.path_file),
         pathFile: file.path_file,
         isAcc: file.peran_berkas === 'dokumen_final',
+        jenisDokumen: labelJenisBerkas(file.jenis_dokumen),
       }))
     : (fallbackAttachments.length > 0 ? fallbackAttachments : cachedAttachment?.fileAttachments);
 
@@ -481,6 +503,7 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
         url: buildAttachmentUrl(f.path_file),
         pathFile: f.path_file,
         isAcc: f.peran_berkas === 'dokumen_final',
+        jenisDokumen: labelJenisBerkas(f.jenis_dokumen),
       }));
     } else if (dk?.file) {
       const legacyPath = dk.file.startsWith('http') || dk.file.startsWith('storage/')
@@ -527,6 +550,9 @@ function mapApiPengajuanToItem(row: ApiPengajuanRow): PengajuanItem {
     mitraPicEmail: typeof row.mitra === 'object' && row.mitra !== null ? pickOptionalString(row.mitra.email_kontak_utama) : undefined,
     mitraPicTelepon: typeof row.mitra === 'object' && row.mitra !== null ? pickOptionalString(row.mitra.telepon_kontak_utama) : undefined,
     jenisDokumen: mapJenisDokumenFromApi(row.jenis_dokumen),
+    jenisDokumenList: Array.isArray(row.jenis_dokumen_list) && row.jenis_dokumen_list.length > 1
+      ? row.jenis_dokumen_list.map(mapJenisDokumenFromApi)
+      : undefined,
     picPolibatamNama: pickOptionalString(row.pic_polibatam_nama),
     picPolibatamJabatan: pickOptionalString(row.pic_polibatam_jabatan),
     picPolibatamEmail: pickOptionalString(row.pic_polibatam_email),
@@ -677,16 +703,27 @@ export async function savePengajuanRevisionApi(
   return mapped;
 }
 
+type AccFileInput = { name: string; url: string; type?: string; size?: number; jenisDokumen?: string };
+
+// Berkas final bisa lebih dari satu (mis. MoU dan MoA sekaligus). Server mengganti SELURUH berkas final
+// lama dengan daftar yang dikirim, jadi semuanya harus dikirim dalam satu permintaan.
 export async function uploadAccFileApi(
   id: number,
-  file: { name: string; url: string; type?: string; size?: number },
+  files: AccFileInput | AccFileInput[],
   updatedAt?: string
 ): Promise<PengajuanItem> {
+  const list = Array.isArray(files) ? files : [files];
   const response = await apiRequest<ApiSingleResponse<ApiPengajuanRow>>(`/pengajuan/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({
       ...(updatedAt ? { updated_at: updatedAt } : {}),
-      acc_file_attachments: [{ name: file.name, url: file.url, type: file.type, size: file.size }],
+      acc_file_attachments: list.map((file) => ({
+        name: file.name,
+        url: file.url,
+        type: file.type,
+        size: file.size,
+        ...(file.jenisDokumen ? { jenis_dokumen: jenisBerkasKeApi(file.jenisDokumen) } : {}),
+      })),
     }),
   });
   return mapApiPengajuanToItem(response.data);
@@ -743,6 +780,9 @@ export async function updatePengajuanItemApi(
   if (typeof updates.mitraTelepon === 'string') payload.whatsapp_mitra = updates.mitraTelepon;
   if (typeof updates.mitraNoTelepon === 'string') payload.no_telepon_mitra = updates.mitraNoTelepon;
   if (typeof updates.jenisDokumen === 'string') payload.jenis_dokumen = mapJenisDokumenToApi(updates.jenisDokumen);
+  if (updates.jenisDokumenList && updates.jenisDokumenList.length > 1) {
+    payload.jenis_dokumen_list = updates.jenisDokumenList.map(mapJenisDokumenToApi);
+  }
   if (typeof updates.tanggalMulai === 'string') payload.tanggal_mulai = updates.tanggalMulai;
   if (typeof updates.tanggalBerakhir === 'string') payload.tanggal_berakhir = updates.tanggalBerakhir;
   if (typeof updates.statusPengajuan === 'string') payload.status_pengajuan = mapStatusToApi(updates.statusPengajuan as PengajuanStatus);
@@ -813,6 +853,10 @@ export async function submitPengajuanApi(
     manfaat: data.manfaat || null,
     luaran_kerja_sama: data.luaranKerjaSama || null,
     jenis_dokumen: mapJenisDokumenToApi(data.jenisDokumen),
+    // Beberapa jenis dalam SATU pengajuan (mis. MoU + MoA): server mengambil jenis pertama sebagai jenis utama.
+    ...(data.jenisDokumenList && data.jenisDokumenList.length > 1
+      ? { jenis_dokumen_list: data.jenisDokumenList.map(mapJenisDokumenToApi) }
+      : {}),
     mitra_id: data.mitraId ?? null,
     nama_mitra: data.namaMitra,
     jenis_mitra: data.mitraKategori || null,

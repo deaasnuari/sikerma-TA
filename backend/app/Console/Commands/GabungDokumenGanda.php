@@ -41,7 +41,7 @@ use Illuminate\Support\Facades\DB;
  *  5. salinan di-SOFT DELETE (dihapus_admin_pada) dan masuk menu Sampah — dapat dipulihkan.
  *
  * Seluruh --apply dalam satu transaksi; kondisi sebelumnya dicadangkan ke storage/app/ sebagai JSON
- * yang dipakai --rollback. unit_prodi_id TIDAK pernah diubah bila keduanya terisi (dipakai milik ASLI).
+ * yang dipakai --rollback. unit_prodi_ids TIDAK pernah diubah bila keduanya terisi (dipakai milik ASLI).
  * BACKUP DATABASE DULU (pg_dump) sebelum --apply.
  */
 class GabungDokumenGanda extends Command
@@ -58,7 +58,7 @@ class GabungDokumenGanda extends Command
     /** Kolom yang diisi dari salinan HANYA bila kosong di dokumen asli. */
     private const FIELD_LENGKAPI = [
         'jenis_dokumen', 'ruang_lingkup_ids', 'tanggal_mulai', 'tanggal_berakhir', 'tanggal_ttd',
-        'unit_prodi_id', 'mitra_id', 'sumber_pengajuan_id', 'dibuat_oleh_user_id',
+        'unit_prodi_ids', 'mitra_id', 'sumber_pengajuan_id', 'dibuat_oleh_user_id',
         'snap_nama_mitra', 'snap_whatsapp_pengusul', 'snap_nama_pengusul', 'snap_email_pengusul',
         'snap_jenis_mitra', 'snap_tingkat_perusahaan', 'snap_bidang_usaha',
         'manfaat', 'luaran_kerja_sama', 'follow_up', 'diarsipkan_pada', 'alasan_arsip',
@@ -67,7 +67,7 @@ class GabungDokumenGanda extends Command
     /** Kolom skor kelengkapan untuk memutuskan apakah salinan "jauh lebih lengkap" dari asli. */
     private const FIELD_SKOR = [
         'mitra_id', 'snap_nama_mitra', 'tanggal_mulai', 'tanggal_berakhir',
-        'unit_prodi_id', 'sumber_pengajuan_id', 'ruang_lingkup_ids',
+        'unit_prodi_ids', 'sumber_pengajuan_id', 'ruang_lingkup_ids',
     ];
 
     /**
@@ -387,8 +387,8 @@ class GabungDokumenGanda extends Command
             unset($set['diarsipkan_pada'], $set['alasan_arsip']);
         }
 
-        $unitBeda = ! $this->kosong($asli->unit_prodi_id) && ! $this->kosong($salinan->unit_prodi_id)
-            && (int) $asli->unit_prodi_id !== (int) $salinan->unit_prodi_id;
+        $unitBeda = $this->unitUtama($asli) !== null && $this->unitUtama($salinan) !== null
+            && $this->unitUtama($asli) !== $this->unitUtama($salinan);
 
         return [
             'asli' => $asli,
@@ -603,19 +603,19 @@ class GabungDokumenGanda extends Command
 
         // unit_prodi_id beda.
         $this->newLine();
-        $this->info('=== unit_prodi_id BEDA (tidak diubah — milik dokumen asli dipakai; cek manual) ===');
+        $this->info('=== unit prodi utama BEDA (tidak diubah — milik dokumen asli dipakai; cek manual) ===');
         $baris = [];
         foreach ($rencana as $r) {
             if ($r['unitBeda']) {
                 $baris[] = [
                     $r['jenis'], $r['asli']->id, $r['salinan']->id, mb_strimwidth((string) $r['asli']->nomor_dokumen, 0, 28, '…'),
-                    '#'.$r['asli']->unit_prodi_id.' '.mb_strimwidth((string) ($unitNama[$r['asli']->unit_prodi_id] ?? '?'), 0, 30, '…'),
-                    '#'.$r['salinan']->unit_prodi_id.' '.mb_strimwidth((string) ($unitNama[$r['salinan']->unit_prodi_id] ?? '?'), 0, 30, '…'),
+                    '#'.$this->unitUtama($r['asli']).' '.mb_strimwidth((string) ($unitNama[$this->unitUtama($r['asli'])] ?? '?'), 0, 30, '…'),
+                    '#'.$this->unitUtama($r['salinan']).' '.mb_strimwidth((string) ($unitNama[$this->unitUtama($r['salinan'])] ?? '?'), 0, 30, '…'),
                 ];
             }
         }
         $baris === [] ? $this->line('Tidak ada.') : $this->table(['Jenis', 'id asli', 'id -L', 'Nomor', 'Unit asli (DIPAKAI)', 'Unit -L'], $baris);
-        $this->line('Jumlah pasangan dengan unit_prodi_id beda: '.count($baris));
+        $this->line('Jumlah pasangan dengan unit prodi utama beda: '.count($baris));
 
         $kolomDiisi = [];
         foreach ($siap($rencana) as $r) {
@@ -752,6 +752,15 @@ class GabungDokumenGanda extends Command
         $s = mb_strtolower(trim((string) ($salinan->judul_dokumen ?? '')));
 
         return $a !== '' && $s !== '' && $a !== $s;
+    }
+
+    /** Unit utama baris mentah = id pertama di kolom JSON unit_prodi_ids. */
+    private function unitUtama(object $baris): ?int
+    {
+        $ids = $baris->unit_prodi_ids ?? null;
+        $ids = is_string($ids) ? json_decode($ids, true) : $ids;
+
+        return is_array($ids) && $ids !== [] ? (int) $ids[0] : null;
     }
 
     private function kosong(mixed $v): bool

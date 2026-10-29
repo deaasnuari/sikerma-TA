@@ -155,7 +155,7 @@ class MasterMitraController extends Controller
 
         return response([
             'success' => true,
-            'data' => $query->with('kontak:id,mitra_id,nama,jabatan,email,telepon')->orderBy('nama_mitra')->get(),
+            'data' => $query->orderBy('nama_mitra')->get()->each->append('kontak'),
             'message' => 'Master mitra retrieved successfully',
         ]);
     }
@@ -334,7 +334,7 @@ class MasterMitraController extends Controller
 
         return response([
             'success' => true,
-            'data' => $mitra->load('kontak'),
+            'data' => $mitra->append('kontak'),
             'message' => 'Master mitra created successfully',
         ], 201);
     }
@@ -343,7 +343,7 @@ class MasterMitraController extends Controller
     {
         return response([
             'success' => true,
-            'data' => $mitra->load('kontak'),
+            'data' => $mitra->append('kontak'),
             'message' => 'Master mitra retrieved successfully',
         ]);
     }
@@ -399,7 +399,7 @@ class MasterMitraController extends Controller
 
         return response([
             'success' => true,
-            'data' => $mitra->load('kontak'),
+            'data' => $mitra->append('kontak'),
             'message' => 'Master mitra updated successfully',
         ]);
     }
@@ -428,9 +428,8 @@ class MasterMitraController extends Controller
     }
 
     /**
-     * Samakan kontak_mitra dengan daftar dari form: yang punya id diubah, yang
-     * tanpa id ditambah, yang tidak ada lagi di daftar dihapus. id milik mitra
-     * lain diabaikan (diperlakukan sebagai kontak baru).
+     * Samakan kontak tambahan dengan daftar dari form: yang punya id lama diubah, yang tanpa id ditambah,
+     * yang tidak ada lagi di daftar dibuang. id yang tidak dikenal di mitra ini diperlakukan sebagai kontak baru.
      */
     private function syncKontak(MasterMitra $mitra, ?array $kontak): void
     {
@@ -438,28 +437,16 @@ class MasterMitraController extends Controller
             return;
         }
 
-        $existing = $mitra->kontak()->get()->keyBy('id');
-        $keptIds = [];
-
-        foreach ($kontak as $item) {
-            $data = [
-                'nama' => trim($item['nama']),
-                'jabatan' => filled($item['jabatan'] ?? null) ? trim($item['jabatan']) : null,
-                'email' => filled($item['email'] ?? null) ? strtolower(trim($item['email'])) : null,
-                'telepon' => filled($item['telepon'] ?? null) ? trim($item['telepon']) : null,
-            ];
-
-            $row = isset($item['id']) ? $existing->get((int) $item['id']) : null;
-            if ($row) {
-                $row->update($data);
-                $keptIds[] = $row->id;
-            } else {
-                $keptIds[] = $mitra->kontak()->create($data)->id;
+        $idAda = array_column($mitra->kontak, 'id');
+        $daftar = array_map(function (array $item) use ($idAda) {
+            if (isset($item['id']) && ! in_array((int) $item['id'], $idAda, true)) {
+                unset($item['id']);
             }
-        }
 
-        $mitra->kontak()->whereNotIn('id', $keptIds)->delete();
-        $mitra->unsetRelation('kontak');
+            return $item;
+        }, $kontak);
+
+        $mitra->setKontak($daftar);
     }
 
     /** Jumlah dokumen/pengajuan yang memakai mitra ini, untuk peringatan di modal hapus. */

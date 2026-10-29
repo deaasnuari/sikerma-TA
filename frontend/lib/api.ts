@@ -24,7 +24,14 @@ async function fetchWithFallback(endpoint: string, options: RequestInit, buildHe
   }
 }
 
-export async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export interface ApiRequestOptions extends RequestInit {
+  // Jangan pindahkan halaman ke /login saat dijawab 401 — pemanggil yang memutuskan sendiri
+  // (mis. pengecekan sesi saat aplikasi pertama dibuka, yang tidak boleh menendang pengunjung
+  // halaman publik).
+  skipAuthRedirect?: boolean;
+}
+
+export async function apiRequest<T>(endpoint: string, { skipAuthRedirect, ...options }: ApiRequestOptions = {}): Promise<T> {
   const isFormData = options.body instanceof FormData;
   const response = await fetchWithFallback(endpoint, options, () => ({
     Accept: 'application/json',
@@ -38,7 +45,7 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
     : await response.text();
 
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== 'undefined') {
+    if (response.status === 401 && typeof window !== 'undefined' && !skipAuthRedirect) {
       localStorage.removeItem('user');
       window.location.replace('/login?reason=expired');
       throw new Error('Unauthenticated.');

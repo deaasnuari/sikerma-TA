@@ -1,5 +1,7 @@
 'use client';
 
+import JenisBadges from '@/components/JenisBadges';
+
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Download, Eye, FileText, Search } from 'lucide-react';
 import { exportToExcel } from '@/lib/exportExcel';
@@ -178,7 +180,7 @@ export default function PimpinanDaftarKerjasamaPage() {
       item.noDokumen,
       item.namaMitra,
       item.jenisMitra || '-',
-      item.jenis,
+      (item.jenisList ?? [item.jenis]).join(' + '),
       item.ruangLingkup.join(', '),
       item.tanggalMulai,
       item.tanggalBerakhir,
@@ -375,9 +377,7 @@ export default function PimpinanDaftarKerjasamaPage() {
                     <td className="px-4 py-3">{item.namaMitra}</td>
                     <td className="px-4 py-3">{item.jenisMitra || '-'}</td>
                     <td className="px-4 py-3">
-                      <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                        {item.jenis}
-                      </span>
+                      <JenisBadges jenis={item.jenisList ?? [item.jenis]} warna={{}} className="rounded-md px-2 py-1 text-[11px] font-semibold" />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
@@ -467,7 +467,7 @@ export default function PimpinanDaftarKerjasamaPage() {
                 <DetailItem label="No. Dokumen" value={detailItem.noDokumen} />
                 <DetailItem label="Nama Mitra" value={detailItem.namaMitra} />
                 <DetailItem label="Kategori" value={detailItem.jenisMitra || '-'} />
-                <DetailItem label="Jenis Dokumen" value={detailItem.jenis} />
+                <DetailItem label="Jenis Dokumen" value={(detailItem.jenisList ?? [detailItem.jenis]).join(' + ')} />
                 <DetailItem label="Status" value={detailItem.status} />
                 <DetailItem label="Tanggal Mulai" value={detailItem.tanggalMulai} />
                 <DetailItem label="Berlaku Hingga" value={detailItem.tanggalBerakhir} />
@@ -496,7 +496,7 @@ export default function PimpinanDaftarKerjasamaPage() {
                             </span>
                             <div className="min-w-0">
                               <div className="mb-1">
-                                <JenisBerkasBadge jenis={doc.jenisBerkas} />
+                                <JenisBerkasBadge jenis={doc.jenisBerkas} jenisDokumen={doc.jenisDokumen} />
                               </div>
                               <p className="break-words text-sm font-semibold text-slate-800">{doc.nama}</p>
                               <p className="text-[11px] text-slate-400">{doc.ukuran} &middot; {doc.tanggal}</p>

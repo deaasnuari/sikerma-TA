@@ -253,8 +253,8 @@ class MasterUnitProdiController extends Controller
 
         try {
             DB::transaction(function () use ($targetId, $jenisNode, $kategoriUnit) {
-                // dokumen_kerjasama.unit_prodi_id wajib terisi (NOT NULL), jadi unit/prodi yang masih
-                // dipakai dokumen tidak bisa dihapus — tolak dengan pesan jelas, bukan error database.
+                // unit_prodi_ids dokumen tidak punya foreign key, jadi unit/prodi yang masih dipakai
+                // dokumen harus ditolak di sini — kalau terhapus, id-nya jadi yatim di JSON.
                 $idsTerhapus = [$targetId];
                 if ($jenisNode === 'unit' && $kategoriUnit === 'jurusan') {
                     $idsTerhapus = array_merge($idsTerhapus, DB::table('master_unit_prodi')
@@ -263,7 +263,11 @@ class MasterUnitProdiController extends Controller
                         ->pluck('id')
                         ->all());
                 }
-                $dokumenTerkait = DB::table('dokumen_kerjasama')->whereIn('unit_prodi_id', $idsTerhapus);
+                $dokumenTerkait = DB::table('dokumen_kerjasama')->where(function ($q) use ($idsTerhapus) {
+                    foreach ($idsTerhapus as $idTerhapus) {
+                        $q->orWhereJsonContains('unit_prodi_ids', (int) $idTerhapus);
+                    }
+                });
                 $jumlahDokumen = (clone $dokumenTerkait)->count();
                 if ($jumlahDokumen > 0) {
                     // Dokumen yang sudah dihapus admin tidak tampil di Rekap Data, tapi masih ada di Sampah
@@ -274,6 +278,20 @@ class MasterUnitProdiController extends Controller
                         $pesan .= sprintf(' (%d di antaranya ada di Sampah Rekap Data — hapus permanen dari Sampah)', $jumlahDiSampah);
                     }
                     throw new RuntimeException($pesan.'. Atau pindahkan dokumennya ke prodi/unit lain, atau nonaktifkan saja.');
+                }
+
+                // Sama untuk pengajuan: unit_prodi_ids-nya juga tanpa foreign key. Pengajuan yang sudah
+                // dihapus (Sampah) tetap dihitung, konsisten dengan dokumen di atas.
+                $jumlahPengajuan = DB::table('pengajuan_v2')->where(function ($q) use ($idsTerhapus) {
+                    foreach ($idsTerhapus as $idTerhapus) {
+                        $q->orWhereJsonContains('unit_prodi_ids', (int) $idTerhapus);
+                    }
+                })->count();
+                if ($jumlahPengajuan > 0) {
+                    throw new RuntimeException(sprintf(
+                        'Tidak bisa dihapus: masih dipakai %d pengajuan. Atau pindahkan pengajuannya ke prodi/unit lain, atau nonaktifkan saja.',
+                        $jumlahPengajuan
+                    ));
                 }
 
                 // Kebijakan hapus dibuat eksplisit untuk mencegah penghapusan massal tidak sengaja.

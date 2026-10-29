@@ -1,5 +1,7 @@
 'use client';
 
+import JenisBadges from '@/components/JenisBadges';
+
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Download, Eye, FileText, Search, Trash2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -38,6 +40,7 @@ interface KerjasamaItem {
   noDokumen: string;
   namaMitra: string;
   jenis: Jenis;
+  jenisList?: Jenis[];
   unit: string;
   tanggalMulai: string;
   tanggalMulaiRaw?: string;
@@ -79,6 +82,7 @@ function mapRekapToItem(d: RekapDokumen): KerjasamaItem {
     noDokumen: d.noDokumen,
     namaMitra: d.namaMitra,
     jenis: d.jenis as Jenis,
+    jenisList: d.jenisList as Jenis[] | undefined,
     unit: d.unit,
     tanggalMulai: d.tanggalMulai,
     tanggalMulaiRaw: d.tanggalMulaiRaw,
@@ -359,7 +363,7 @@ export default function InternalRekapDataPage() {
         item.noDokumen.toLowerCase().includes(keyword);
 
       const matchesJurusan = filterJurusan === 'Semua Jurusan/Prodi/Unit' || item.unit === filterJurusan;
-      const matchesJenis = filterJenis === 'Semua Jenis' || item.jenis === filterJenis;
+      const matchesJenis = filterJenis === 'Semua Jenis' || (item.jenisList ?? [item.jenis]).some((j) => j === filterJenis);
       const matchesStatus = filterStatus === 'Semua Status' || item.status === filterStatus;
       const matchesJenisMitra = filterJenisMitra === 'Semua Jenis Mitra' || item.jenisMitra === filterJenisMitra;
       const matchesTingkatPerusahaan =
@@ -728,10 +732,10 @@ export default function InternalRekapDataPage() {
                     <td className="px-4 py-3">
                       {linkBukti ? (
                         <a href={linkBukti} target="_blank" rel="noreferrer" title="Lihat bukti kerja sama">
-                          <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2 ${jenisBadgeMap[row.jenis]}`}>{row.jenis}</span>
+                          <JenisBadges jenis={row.jenisList ?? [row.jenis]} warna={jenisBadgeMap} className="rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2" />
                         </a>
                       ) : (
-                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${jenisBadgeMap[row.jenis]}`} title="Belum ada file bukti kerja sama yang diupload">{row.jenis}</span>
+                        <span title="Belum ada file bukti kerja sama yang diupload"><JenisBadges jenis={row.jenisList ?? [row.jenis]} warna={jenisBadgeMap} className="rounded-md px-2 py-0.5 text-[10px] font-bold" /></span>
                       )}
                     </td>
                     <td className="px-4 py-3">

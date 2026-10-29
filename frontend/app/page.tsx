@@ -1,5 +1,8 @@
 'use client';
 
+import { hitungJenisDokumen } from '@/lib/hitungJenisDokumen';
+
+
 import KategoriMitraDonutCard from '@/components/KategoriMitraDonutCard';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -13,7 +16,10 @@ import { useAuth } from '@/context/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type KerjasamaRow = { id: number; nama: string; bidang: string; jenis: string; unit: string; wilayah: string };
+type KerjasamaRow = { id: number; nama: string; bidang: string; jenis: string; jenis_list?: string[]; unit: string; wilayah: string };
+
+// Semua jenis sebuah dokumen: satu biasanya, beberapa bila MoU + MoA ditandatangani sekaligus.
+const jenisRow = (r: Pick<KerjasamaRow, 'jenis' | 'jenis_list'>): string[] => (r.jenis_list?.length ? r.jenis_list : [r.jenis]);
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -237,7 +243,7 @@ export default function Home() {
   const filtered = useMemo(() =>
     kerjasamaList.filter((r) =>
       (selectedWilayah === 'Semua Wilayah' || r.wilayah === selectedWilayah) &&
-      (selectedJenisDokumen === 'Semua Jenis' || r.jenis === selectedJenisDokumen) &&
+      (selectedJenisDokumen === 'Semua Jenis' || jenisRow(r).includes(selectedJenisDokumen)) &&
       (selectedUnit === 'Semua Unit' || r.unit === selectedUnit) &&
       (search === '' ||
         r.nama.toLowerCase().includes(search.toLowerCase()) ||
@@ -257,15 +263,10 @@ export default function Home() {
     setCurrentPage(next);
   };
 
-  const jenisDistribution = useMemo(() => {
-    const counts = { MoU: 0, MoA: 0, IA: 0 };
-    kerjasamaList.forEach((r) => {
-      if (r.jenis === 'MoU') counts.MoU++;
-      else if (r.jenis === 'MoA') counts.MoA++;
-      else if (r.jenis === 'IA') counts.IA++;
-    });
-    return counts;
-  }, [kerjasamaList]);
+  const jenisDistribution = useMemo(
+    () => hitungJenisDokumen(kerjasamaList.map((r) => ({ jenis: r.jenis, jenisList: r.jenis_list }))),
+    [kerjasamaList],
+  );
 
   const topRuangLingkup = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -503,7 +504,7 @@ export default function Home() {
               <div className="mt-4 flex items-center justify-center">
                 <DonutChart
                   size={180}
-                  centerLabel={String(jenisDistribution.MoU + jenisDistribution.MoA + jenisDistribution.IA)}
+                  centerLabel={String(jenisDistribution.total)}
                   segments={[
                     { value: jenisDistribution.MoU, color: '#1D4ED8' },
                     { value: jenisDistribution.MoA, color: '#7C3AED' },
@@ -517,7 +518,7 @@ export default function Home() {
                   { label: 'MoA', value: jenisDistribution.MoA, color: '#7C3AED' },
                   { label: 'IA',  value: jenisDistribution.IA,  color: '#A78BFA' },
                 ].map((item) => {
-                  const total = jenisDistribution.MoU + jenisDistribution.MoA + jenisDistribution.IA;
+                  const total = jenisDistribution.total;
                   const pct = total > 0 ? Math.round((item.value / total) * 100) : 0;
                   return (
                     <div key={item.label}>
@@ -732,12 +733,16 @@ export default function Home() {
                     <td className="px-4 py-3 align-middle font-medium text-slate-800">{row.nama}</td>
                     <td className="px-4 py-3 align-middle text-slate-500">{row.bidang}</td>
                     <td className="px-4 py-3 align-middle">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold ${
-                        row.jenis === 'MoU' ? 'bg-blue-100 text-blue-700' :
-                        row.jenis === 'MoA' ? 'bg-purple-100 text-purple-700' :
+                      <span className="inline-flex flex-wrap gap-1">
+                      {jenisRow(row).map((jenis) => (
+                      <span key={jenis} className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold ${
+                        jenis === 'MoU' ? 'bg-blue-100 text-blue-700' :
+                        jenis === 'MoA' ? 'bg-purple-100 text-purple-700' :
                         'bg-emerald-100 text-emerald-700'
                       }`}>
-                        {row.jenis}
+                        {jenis}
+                      </span>
+                      ))}
                       </span>
                     </td>
                     <td className="px-4 py-3 align-middle text-slate-500">{row.unit}</td>
@@ -842,11 +847,13 @@ export default function Home() {
                 </button>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <span className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold ${
-                  selectedRow.jenis === 'MoU' ? 'bg-blue-200/30 text-blue-100' :
-                  selectedRow.jenis === 'MoA' ? 'bg-purple-200/30 text-purple-100' :
-                  'bg-emerald-200/30 text-emerald-100'
-                }`}>{selectedRow.jenis}</span>
+                {jenisRow(selectedRow).map((jenis) => (
+                  <span key={jenis} className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold ${
+                    jenis === 'MoU' ? 'bg-blue-200/30 text-blue-100' :
+                    jenis === 'MoA' ? 'bg-purple-200/30 text-purple-100' :
+                    'bg-emerald-200/30 text-emerald-100'
+                  }`}>{jenis}</span>
+                ))}
                 <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10.5px] text-blue-100">{selectedRow.wilayah}</span>
               </div>
             </div>

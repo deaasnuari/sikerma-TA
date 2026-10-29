@@ -1,5 +1,7 @@
 'use client';
 
+import JenisBadges from '@/components/JenisBadges';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -26,6 +28,7 @@ interface Kerjasama {
   nama: string;
   nomorDokumen: string;
   jenis: 'MoA' | 'MoU' | 'IA';
+  jenisList: Array<'MoA' | 'MoU' | 'IA'>;
   // Semua jenis dokumen yang dipunyai mitra ini (bisa lebih dari satu, mis. MoU dan MoA
   // sekaligus di dokumen kerja sama yang berbeda) — dipakai filter "Jenis" supaya tidak
   // meleset cuma karena dokumen "primary"-nya beda jenis dari yang dicari.
@@ -46,6 +49,7 @@ function mapGroupToKerjasama(group: StoryAktivitasGroup): Kerjasama {
     nama: group.namaMitra,
     nomorDokumen: group.nomorDokumen,
     jenis: group.jenis,
+    jenisList: [...group.jenisList],
     jenisTerlibat: [...group.jenisTerlibat],
     berakhir: group.berakhir,
     tahun: group.tahun,
@@ -322,9 +326,7 @@ export default function StoryAktivitasPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="line-clamp-2 text-[15px] font-bold text-gray-900">{item.nama}</h3>
-                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${jenisColor[item.jenis]}`}>
-                      {item.jenis}
-                    </span>
+                    <JenisBadges jenis={item.jenisList} warna={jenisColor} className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold" />
                     {item.totalPengajuan > 1 && (
                       <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
                         {item.totalPengajuan} dokumen digabung

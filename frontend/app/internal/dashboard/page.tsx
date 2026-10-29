@@ -1,5 +1,7 @@
 'use client';
 
+import CatatanJenisDokumen from '@/components/CatatanJenisDokumen';
+
 import Link from 'next/link';
 import {
   AlertCircle,
@@ -14,12 +16,9 @@ import {
 } from 'lucide-react';
 
 import { useEffect, useMemo, useState } from 'react';
-import {
-  fetchPengajuanDataFromApi,
-  type PengajuanItem,
-  type PengajuanStatus,
-} from '@/services/adminPengajuanService';
-import { getInternalPengajuanDisetujui } from '@/services/internalPengajuanService';
+import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
+import { daftarJenisRekap, type RekapDokumen } from '@/services/adminRekapDataService';
+import { hitungJenisDokumen, persenJenis } from '@/lib/hitungJenisDokumen';
 import { parseTanggal } from '@/lib/parseTanggal';
 import {
   Cell,
@@ -29,24 +28,7 @@ import {
   Tooltip,
 } from 'recharts';
 
-const APPROVED_STATUSES = new Set<PengajuanStatus>([
-  'Disetujui',
-  'Disetujui Internal',
-  'Disetujui Mitra',
-  'Final Approved',
-]);
-
 type StatusKerjasama = 'Aktif' | 'Akan Berakhir' | 'Kadaluarsa';
-
-function getKerjasamaStatus(tanggalBerakhir?: string): StatusKerjasama {
-  if (!tanggalBerakhir) return 'Aktif';
-  const end = new Date(tanggalBerakhir);
-  if (Number.isNaN(end.getTime())) return 'Aktif';
-  const diffDays = Math.ceil((end.getTime() - Date.now()) / 86400000);
-  if (diffDays < 0) return 'Kadaluarsa';
-  if (diffDays <= 120) return 'Akan Berakhir';
-  return 'Aktif';
-}
 
 function formatTanggal(value?: string): string {
   const date = parseTanggal(value);
@@ -83,7 +65,9 @@ function jenisKey(value?: string): string {
 }
 
 export default function InternalDashboardPage() {
-  const [pengajuanDisetujui, setPengajuanDisetujui] = useState<PengajuanItem[]>([]);
+  // Angka dashboard diambil dari DOKUMEN kerja sama (jenis, status masa berlaku, mitra, unit), bukan dari
+  // data pengajuan — pengajuan bisa memuat beberapa jenis dan statusnya bukan masa berlaku kerja sama.
+  const [dokumen, setDokumen] = useState<RekapDokumen[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -92,17 +76,11 @@ export default function InternalDashboardPage() {
     const loadData = async () => {
       if (!isMounted) return;
       try {
-        const allItems = await fetchPengajuanDataFromApi({ perPage: 500 });
+        const items = await fetchRekapDokumenFromApi({ forceRefresh: true });
         if (!isMounted) return;
-        const approved = allItems.filter(
-          (item) =>
-            APPROVED_STATUSES.has(item.statusPengajuan) &&
-            item.kategoriPengajuan !== 'Eksternal',
-        );
-        setPengajuanDisetujui(approved);
+        setDokumen(items);
       } catch {
-        const fallback = getInternalPengajuanDisetujui();
-        if (isMounted) setPengajuanDisetujui(fallback);
+        if (isMounted) setDokumen([]);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -111,23 +89,19 @@ export default function InternalDashboardPage() {
     const syncHandler = () => { void loadData(); };
     void loadData();
     window.addEventListener('pengajuan-data-updated', syncHandler);
+    window.addEventListener('rekap-data-updated', syncHandler);
 
     return () => {
       isMounted = false;
       window.removeEventListener('pengajuan-data-updated', syncHandler);
+      window.removeEventListener('rekap-data-updated', syncHandler);
     };
   }, []);
 
-  const total = pengajuanDisetujui.length;
-  const totalAktif = pengajuanDisetujui.filter(
-    (i) => getKerjasamaStatus(i.tanggalBerakhir) === 'Aktif',
-  ).length;
-  const totalAkanBerakhir = pengajuanDisetujui.filter(
-    (i) => getKerjasamaStatus(i.tanggalBerakhir) === 'Akan Berakhir',
-  ).length;
-  const totalKadaluarsa = pengajuanDisetujui.filter(
-    (i) => getKerjasamaStatus(i.tanggalBerakhir) === 'Kadaluarsa',
-  ).length;
+  const total = dokumen.length;
+  const totalAktif = dokumen.filter((i) => i.status === 'Aktif').length;
+  const totalAkanBerakhir = dokumen.filter((i) => i.status === 'Akan Berakhir').length;
+  const totalKadaluarsa = dokumen.filter((i) => i.status === 'Kadaluarsa').length;
 
   const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
 
@@ -136,7 +110,7 @@ export default function InternalDashboardPage() {
       {
         title: 'Total Dokumen Kerjasama',
         value: total,
-        note: 'Semua dokumen yang disetujui',
+        note: 'Semua dokumen kerja sama',
         icon: FileText,
         iconBox: 'bg-slate-100 text-slate-700',
         bar: 'bg-slate-400',
@@ -171,15 +145,16 @@ export default function InternalDashboardPage() {
 
   const kerjasamaItems = useMemo(
     () =>
-      pengajuanDisetujui.slice(0, 5).map((it) => ({
-        id: it.id,
+      dokumen.slice(0, 5).map((it) => ({
+        id: it.id ?? 0,
         name: it.namaMitra,
-        type: it.jenisDokumen,
-        status: getKerjasamaStatus(it.tanggalBerakhir),
-        berakhir: formatTanggal(it.tanggalBerakhir),
-        sisa: sisaHari(it.tanggalBerakhir),
+        // Dokumen gabungan tampil "MoU + MoA"; typeKey (jenis utama) hanya untuk warna lencana.
+        types: daftarJenisRekap(it),
+        status: it.status as StatusKerjasama,
+        berakhir: formatTanggal(it.berlakuHinggaRaw),
+        sisa: sisaHari(it.berlakuHinggaRaw),
       })),
-    [pengajuanDisetujui],
+    [dokumen],
   );
 
   const statusSegments = useMemo(
@@ -191,29 +166,33 @@ export default function InternalDashboardPage() {
     [totalAktif, totalAkanBerakhir, totalKadaluarsa],
   );
 
-  const jenisKerjasama = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const row of pengajuanDisetujui) {
-      const key = row.jenisDokumen || '—';
-      map.set(key, (map.get(key) || 0) + 1);
-    }
-    return Array.from(map.entries())
-      .map(([label, count]) => ({ label, total: count }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 4);
-  }, [pengajuanDisetujui]);
+  // Komposisi dokumen dihitung per jenis (sama dengan dashboard lain): satu data yang memuat MoU + MoA
+  // menambah MoU dan MoA masing-masing. Persentase = jumlah jenis / jumlah SEMUA kategori.
+  const ringkasJenis = useMemo(() => hitungJenisDokumen(dokumen), [dokumen]);
+  const pctJenis = (n: number) => persenJenis(n, ringkasJenis.total);
+  const jenisKerjasama = useMemo(
+    () =>
+      [
+        { label: 'MoU', total: ringkasJenis.MoU },
+        { label: 'MoA', total: ringkasJenis.MoA },
+        { label: 'IA', total: ringkasJenis.IA },
+      ]
+        .filter((item) => item.total > 0)
+        .sort((a, b) => b.total - a.total),
+    [ringkasJenis],
+  );
 
   const totalMitra = useMemo(
-    () => new Set(pengajuanDisetujui.map((i) => i.namaMitra)).size,
-    [pengajuanDisetujui],
+    () => new Set(dokumen.map((i) => i.namaMitra)).size,
+    [dokumen],
   );
   const totalUnit = useMemo(
-    () => new Set(pengajuanDisetujui.map((i) => i.namaUnitProdi).filter(Boolean)).size,
-    [pengajuanDisetujui],
+    () => new Set(dokumen.map((i) => i.unit).filter(Boolean)).size,
+    [dokumen],
   );
   const totalRuangLingkup = useMemo(
-    () => new Set(pengajuanDisetujui.flatMap((i) => i.ruangLingkup ?? [])).size,
-    [pengajuanDisetujui],
+    () => new Set(dokumen.flatMap((i) => i.ruangLingkup ?? [])).size,
+    [dokumen],
   );
 
   const hariIni = new Date().toLocaleDateString('id-ID', {
@@ -323,9 +302,11 @@ export default function InternalDashboardPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[12.5px] font-semibold text-slate-800">{item.name}</p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-slate-500">
-                      <span className={`rounded px-1.5 py-0.5 text-[9.5px] font-bold ${jenisBadge[jenisKey(item.type)] || 'bg-slate-100 text-slate-700'}`}>
-                        {item.type}
-                      </span>
+                      {item.types.map((jenis) => (
+                        <span key={jenis} className={`rounded px-1.5 py-0.5 text-[9.5px] font-bold ${jenisBadge[jenisKey(jenis)] || 'bg-slate-100 text-slate-700'}`}>
+                          {jenis}
+                        </span>
+                      ))}
                       <span className="inline-flex items-center gap-1">
                         <Clock3 size={11} />
                         Berakhir {item.berakhir}
@@ -429,7 +410,7 @@ export default function InternalDashboardPage() {
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(value, name) => [`${value} dokumen (${pct(Number(value))}%)`, String(name)]}
+                        formatter={(value, name) => [`${value} dokumen (${pctJenis(Number(value))}%)`, String(name)]}
                         contentStyle={{ borderRadius: 8, fontSize: 12 }}
                       />
                     </PieChart>
@@ -507,16 +488,17 @@ export default function InternalDashboardPage() {
                             {item.label}
                           </span>
                           <span className="font-semibold text-slate-800">
-                            {item.total} <span className="font-normal text-slate-400">({pct(item.total)}%)</span>
+                            {item.total} <span className="font-normal text-slate-400">({pctJenis(item.total)}%)</span>
                           </span>
                         </div>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${pct(item.total)}%`, backgroundColor: warna }} />
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pctJenis(item.total)}%`, backgroundColor: warna }} />
                         </div>
                       </div>
                     );
                   })}
                 </div>
+                <CatatanJenisDokumen />
               </>
             )}
           </div>

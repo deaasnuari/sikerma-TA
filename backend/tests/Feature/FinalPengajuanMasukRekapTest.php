@@ -88,6 +88,55 @@ class FinalPengajuanMasukRekapTest extends TestCase
         $this->assertSame(1, DokumenKerjasama::where('no_permohonan', 'PMH-020')->count());
     }
 
+    public function test_berkas_final_boleh_lebih_dari_satu_dan_semuanya_masuk_ke_dokumen(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $pengajuan = Pengajuan::create([
+            'nomor_pengajuan' => 'PMH-050', 'nama_pengusul' => 'Dr. Andi', 'judul_pengajuan' => 'MoU dan MoA sekaligus',
+            'jenis_dokumen' => 'MOU', 'status_pengajuan' => 'menunggu', 'ruang_lingkup_ids' => [],
+        ]);
+
+        $pdf = fn (string $nama) => [
+            'name' => $nama, 'type' => 'application/pdf', 'size' => 1,
+            'url' => 'data:application/pdf;base64,'.base64_encode('isi '.$nama),
+        ];
+
+        // Satu permintaan berisi dua PDF final (MoU dan MoA yang ditandatangani bersamaan).
+        $this->actingAs($admin)->patchJson("/api/pengajuan/{$pengajuan->id}", [
+            'acc_file_attachments' => [$pdf('final-mou.pdf'), $pdf('final-moa.pdf')],
+        ])->assertOk();
+
+        $this->assertEqualsCanonicalizing(
+            ['final-mou.pdf', 'final-moa.pdf'],
+            $pengajuan->pengajuanFiles()->where('peran_berkas', 'dokumen_final')->pluck('nama_file')->all()
+        );
+
+        $this->finalkan($pengajuan, 'FINAL-050/MOU');
+
+        $dokumen = DokumenKerjasama::where('sumber_pengajuan_id', $pengajuan->id)->firstOrFail();
+        $this->assertEqualsCanonicalizing(
+            ['final-mou.pdf', 'final-moa.pdf'],
+            $dokumen->dokumenFiles()->where('peran_berkas', 'dokumen_final')->pluck('nama_file')->all()
+        );
+    }
+
+    public function test_detail_pengajuan_tidak_memuat_dokumen_sisa_pengajuan_lain_bernomor_sama(): void
+    {
+        // Dokumen sisa pengajuan lama (sumber sudah kosong), nomor PMH-nya kemudian dipakai ulang.
+        $sisa = DokumenKerjasama::create([
+            'nomor_dokumen' => 'SISA-001/MOU', 'no_permohonan' => 'PMH-040', 'nama_dokumen' => 'Sisa',
+            'jenis_dokumen' => 'MOU', 'file' => 'sisa.pdf',
+        ]);
+        $pengajuanBaru = $this->pengajuanDenganFinal('PMH-040');
+
+        $response = $this->actingAs(User::factory()->admin()->create())
+            ->getJson("/api/pengajuan/{$pengajuanBaru->id}")
+            ->assertOk();
+
+        $this->assertNull($response->json('data.dokumen_kerjasama'));
+        $this->assertNotSame($sisa->id, $response->json('data.dokumen_kerjasama.id'));
+    }
+
     public function test_pic_polibatam_disalin_ke_dokumen_dan_tampil_di_rekap(): void
     {
         $pengajuan = $this->pengajuanDenganFinal('PMH-030');

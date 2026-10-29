@@ -3,31 +3,55 @@
 namespace App\Models\Concerns;
 
 use App\Models\MasterUnitProdi;
+use App\Models\Relations\UnitProdiDariKolom;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
- * Pengajuan/dokumen boleh melibatkan banyak jurusan/prodi lewat tabel pivot.
- * Kolom unit_prodi_id tetap menyimpan satu node "utama" (yang pertama dipilih) —
- * dipakai kode lama (nomor dokumen, akses struktural, tampilan satu nama).
+ * Pengajuan/dokumen boleh melibatkan banyak jurusan/prodi. Semua id disimpan di SATU kolom JSON,
+ * unit_prodi_ids (tanpa tabel pivot); id pertama = node utama.
  *
- * Model pemakai wajib mengisi $unitProdiPivotTable dan $unitProdiPivotForeignKey.
+ * unit_prodi_id BUKAN kolom lagi: ia atribut turunan (id pertama dari unit_prodi_ids) supaya kode
+ * lama (nomor dokumen, tampilan satu nama, klien yang hanya kenal satu unit) tetap bisa membacanya.
+ * Menulis unit_prodi_id = mengganti seluruh daftar dengan satu unit itu.
+ *
+ * Model pemakai wajib punya kolom unit_prodi_ids.
  */
 trait HasMultiUnitProdi
 {
-    public function unitProdiItems(): BelongsToMany
+    public function initializeHasMultiUnitProdi(): void
     {
-        return $this->belongsToMany(
-            MasterUnitProdi::class,
-            $this->unitProdiPivotTable,
-            $this->unitProdiPivotForeignKey,
-            'unit_prodi_id'
-        )->withTimestamps();
+        $this->mergeCasts(['unit_prodi_ids' => 'array']);
+        $this->mergeFillable(['unit_prodi_id', 'unit_prodi_ids']);
+        $this->append('unit_prodi_id');
+    }
+
+    public function getUnitProdiIdAttribute(): ?int
+    {
+        $ids = $this->unit_prodi_ids;
+
+        return is_array($ids) && $ids !== [] ? (int) $ids[0] : null;
+    }
+
+    public function setUnitProdiIdAttribute(mixed $value): void
+    {
+        // null tidak menimpa daftar yang sudah diisi dalam satu fill() yang sama.
+        if ($value === null || $value === '') {
+            $this->unit_prodi_ids ??= null;
+
+            return;
+        }
+
+        $this->unit_prodi_ids = [(int) $value];
+    }
+
+    public function unitProdiItems(): UnitProdiDariKolom
+    {
+        return new UnitProdiDariKolom((new MasterUnitProdi())->newQuery(), $this);
     }
 
     /**
-     * Simpan seluruh pilihan sekaligus: pivot di-sync, unit_prodi_id jadi elemen pertama.
-     * Daftar kosong mengosongkan keduanya.
+     * Simpan seluruh pilihan sekaligus: unit_prodi_ids diganti, id pertama jadi unit utama.
+     * Daftar kosong mengosongkannya.
      *
      * @param  array<int, int|string>  $ids
      */
@@ -35,57 +59,41 @@ trait HasMultiUnitProdi
     {
         $ids = array_values(array_unique(array_map('intval', array_filter($ids, fn ($id) => $id !== null && $id !== ''))));
 
-        $this->unitProdiItems()->sync($ids);
-
-        $utama = $ids[0] ?? null;
-        if ($this->unit_prodi_id !== $utama) {
-            $this->forceFill(['unit_prodi_id' => $utama])->save();
-        }
+        $this->forceFill(['unit_prodi_ids' => $ids ?: null])->save();
+        $this->unsetRelation('unitProdiItems');
     }
 
     /**
-     * Semua id unit/prodi baris ini, node utama (unit_prodi_id) di urutan pertama.
-     * Baris lama yang belum punya pivot tetap mengembalikan unit_prodi_id-nya.
+     * Semua id unit/prodi baris ini, node utama di urutan pertama.
      *
      * @return array<int, int>
      */
     public function unitProdiIdsUrut(): array
     {
-        $semua = $this->unitProdiItems()->pluck('master_unit_prodi.id')->map(fn ($id) => (int) $id)->all();
-
-        if ($this->unit_prodi_id !== null) {
-            array_unshift($semua, (int) $this->unit_prodi_id);
-        }
-
-        return array_values(array_unique($semua));
+        return array_values(array_unique(array_map('intval', $this->unit_prodi_ids ?? [])));
     }
 
     /**
-     * Baris yang unit/prodi-nya termasuk salah satu $ids — lewat kolom utama ATAU pivot.
+     * Baris yang unit/prodi-nya termasuk salah satu $ids.
      *
      * @param  array<int, int>  $ids
      */
     public function scopeDalamUnitProdi(Builder $query, array $ids): Builder
     {
         return $query->where(function (Builder $builder) use ($ids) {
-            $builder->whereIn('unit_prodi_id', $ids)
-                ->orWhereHas('unitProdiItems', fn (Builder $inner) => $inner->whereIn('master_unit_prodi.id', $ids));
+            foreach ($ids as $id) {
+                $builder->orWhereJsonContains('unit_prodi_ids', (int) $id);
+            }
         });
     }
 
     /**
-     * Apakah baris ini masuk salah satu $ids (versi instance dari scopeDalamUnitProdi).
+     * Versi instance dari scopeDalamUnitProdi.
      *
      * @param  array<int, int|string>  $ids
      */
     public function termasukUnitProdi(array $ids): bool
     {
-        $ids = array_map('intval', $ids);
-
-        if ($this->unit_prodi_id !== null && in_array((int) $this->unit_prodi_id, $ids, true)) {
-            return true;
-        }
-
-        return $this->unitProdiItems()->whereIn('master_unit_prodi.id', $ids)->exists();
+        return array_intersect($this->unitProdiIdsUrut(), array_map('intval', $ids)) !== [];
     }
 }

@@ -1,5 +1,7 @@
 'use client';
 
+import JenisBadges from '@/components/JenisBadges';
+
 import { useEffect, useMemo, useState } from 'react';
 import { Trash2, Search, RotateCcw, Info, ShieldAlert, FileText, CheckSquare, Square, Filter } from 'lucide-react';
 import {
@@ -311,9 +313,7 @@ export default function SampahDokumenPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${jenisColor[item.jenis]}`}>
-                        {item.jenis}
-                      </span>
+                      <JenisBadges jenis={item.jenisList ?? [item.jenis]} warna={jenisColor} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold" />
                     </td>
                     <td className="py-3 px-4 text-[10px] text-gray-600 min-w-[180px]">
                       {[...item.jurusanList, ...item.prodiList, ...item.unitKerjaList].length === 0 ? (

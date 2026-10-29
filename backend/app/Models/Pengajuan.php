@@ -13,9 +13,6 @@ class Pengajuan extends Model
 {
     use HasMultiUnitProdi;
 
-    protected string $unitProdiPivotTable = 'pengajuan_unit_prodi';
-    protected string $unitProdiPivotForeignKey = 'pengajuan_id';
-
     protected $table = 'pengajuan_v2';
 
     protected $fillable = [
@@ -52,13 +49,13 @@ class Pengajuan extends Model
         'pic_polibatam_jabatan',
         'pic_polibatam_email',
         'pic_polibatam_whatsapp',
-        'unit_prodi_id',
         'mitra_id',
         'judul_pengajuan',
         'deskripsi_pengajuan',
         'manfaat',
         'luaran_kerja_sama',
         'jenis_dokumen',
+        'jenis_dokumen_list',
         'kategori_pengajuan',
         'ruang_lingkup_ids',
         'tanggal_mulai',
@@ -99,6 +96,7 @@ class Pengajuan extends Model
         'is_from_admin' => 'boolean',
 
         // New schema casts
+        'jenis_dokumen_list' => 'array',
         'ruang_lingkup_ids' => PgArrayCast::class,
         // 'ruang_lingkup_ids' => 'array',
         'tanggal_mulai' => 'date',
@@ -145,7 +143,9 @@ class Pengajuan extends Model
 
     public function dokumenKerjasama(): HasOne
     {
-        return $this->hasOne(DokumenKerjasama::class, 'no_permohonan', 'nomor_pengajuan');
+        // Lewat id pengajuan, BUKAN nomor_pengajuan: nomor PMH bisa dipakai ulang setelah pengajuan
+        // dihapus, sehingga dokumen sisa pengajuan lama ikut "menempel" ke pengajuan baru bernomor sama.
+        return $this->hasOne(DokumenKerjasama::class, 'sumber_pengajuan_id');
     }
 
     public function pengajuanLogs(): HasMany

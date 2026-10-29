@@ -1,5 +1,9 @@
 'use client';
 
+import type { RingkasanJenis } from '@/lib/hitungJenisDokumen';
+
+import CatatanJenisDokumen from '@/components/CatatanJenisDokumen';
+
 import DonutChart from '@/components/DonutChart';
 import KategoriMitraDonutCard, { type KategoriMitraStat } from '@/components/KategoriMitraDonutCard';
 
@@ -14,7 +18,7 @@ type PublicStats = {
   instansi_internasional: number;
 };
 
-type JenisDistribution = { MoU: number; MoA: number; IA: number };
+type JenisDistribution = RingkasanJenis;
 
 type Props = {
   stats: PublicStats;
@@ -50,7 +54,8 @@ export default function AdminDashboardCharts({ stats, jenisDistribution, topRuan
     URL.revokeObjectURL(url);
   };
 
-  const jenisTotal = jenisDistribution.MoU + jenisDistribution.MoA + jenisDistribution.IA;
+  // Jumlah semua kategori (MoU + MoA + IA): angka di tengah donat dan penyebut persentase.
+  const jenisTotal = jenisDistribution.total;
 
   return (
     <div className="card p-3 md:p-5">
@@ -110,6 +115,7 @@ export default function AdminDashboardCharts({ stats, jenisDistribution, topRuan
                 </div>
               );
             })}
+            <CatatanJenisDokumen />
           </div>
         </div>
 

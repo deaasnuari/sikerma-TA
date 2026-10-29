@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\KontakMitra;
 use App\Models\MasterMitra;
 use App\Support\MitraNameMatcher;
 use Illuminate\Console\Command;
@@ -52,7 +51,7 @@ class GabungMitraGanda extends Command
         {--pasangan= : Gabungkan pasangan yang ditentukan sendiri, format hapus:tujuan,hapus:tujuan (mis. 1504:372,791:372)}
         {--rollback= : Pulihkan dari berkas cadangan JSON di storage/app/ (pratinjau dulu; tambahkan --apply untuk memulihkan)}
         {--tanpa-backfill-kontak : Jangan salin kolom kontak utama duplikat ke INDUK dan jangan jadikan PIC utama duplikat kontak tambahan INDUK (untuk unit/fakultas yang kontaknya bukan kontak institusi induk)}
-        {--tanpa-backfill : Matikan SEMUA backfill: tidak ada kolom INDUK yang diisi dari duplikat (termasuk website, kode_mitra) dan PIC utama duplikat tidak dijadikan kontak tambahan; hanya dokumen/pengajuan/kontak_mitra yang dipindah}
+        {--tanpa-backfill : Matikan SEMUA backfill: tidak ada kolom INDUK yang diisi dari duplikat (termasuk website, kode_mitra) dan PIC utama duplikat tidak dijadikan kontak tambahan; hanya dokumen/pengajuan/kontak tambahan yang dipindah}
         {--hanya= : Dengan --rollback: pulihkan hanya mitra dengan id ini (pisah koma), pasangan lain di berkas yang sama tidak disentuh}';
 
     protected $description = 'Gabungkan mitra ganda di master_mitra berdasarkan kesamaan nama (induk = yang punya kode_mitra), atau pasangan hapus:tujuan yang ditentukan sendiri';
@@ -67,7 +66,7 @@ class GabungMitraGanda extends Command
     /** Field yang boleh di-backfill ke INDUK dari baris duplikat. */
     private const FIELD_BACKFILL = [
         'kategori_mitra', 'tingkat_perusahaan', 'bidang_usaha', 'negara', 'website', 'alamat',
-        'email_mitra', 'whatsapp_mitra', 'no_telepon_mitra', 'kode_mitra', 'kode_perusahaan',
+        'email_mitra', 'whatsapp_mitra', 'no_telepon_mitra', 'kode_mitra',
         'nama_kontak_utama', 'jabatan_kontak_utama', 'email_kontak_utama', 'telepon_kontak_utama',
     ];
 
@@ -146,7 +145,7 @@ class GabungMitraGanda extends Command
 
             $dok = $duplikat->sum(fn (MasterMitra $m) => (int) ($pakaiDok[$m->id] ?? 0));
             $peng = $duplikat->sum(fn (MasterMitra $m) => (int) ($pakaiPeng[$m->id] ?? 0));
-            $kontak = DB::table('kontak_mitra')->whereIn('mitra_id', $dupIds)->count();
+            $kontak = $duplikat->sum(fn (MasterMitra $m) => count($m->kontak_tambahan ?? []));
             $backfill = $this->hitungBackfill($induk, $duplikat, $pakaiDok, $pakaiPeng);
 
             $totalDupHapus += count($dupIds);
@@ -207,7 +206,7 @@ class GabungMitraGanda extends Command
                 DB::table('dokumen_kerjasama')->whereIn('mitra_id', $r['dupIds'])->update(['mitra_id' => $r['induk']->id]);
                 DB::table('pengajuan_v2')->whereIn('mitra_id', $r['dupIds'])->update(['mitra_id' => $r['induk']->id]);
 
-                // Sebelum dihapus (kontak_mitra ikut terhapus via cascade), pindahkan kontaknya ke INDUK.
+                // Sebelum dihapus, pindahkan kontak tambahan dan PIC utama duplikat ke INDUK.
                 $this->pindahkanKontak($r['induk'], $r['duplikat'], $r['backfill']);
 
                 MasterMitra::whereIn('id', $r['dupIds'])->delete();
@@ -311,7 +310,7 @@ class GabungMitraGanda extends Command
                     '#'.$k['induk']->id.' '.mb_strimwidth((string) $k['induk']->nama_mitra, 0, 34, '…').(trim((string) $k['induk']->kode_mitra) !== '' ? ' ['.$k['induk']->kode_mitra.']' : ''),
                     $total.' ('.$aktif.' aktif + '.($total - $aktif).' di Sampah)',
                     (int) ($pakaiPeng[$d->id] ?? 0),
-                    DB::table('kontak_mitra')->where('mitra_id', $d->id)->count().(trim((string) $d->nama_kontak_utama) !== '' ? ($this->tanpaBackfillKontak ? ' + PIC utama (tidak dipindah)' : ' + PIC utama') : ''),
+                    count($d->kontak_tambahan ?? []).(trim((string) $d->nama_kontak_utama) !== '' ? ($this->tanpaBackfillKontak ? ' + PIC utama (tidak dipindah)' : ' + PIC utama') : ''),
                 ];
             }
         }
@@ -321,7 +320,7 @@ class GabungMitraGanda extends Command
     }
 
     /**
-     * Kontak dari baris duplikat — kontak utamanya dan kontak_mitra-nya — dipindah
+     * Kontak dari baris duplikat — kontak utamanya dan kontak tambahannya — dipindah
      * ke INDUK sebagai kontak tambahan, kecuali emailnya sudah jadi kontak utama
      * INDUK (setelah backfill) atau sudah ada di kontak INDUK.
      *
@@ -331,19 +330,19 @@ class GabungMitraGanda extends Command
     {
         $emailUtama = strtolower(trim((string) ($backfill['email_kontak_utama'] ?? $induk->email_kontak_utama)));
         $namaUtama = mb_strtolower(trim((string) ($backfill['nama_kontak_utama'] ?? $induk->nama_kontak_utama)));
-        $sudahAda = KontakMitra::where('mitra_id', $induk->id)->pluck('email')
-            ->map(fn ($e) => strtolower(trim((string) $e)))->filter()->flip()->all();
+        $sudahAda = collect($induk->kontak)->map(fn ($k) => strtolower(trim((string) ($k['email'] ?? ''))))
+            ->filter()->flip()->all();
 
-        $dupIds = $duplikat->pluck('id')->all();
-        foreach (KontakMitra::whereIn('mitra_id', $dupIds)->orderBy('id')->get() as $kontak) {
-            $email = strtolower(trim((string) $kontak->email));
-            if ($email !== '' && ($email === $emailUtama || isset($sudahAda[$email]))) {
-                $kontak->delete();
-                continue;
-            }
-            $kontak->update(['mitra_id' => $induk->id]);
-            if ($email !== '') {
-                $sudahAda[$email] = true;
+        foreach ($duplikat as $d) {
+            foreach ($d->kontak_tambahan ?? [] as $kontak) {
+                $email = strtolower(trim((string) ($kontak['email'] ?? '')));
+                if ($email !== '' && ($email === $emailUtama || isset($sudahAda[$email]))) {
+                    continue;
+                }
+                $induk->tambahKontak($kontak);
+                if ($email !== '') {
+                    $sudahAda[$email] = true;
+                }
             }
         }
 
@@ -361,8 +360,7 @@ class GabungMitraGanda extends Command
                 continue;
             }
 
-            KontakMitra::create([
-                'mitra_id' => $induk->id,
+            $induk->tambahKontak([
                 'nama' => $nama,
                 'jabatan' => $this->kosong($d->jabatan_kontak_utama) ? null : trim((string) $d->jabatan_kontak_utama),
                 'email' => $email !== '' ? $email : null,
@@ -372,6 +370,62 @@ class GabungMitraGanda extends Command
                 $sudahAda[$email] = true;
             }
         }
+    }
+
+    /** Kunci pembanding kontak: email bila ada, kalau tidak nama. Kosong bila keduanya kosong. */
+    private function kunciKontak(array $kontak): string
+    {
+        $email = strtolower(trim((string) ($kontak['email'] ?? '')));
+        if ($email !== '' && $email !== '-') {
+            return 'e:'.$email;
+        }
+        $nama = mb_strtolower(trim((string) ($kontak['nama'] ?? '')));
+
+        return $nama !== '' ? 'n:'.$nama : '';
+    }
+
+    /**
+     * Cadangan versi 2 menyimpan kontak di tabel kontak_mitra (kini sudah digabung ke kolom JSON
+     * master_mitra.kontak_tambahan). Ubah ke bentuk baru supaya cadangan lama tetap bisa dipulihkan.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function normalisasiKontakCadangan(array $data): array
+    {
+        if (! array_key_exists('kontak_mitra', $data)) {
+            return $data;
+        }
+
+        $jadiJson = function (array $baris): ?string {
+            $hasil = [];
+            foreach (array_values($baris) as $i => $r) {
+                $hasil[] = [
+                    'id' => $i + 1,
+                    'user_id' => $r['user_id'] ?? null,
+                    'nama' => $r['nama'] ?? '-',
+                    'jabatan' => $r['jabatan'] ?? null,
+                    'email' => $r['email'] ?? null,
+                    'telepon' => $r['telepon'] ?? null,
+                ];
+            }
+
+            return $hasil !== [] ? json_encode($hasil) : null;
+        };
+
+        $perMitra = [];
+        foreach ($data['kontak_mitra'] as $r) {
+            $perMitra[(int) $r['mitra_id']][] = $r;
+        }
+        foreach ($data['mitra_dihapus'] as $i => $row) {
+            $data['mitra_dihapus'][$i]['kontak_tambahan'] = $jadiJson($perMitra[(int) $row['id']] ?? []);
+        }
+        foreach ($data['induk_sebelum'] as $id => $row) {
+            $data['induk_sebelum'][$id]['kontak_tambahan'] = $jadiJson($data['kontak_induk_sebelum'][$id] ?? []);
+        }
+        unset($data['kontak_mitra'], $data['kontak_induk_sebelum']);
+
+        return $data;
     }
 
     /**
@@ -447,14 +501,10 @@ class GabungMitraGanda extends Command
 
         $payload = [
             'perintah' => 'sikerma:gabung-mitra-ganda',
-            'versi' => 2,
+            'versi' => 3,
             'dibuat' => now()->toIso8601String(),
             'mitra_dihapus' => DB::table('master_mitra')->whereIn('id', $ids)->get()->all(),
-            'kontak_mitra' => DB::table('kontak_mitra')->whereIn('mitra_id', $ids)->get()->all(),
             'induk_sebelum' => DB::table('master_mitra')->whereIn('id', $indukIds)->get()->keyBy('id')->all(),
-            'kontak_induk_sebelum' => collect($indukIds)->mapWithKeys(
-                fn ($id) => [$id => DB::table('kontak_mitra')->where('mitra_id', $id)->get()->all()]
-            )->all(),
             'dokumen_kerjasama_mitra_lama' => DB::table('dokumen_kerjasama')->whereIn('mitra_id', $ids)->pluck('mitra_id', 'id')->all(),
             'pengajuan_v2_mitra_lama' => DB::table('pengajuan_v2')->whereIn('mitra_id', $ids)->pluck('mitra_id', 'id')->all(),
             'pemetaan_ke_induk' => $pemetaan,
@@ -500,6 +550,7 @@ class GabungMitraGanda extends Command
 
             return self::FAILURE;
         }
+        $data = $this->normalisasiKontakCadangan($data);
 
         $hanya = null;
         if (trim($hanyaOpsi) !== '') {
@@ -543,6 +594,7 @@ class GabungMitraGanda extends Command
 
         // Kolom INDUK yang dikembalikan.
         $indukRencana = [];
+        $jumlahKontakDibuang = 0;
         foreach ($data['induk_sebelum'] as $indukId => $before) {
             $indukId = (int) $indukId;
             $dups = $hanya === null ? $ids : array_values(array_filter($ids, fn ($d) => ($indukDari[$d] ?? null) === $indukId));
@@ -574,44 +626,35 @@ class GabungMitraGanda extends Command
                     }
                 }
             }
+            // Kontak tambahan INDUK (kolom JSON kontak_tambahan) ikut dikembalikan.
+            $kontakSekarang = json_decode((string) ($now->kontak_tambahan ?? ''), true) ?: [];
+            $kontakSebelum = json_decode((string) ($before['kontak_tambahan'] ?? ''), true) ?: [];
+            if ($hanya === null) {
+                $kontakBaru = $kontakSebelum;
+            } else {
+                // Sebagian: buang hanya kontak yang berasal dari mitra yang dipulihkan (PIC utamanya dan kontak
+                // tambahannya) dan belum ada sebelum penggabungan.
+                $kunciSebelum = array_flip(array_filter(array_map(fn ($k) => $this->kunciKontak($k), $kontakSebelum)));
+                $kunciDari = [];
+                foreach ($dups as $d) {
+                    $kunciDari[] = $this->kunciKontak(['nama' => $dihapus[$d]['nama_kontak_utama'] ?? '', 'email' => $dihapus[$d]['email_kontak_utama'] ?? '']);
+                    foreach (json_decode((string) ($dihapus[$d]['kontak_tambahan'] ?? ''), true) ?: [] as $k) {
+                        $kunciDari[] = $this->kunciKontak($k);
+                    }
+                }
+                $kunciDari = array_flip(array_filter($kunciDari));
+                $kontakBaru = array_values(array_filter(
+                    $kontakSekarang,
+                    fn ($k) => isset($kunciSebelum[$this->kunciKontak($k)]) || ! isset($kunciDari[$this->kunciKontak($k)])
+                ));
+            }
+            if (json_encode($kontakBaru) !== json_encode($kontakSekarang)) {
+                $kolom['kontak_tambahan'] = $kontakBaru !== [] ? json_encode($kontakBaru) : null;
+                $jumlahKontakDibuang += max(0, count($kontakSekarang) - count($kontakBaru));
+            }
+
             if ($kolom !== []) {
                 $indukRencana[$indukId] = ['nama' => $now->nama_mitra, 'kolom' => $kolom, 'sekarang' => array_intersect_key((array) $now, $kolom)];
-            }
-        }
-
-        // Kontak.
-        $kontakBalik = array_values(array_filter($data['kontak_mitra'], fn ($r) => $hanya === null || in_array((int) $r['mitra_id'], $ids, true)));
-        $idKontakBalik = array_column($kontakBalik, 'id');
-        $kontakBuang = [];
-        foreach ($data['kontak_induk_sebelum'] as $indukId => $rows) {
-            $indukId = (int) $indukId;
-            $keep = array_column($rows, 'id');
-            $q = DB::table('kontak_mitra')->where('mitra_id', $indukId);
-            if ($keep !== []) {
-                $q->whereNotIn('id', $keep);
-            }
-            foreach ($q->get() as $k) {
-                if (in_array($k->id, $idKontakBalik, true)) {
-                    continue; // kontak asli milik mitra yang dipulihkan: dipindah balik, bukan dibuang
-                }
-                if ($hanya !== null) {
-                    // Sebagian: buang hanya kontak yang dibuat dari PIC utama mitra yang dipulihkan.
-                    $cocok = false;
-                    foreach ($ids as $d) {
-                        if (($indukDari[$d] ?? null) !== $indukId) {
-                            continue;
-                        }
-                        $email = strtolower(trim((string) ($dihapus[$d]['email_kontak_utama'] ?? '')));
-                        $nama = mb_strtolower(trim((string) ($dihapus[$d]['nama_kontak_utama'] ?? '')));
-                        if (($email !== '' && strtolower(trim((string) $k->email)) === $email) || ($email === '' && $nama !== '' && mb_strtolower(trim((string) $k->nama)) === $nama)) {
-                            $cocok = true;
-                        }
-                    }
-                    if (! $cocok) {
-                        continue;
-                    }
-                }
-                $kontakBuang[] = (array) $k;
             }
         }
 
@@ -653,7 +696,8 @@ class GabungMitraGanda extends Command
         $this->line('Pengajuan yang dikembalikan:');
         $pengBalik === [] ? $this->line('  (tidak ada)') : $this->table(['id', 'nomor', 'status', 'mitra_id sekarang', '→ kembali ke'], array_map(fn ($r) => [$r['id'], $r['label'], $r['status'], $r['sekarang'], $r['lama']], $pengBalik));
 
-        $this->line(sprintf('Kontak: %d dipulihkan ke mitra asalnya, %d kontak hasil penggabungan dibuang.', count($kontakBalik), count($kontakBuang)));
+        $jumlahKontakBalik = array_sum(array_map(fn ($r) => count(json_decode((string) ($r['kontak_tambahan'] ?? ''), true) ?: []), $mitraBaru));
+        $this->line(sprintf('Kontak: %d dipulihkan bersama mitra asalnya, %d kontak hasil penggabungan dibuang dari induk.', $jumlahKontakBalik, $jumlahKontakDibuang));
 
         $this->line('Kolom INDUK yang dikembalikan:');
         if ($indukRencana === []) {
@@ -679,7 +723,7 @@ class GabungMitraGanda extends Command
 
         $this->line(sprintf(
             'Ringkasan: %d mitra dihidupkan | %d dokumen + %d pengajuan dikembalikan | %d kontak dipulihkan, %d dibuang | %d induk dikembalikan kolomnya.',
-            count($mitraBaru), count($dokBalik), count($pengBalik), count($kontakBalik), count($kontakBuang), count($indukRencana),
+            count($mitraBaru), count($dokBalik), count($pengBalik), $jumlahKontakBalik, $jumlahKontakDibuang, count($indukRencana),
         ));
 
         if (! $apply) {
@@ -699,8 +743,6 @@ class GabungMitraGanda extends Command
             'dokumen_sebelum' => array_column($dokBalik, 'sekarang', 'id'),
             'pengajuan_sebelum' => array_column($pengBalik, 'sekarang', 'id'),
             'induk_sebelum' => array_map(fn ($r) => $r['sekarang'], $indukRencana),
-            'kontak_dibuang' => $kontakBuang,
-            'kontak_dipindah_sebelum' => DB::table('kontak_mitra')->whereIn('id', $idKontakBalik)->pluck('mitra_id', 'id')->all(),
         ];
         if (file_put_contents($cadangan, json_encode($isi, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) === false) {
             throw new \RuntimeException('Gagal menulis berkas cadangan: '.$cadangan);
@@ -708,22 +750,14 @@ class GabungMitraGanda extends Command
         $this->line('Cadangan kondisi sebelum pemulihan: '.$cadangan);
 
         try {
-            DB::transaction(function () use ($indukRencana, $mitraBaru, $kontakBuang, $kontakBalik, $dokBalik, $pengBalik) {
+            DB::transaction(function () use ($indukRencana, $mitraBaru, $dokBalik, $pengBalik) {
                 foreach ($indukRencana as $indukId => $r) {
                     DB::table('master_mitra')->where('id', $indukId)->update($r['kolom'] + ['updated_at' => now()]);
                 }
+                // Cadangan lama bisa memuat kolom yang sudah dihapus dari master_mitra (mis. kode_perusahaan): dibuang.
+                $kolomAda = array_flip(\Illuminate\Support\Facades\Schema::getColumnListing('master_mitra'));
                 foreach ($mitraBaru as $row) {
-                    DB::table('master_mitra')->insert($row);
-                }
-                if ($kontakBuang !== []) {
-                    DB::table('kontak_mitra')->whereIn('id', array_column($kontakBuang, 'id'))->delete();
-                }
-                foreach ($kontakBalik as $row) {
-                    if (DB::table('kontak_mitra')->where('id', $row['id'])->exists()) {
-                        DB::table('kontak_mitra')->where('id', $row['id'])->update(['mitra_id' => $row['mitra_id']]);
-                    } else {
-                        DB::table('kontak_mitra')->insert($row);
-                    }
+                    DB::table('master_mitra')->insert(array_intersect_key($row, $kolomAda));
                 }
                 foreach ($dokBalik as $r) {
                     DB::table('dokumen_kerjasama')->where('id', $r['id'])->update(['mitra_id' => $r['lama']]);

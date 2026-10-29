@@ -1,5 +1,7 @@
 'use client';
 
+import JenisBadges from '@/components/JenisBadges';
+
 import { useState } from 'react';
 import { ArrowLeft, Calendar, CheckCircle2, Clock, Download, FileText, Mail, Pencil, Phone, User } from 'lucide-react';
 import { generateNoDokumen } from '@/services/adminMonitoringService';
@@ -17,6 +19,7 @@ interface KerjasamaItem {
   noDokumen: string;
   namaMitra: string;
   jenis: Jenis;
+  jenisList?: Jenis[];
   unit: string;
   tanggalMulai: string;
   berlakuHingga: string;
@@ -94,6 +97,8 @@ const jenisFullName: Record<Jenis, string> = {
 
 interface DokumenTerkait {
   nama: string;
+  /** Berkas ini untuk jenis dokumen apa bila dokumennya memuat MoU + MoA. */
+  jenisDokumen?: string;
   ukuran: string;
   tanggal: string;
   url?: string;
@@ -176,7 +181,7 @@ export default function DetailKerjasamaModal({ item, pengajuan, onClose, onNilai
   // Modal internal rekap_data tidak punya tipe proper untuk dokumen pendukung,
   // jadi kita baca dari field dinamis pada item.
   const dokumenTerkait = (item as any).dokumenTerkait as
-    | { nama: string; url?: string; ukuran: string; tanggal: string; jenisBerkas?: JenisBerkas }[]
+    | { nama: string; url?: string; ukuran: string; tanggal: string; jenisBerkas?: JenisBerkas; jenisDokumen?: string }[]
     | undefined;
 
   const statusInfo = statusLabelMap[item.status];
@@ -213,9 +218,7 @@ export default function DetailKerjasamaModal({ item, pengajuan, onClose, onNilai
             <div>
               <p className="text-[12px] font-bold text-gray-900">{item.namaMitra}</p>
               <div className="mt-1 flex items-center gap-2">
-                <span className={`rounded px-2 py-0.5 text-[9.5px] font-bold ${jenisBadgeMap[item.jenis]}`}>
-                  {item.jenis}
-                </span>
+                <JenisBadges jenis={item.jenisList ?? [item.jenis]} warna={jenisBadgeMap} className="rounded px-2 py-0.5 text-[9.5px] font-bold" />
                 <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[9.5px] font-medium text-gray-600">
                   {item.unit}
                 </span>
@@ -327,7 +330,7 @@ function TabInformasi({ item, onNilaiSaved }: { item: KerjasamaItem; onNilaiSave
           </div>
           <div>
             <p className="text-[10px] text-gray-500">Jenis Kerjasama</p>
-            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{jenisFullName[item.jenis]}</p>
+            <p className="mt-0.5 text-[12px] font-semibold text-gray-900">{(item.jenisList ?? [item.jenis]).map((j) => jenisFullName[j]).join(' + ')}</p>
           </div>
         </div>
 
@@ -465,7 +468,7 @@ function TabInformasi({ item, onNilaiSaved }: { item: KerjasamaItem; onNilaiSave
 function TabDokumen({
   dokumenTerkait,
 }: {
-  dokumenTerkait?: { nama: string; url?: string; ukuran: string; tanggal: string; jenisBerkas?: JenisBerkas }[];
+  dokumenTerkait?: { nama: string; url?: string; ukuran: string; tanggal: string; jenisBerkas?: JenisBerkas; jenisDokumen?: string }[];
 }) {
   if (!dokumenTerkait || dokumenTerkait.length === 0) {
 
@@ -488,7 +491,7 @@ function TabDokumen({
               </div>
               <div className="min-w-0">
                 <div className="mb-1">
-                  <JenisBerkasBadge jenis={doc.jenisBerkas} />
+                  <JenisBerkasBadge jenis={doc.jenisBerkas} jenisDokumen={doc.jenisDokumen} />
                 </div>
                 <p className="text-[12px] font-semibold text-gray-900">{doc.nama}</p>
                 <p className="text-[10px] text-gray-500">{doc.ukuran} • {doc.tanggal}</p>

@@ -234,7 +234,9 @@ export async function verifyCurrentUser(): Promise<'valid' | 'invalid' | 'offlin
   if (!getStoredUser()) return 'valid';
 
   try {
-    await apiRequest<{ user: unknown }>('/me');
+    // 401 di sini hanya berarti profil tersimpan sudah basi (sesi cookie habis); AuthProvider yang
+    // memutuskan perlu pindah ke login atau tidak, bukan handler 401 global.
+    await apiRequest<{ user: unknown }>('/me', { skipAuthRedirect: true });
     return 'valid';
   } catch (error) {
     const message = error instanceof Error ? error.message : '';

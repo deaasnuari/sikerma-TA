@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getExternalPengajuanData, syncExternalPengajuanWithAdminData, getExternalPengajuanUpdateEventName } from '@/services/externalPengajuanService';
-import { fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
+import { daftarJenisDokumen, fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
 import { useEffect, useMemo, useState } from 'react';
 
 // Dashboard Mitra Eksternal: ringkasan pengajuan/kerja sama milik akun yang sedang login.
@@ -28,6 +28,8 @@ type DashboardItem = {
   mitra: string;
   status: DashboardStatus;
   jenis: string;
+  /** Semua jenis bila satu pengajuan memuat MoU + MoA sekaligus. */
+  jenisList: string[];
   unit: string;
   mulai: string;
   berakhir: string;
@@ -69,6 +71,7 @@ function buildDashboardItems(items: any[]): DashboardItem[] {
     mitra: it.namaMitra || '',
     status: mapStatus(it.statusPengajuan),
     jenis: it.jenisDokumen || '—',
+    jenisList: it.jenisDokumen ? daftarJenisDokumen(it) : ['—'],
     unit: it.namaUnitProdi || '—',
     mulai: toIdDate(it.tanggalMulai),
     berakhir: toIdDate(it.tanggalBerakhir),
@@ -267,9 +270,11 @@ export default function EksternalPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[12.5px] font-semibold text-slate-800">{item.title}</p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-slate-500">
-                      <span className={`rounded px-1.5 py-0.5 text-[9.5px] font-bold ${jenisBadge[item.jenis.toLowerCase()] || 'bg-slate-100 text-slate-700'}`}>
-                        {item.jenis}
-                      </span>
+                      {item.jenisList.map((jenis) => (
+                        <span key={jenis} className={`rounded px-1.5 py-0.5 text-[9.5px] font-bold ${jenisBadge[jenis.toLowerCase()] || 'bg-slate-100 text-slate-700'}`}>
+                          {jenis}
+                        </span>
+                      ))}
                       <span className="truncate">{item.unit}</span>
                       <span className="inline-flex items-center gap-1">
                         <Clock3 size={11} />

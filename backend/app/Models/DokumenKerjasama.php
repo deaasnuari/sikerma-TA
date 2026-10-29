@@ -13,9 +13,6 @@ class DokumenKerjasama extends Model
 {
     use HasMultiUnitProdi;
 
-    protected string $unitProdiPivotTable = 'dokumen_kerjasama_unit_prodi';
-    protected string $unitProdiPivotForeignKey = 'dokumen_kerjasama_id';
-
     protected $table = 'dokumen_kerjasama';
 
     // status_efektif dihitung, BUKAN status_siklus mentah — lihat KerjasamaStatus untuk
@@ -30,6 +27,7 @@ class DokumenKerjasama extends Model
         'no_permohonan',
         'nama_dokumen',
         'jenis_dokumen',
+        'jenis_dokumen_list',
         'judul_dokumen',
         'manfaat',
         'luaran_kerja_sama',
@@ -42,7 +40,6 @@ class DokumenKerjasama extends Model
         'diarsipkan_pada',
         'alasan_arsip',
         'sumber_pengajuan_id',
-        'unit_prodi_id',
         'mitra_id',
         'snap_nama_mitra',
         'snap_whatsapp_pengusul',
@@ -65,6 +62,7 @@ class DokumenKerjasama extends Model
 
     protected $casts = [
         'ruang_lingkup_ids' => 'array',
+        'jenis_dokumen_list' => 'array',
         'tanggal_mulai' => 'date',
         'tanggal_berakhir' => 'date',
         'tanggal_ttd' => 'date',

@@ -3,7 +3,7 @@
 import DokumenPerpanjanganSection from '@/components/DokumenPerpanjanganSection';
 import { X, FileText, User, Building2, CalendarDays, Tag, CheckCircle2, Clock3, XCircle, MessageSquareText, ExternalLink, Paperclip, GitBranch, ShieldCheck, Download, Phone } from 'lucide-react';
 import type { PengajuanItem, PengajuanStatus } from '@/services/adminPengajuanService';
-import { pengajuanDokumenBadge } from '@/services/adminPengajuanService';
+import { daftarJenisDokumen, labelJenisDokumen, pengajuanDokumenBadge } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
 import FileRevisiBox from '@/components/FileRevisiBox';
 import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
@@ -61,7 +61,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
   // finalFilePath — kolom itu legacy dan hampir tidak pernah kepakai oleh alur ACC
   // yang sekarang. Makanya section ini dulu selalu kosong walau admin sudah upload.
   // Dedup by name, keep the last (terbaru) — sama seperti tampilan eksternal.
-  const accFilesMap = new Map<string, { name: string; url: string; isAcc?: boolean }>();
+  const accFilesMap = new Map<string, { name: string; url: string; isAcc?: boolean; jenisDokumen?: string }>();
   for (const f of item.fileAttachments ?? []) {
     if (f.isAcc) accFilesMap.set(f.name, f);
   }
@@ -102,9 +102,11 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
               {sc.icon}
               {sc.label}
             </span>
-            <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${pengajuanDokumenBadge[item.jenisDokumen] || 'bg-slate-100 text-slate-700'}`}>
-              {item.jenisDokumen}
-            </span>
+            {daftarJenisDokumen(item).map((jenis) => (
+              <span key={jenis} className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${pengajuanDokumenBadge[jenis] || 'bg-slate-100 text-slate-700'}`}>
+                {jenis}
+              </span>
+            ))}
           </div>
 
           {/* Informasi Umum */}
@@ -119,7 +121,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
                 <InfoRow icon={<User size={15} />} label="PIC Polibatam" value={[item.picPolibatamNama, item.picPolibatamJabatan, item.picPolibatamEmail, item.picPolibatamTelepon ? `+62 ${item.picPolibatamTelepon}` : ''].filter(Boolean).join(' · ')} />
               )}
               <InfoRow icon={<Tag size={15} />} label="Jurusan / Prodi / Unit" value={item.namaUnitProdi} />
-              <InfoRow icon={<FileText size={15} />} label="Jenis Dokumen" value={item.jenisDokumen} />
+              <InfoRow icon={<FileText size={15} />} label="Jenis Dokumen" value={labelJenisDokumen(item)} />
               {item.tanggalMulai && (
                 <InfoRow icon={<CalendarDays size={15} />} label="Tanggal Mulai" value={item.tanggalMulai} />
               )}
@@ -232,6 +234,9 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
                     >
                       <Paperclip size={13} className="shrink-0 text-emerald-600" />
                       <span className="truncate">{file.name}</span>
+                      {file.jenisDokumen && (
+                        <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] font-bold text-white">{file.jenisDokumen}</span>
+                      )}
                       <Download size={13} className="ml-auto shrink-0" />
                     </a>
                   ))}

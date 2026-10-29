@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, Upload, X, AlertCircle, RefreshCw, ChevronDown, Check } from 'lucide-react';
-import { compressImageFileIfNeeded, validateSelectedFile } from '@/lib/fileUploadUtils';
+import { validateSelectedFile } from '@/lib/fileUploadUtils';
 import { getMasterRuangLingkup, getCachedMasterRuangLingkup, type MasterRuangLingkup } from '@/services/masterRuangLingkupService';
 import { showNotice } from '@/lib/dialog';
 
@@ -73,28 +73,23 @@ export default function RenewalFullForm({ initialData, onSubmit }: RenewalFullFo
   const handleAddDokumen = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png';
+    input.accept = '.pdf';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       const validationError = validateSelectedFile(file, {
-        accept: '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png',
+        accept: '.pdf',
         maxSizeBytes: 10 * 1024 * 1024,
       });
       if (validationError) {
         showNotice(validationError);
         return;
       }
-      const processedFile = await compressImageFileIfNeeded(file, {
-        maxDimension: 1920,
-        quality: 0.8,
-        minBytesToCompress: 400 * 1024,
-      });
       const reader = new FileReader();
       reader.onload = () => {
-        setDokumen([{ nama: processedFile.name, url: reader.result as string, ukuran: (processedFile.size / 1024 / 1024).toFixed(1) + ' MB', tanggal: new Date().toLocaleDateString('id-ID') }]);
+        setDokumen([{ nama: file.name, url: reader.result as string, ukuran: (file.size / 1024 / 1024).toFixed(1) + ' MB', tanggal: new Date().toLocaleDateString('id-ID') }]);
       };
-      reader.readAsDataURL(processedFile);
+      reader.readAsDataURL(file);
     };
     input.click();
   };
@@ -315,7 +310,7 @@ export default function RenewalFullForm({ initialData, onSubmit }: RenewalFullFo
             {dokumen.length > 0 ? 'Ganti Dokumen Perpanjangan' : 'Upload Dokumen Perpanjangan'}
           </button>
           <p className="text-xs text-blue-700">
-            📄 Format yang didukung: PDF, DOC, DOCX, XLS, XLSX, JPG, JPEG, PNG (Maks. 10 MB)
+            📄 Format yang didukung: PDF (Maks. 10 MB)
           </p>
         </div>
       </div>

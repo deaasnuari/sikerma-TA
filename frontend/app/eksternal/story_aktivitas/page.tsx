@@ -1,5 +1,9 @@
 'use client';
 
+import { daftarJenisDokumen } from '@/services/adminPengajuanService';
+
+import JenisBadges from '@/components/JenisBadges';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
@@ -42,6 +46,8 @@ export interface DokumenRingkas {
   tanggalBerakhirRaw?: string;
   noDokumen: string;
   jenis: string;
+  /** Semua jenis dokumen ini (dua bila memuat MoU + MoA sekaligus). */
+  jenisList: string[];
   status: StatusKerjasama;
   tanggalMulai: string;
   tanggalBerakhir: string;
@@ -55,6 +61,9 @@ export interface KerjasamaStory {
   namaMitra: string;
   noDokumen: string;
   jenis: Jenis;
+  jenisList: Jenis[];
+  /** Semua jenis di grup ini (termasuk dokumen gabungan) — dipakai filter jenis. */
+  jenisTerlibat: string[];
   status: StatusKerjasama;
   tanggalMulai: string;
   tanggalBerakhir: string;
@@ -98,6 +107,7 @@ function mapStoryGroupToStory(group: StoryAktivitasGroup): KerjasamaStory {
       id: p.id,
       noDokumen: p.nomorPengajuan,
       jenis: p.jenisDokumen,
+      jenisList: daftarJenisDokumen(p),
       status: st,
       diajukanPada: p.diajukanPada,
       tanggalMulaiRaw: p.tanggalMulai,
@@ -121,6 +131,8 @@ function mapStoryGroupToStory(group: StoryAktivitasGroup): KerjasamaStory {
     namaMitra: group.namaMitra,
     noDokumen: group.nomorDokumen,
     jenis: group.jenis,
+    jenisList: [...group.jenisList],
+    jenisTerlibat: [...group.jenisTerlibat],
     status: group.status,
     tanggalMulai: group.pengajuan[0]?.tanggalMulai ? toDisplayDate(group.pengajuan[0].tanggalMulai) : '-',
     tanggalBerakhir: group.berakhir,
@@ -210,7 +222,7 @@ export default function EksternalStoryAktivitasPage() {
         keyword === '' ||
         k.namaMitra.toLowerCase().includes(keyword) ||
         k.noDokumen.toLowerCase().includes(keyword);
-      const matchJenis = filterJenis === 'Semua Jenis' || k.jenis === filterJenis;
+      const matchJenis = filterJenis === 'Semua Jenis' || k.jenisTerlibat.includes(filterJenis);
       const matchStatus = filterStatus === 'Semua Status' || k.status === filterStatus;
       const matchTahun = filterTahun === 'Semua Tahun' || k.tanggalBerakhir.endsWith(filterTahun);
       return matchSearch && matchJenis && matchStatus && matchTahun;
@@ -300,9 +312,7 @@ export default function EksternalStoryAktivitasPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="line-clamp-2 text-[15px] font-bold text-gray-900">{k.namaMitra}</h3>
-                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${jenisBadgeMap[k.jenis]}`}>
-                      {k.jenis}
-                    </span>
+                    <JenisBadges jenis={k.jenisList} warna={jenisBadgeMap} className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold" />
                     {k.totalPengajuan > 1 && (
                       <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
                         {k.totalPengajuan} dokumen digabung

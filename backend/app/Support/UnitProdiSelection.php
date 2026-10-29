@@ -40,19 +40,22 @@ class UnitProdiSelection
     {
         $ids = $validated['unit_prodi_ids'] ?? null;
         $jurusanIds = $validated['jurusan_ids'] ?? null;
-        unset($validated['unit_prodi_ids'], $validated['jurusan_ids']);
+        $kirimUnitTunggal = array_key_exists('unit_prodi_id', $validated);
+        $unitTunggal = $validated['unit_prodi_id'] ?? null;
+        // unit_prodi_id bukan kolom lagi (turunan dari unit_prodi_ids), jadi tidak boleh ikut ke create/update.
+        unset($validated['unit_prodi_ids'], $validated['jurusan_ids'], $validated['unit_prodi_id']);
 
         // Array kosong + unit_prodi_id tunggal (klien lama / asal "Unit") = pilihan tunggal, bukan "hapus semua".
-        if (! is_array($ids) || ($ids === [] && ! empty($validated['unit_prodi_id']))) {
+        if (! is_array($ids) || ($ids === [] && ! empty($unitTunggal))) {
             // Edit dari form yang cuma kenal satu unit (mis. Rekap Data) mengirim ulang unit_prodi_id
             // yang SAMA dengan node utama saat ini; itu bukan perintah mengubah pilihan, jadi pilihan
             // majemuk yang sudah tersimpan tidak boleh ikut terhapus.
-            if ($currentPrimaryId !== null && (int) ($validated['unit_prodi_id'] ?? 0) === $currentPrimaryId) {
+            if ($currentPrimaryId !== null && (int) ($unitTunggal ?? 0) === $currentPrimaryId) {
                 return null;
             }
 
-            return array_key_exists('unit_prodi_id', $validated)
-                ? array_values(array_filter([$validated['unit_prodi_id']]))
+            return $kirimUnitTunggal
+                ? array_values(array_filter([$unitTunggal]))
                 : null;
         }
 
@@ -72,8 +75,6 @@ class UnitProdiSelection
                 ]);
             }
         }
-
-        $validated['unit_prodi_id'] = $ids[0] ?? null;
 
         return $ids;
     }

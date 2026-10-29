@@ -1,7 +1,8 @@
 'use client';
 
+import { JENIS_BERKAS_PENDUKUNG, JENIS_BERKAS_UTAMA } from '@/lib/jenisBerkas';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, ChevronDown, Download, FileText, Upload, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Download, FileText, Undo2, Upload, X } from 'lucide-react';
 import { rekapJurusanOptions, rekapUnitOptions, type DokumenData, type DokumenTerkait } from '@/services/adminRekapDataService';
 import { getMasterUnitProdi, getMasterUnitProdiTree, type MasterUnitProdi } from '@/services/masterUnitProdiService';
 import { getMasterMitra, type MasterMitra } from '@/services/masterMitraService';
@@ -124,6 +125,12 @@ export default function TambahDokumenModal({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [documentMode, setDocumentMode] = useState<'keep' | 'replace'>('replace');
   const [selectedFilePendukung, setSelectedFilePendukung] = useState<File | null>(null);
+  // id berkas tersimpan yang ditandai dihapus (tombol silang). Dihapus satu per satu hanya saat disimpan.
+  const [removedFileIds, setRemovedFileIds] = useState<number[]>([]);
+  // Jenis (MoU/MoA) untuk berkas final yang baru dipilih — wajib bila dokumennya memuat beberapa jenis.
+  const [jenisFileBaru, setJenisFileBaru] = useState('');
+  // Jenis dokumen pendukung yang baru dipilih (TOR/KAK/Proposal/Laporan Kegiatan/Lainnya); boleh kosong.
+  const [jenisPendukungBaru, setJenisPendukungBaru] = useState('');
   const [mitraSuggestions, setMitraSuggestions] = useState<MasterMitra[]>([]);
   const [showMitraSuggestions, setShowMitraSuggestions] = useState(false);
 
@@ -142,6 +149,15 @@ export default function TambahDokumenModal({
   const existingDokumen: DokumenTerkait[] = formData.dokumenTerkait ?? [];
   const hasExistingDokumen = isEditMode && existingDokumen.length > 0;
   const existingDokumenPendukung: DokumenTerkait[] = formData.dokumenPendukung ?? [];
+  const isFileRemoved = (doc: DokumenTerkait) => doc.id != null && removedFileIds.includes(doc.id);
+  const toggleFileRemoved = (doc: DokumenTerkait) => {
+    if (doc.id == null) return;
+    const id = doc.id;
+    setRemovedFileIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setUploadErrors((prev) => ({ ...prev, fileDokumen: undefined, fileDokumenPendukung: undefined }));
+  };
+  const sisaDokumen = existingDokumen.filter((doc) => !isFileRemoved(doc));
+  const sisaDokumenPendukung = existingDokumenPendukung.filter((doc) => !isFileRemoved(doc));
   const selectedRuangLingkup = formData.ruangLingkup ?? [];
   // Dokumen Pendukung (TOR/KAK/Proposal) wajib untuk jenis MoA/IA — sama seperti form Pengajuan.
   const requiresDokumenPendukung = formData.jenisDokumen === 'MoA' || formData.jenisDokumen === 'IA';
@@ -207,6 +223,9 @@ export default function TambahDokumenModal({
     setUploadErrors({});
     setSelectedFile(null);
     setSelectedFilePendukung(null);
+    setRemovedFileIds([]);
+    setJenisFileBaru('');
+    setJenisPendukungBaru('');
     setDocumentMode(initialData?.dokumenTerkait?.length ? 'keep' : 'replace');
     setSelectedJurusanIds([]);
     setRlSearch('');
@@ -390,9 +409,13 @@ export default function TambahDokumenModal({
     const needNewFile = !hasExistingDokumen || documentMode === 'replace';
     if (needNewFile && formData.jenisDokumen && !selectedFile) {
       nextUploadErrors.fileDokumen = 'Upload dokumen wajib diisi';
+    } else if (selectedFile && (formData.jenisList?.length ?? 0) > 1 && !jenisFileBaru) {
+      nextUploadErrors.fileDokumen = 'Pilih jenis dokumen (MoU / MoA / IA) untuk berkas final yang diunggah.';
+    } else if (hasExistingDokumen && sisaDokumen.length === 0 && !selectedFile) {
+      nextUploadErrors.fileDokumen = 'Semua dokumen ditandai hapus. Minimal satu dokumen harus tersisa: batalkan salah satu penghapusan atau upload dokumen pengganti.';
     }
     // Dokumen Pendukung (TOR/KAK/Proposal) wajib untuk jenis MoA/IA — sama seperti form Pengajuan.
-    if (requiresDokumenPendukung && existingDokumenPendukung.length === 0 && !selectedFilePendukung) {
+    if (requiresDokumenPendukung && sisaDokumenPendukung.length === 0 && !selectedFilePendukung) {
       nextUploadErrors.fileDokumenPendukung = 'Dokumen pendukung (TOR, KAK, atau Proposal/Laporan Kegiatan) wajib diunggah untuk jenis dokumen MoA atau IA.';
     }
 
@@ -439,7 +462,7 @@ export default function TambahDokumenModal({
         tanggal: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
       }];
     } else if (isEditMode && documentMode === 'keep') {
-      dokumenTerkait = existingDokumen;
+      dokumenTerkait = sisaDokumen;
     }
 
     let dokumenPendukung = formData.dokumenPendukung;
@@ -452,8 +475,13 @@ export default function TambahDokumenModal({
         tanggal: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
       }];
     } else if (isEditMode) {
-      dokumenPendukung = existingDokumenPendukung;
+      dokumenPendukung = sisaDokumenPendukung;
     }
+
+    // Semua baris dokumen_file dari berkas yang ditandai silang (berkas berpath sama punya beberapa id).
+    const hapusFileIds = [...existingDokumen, ...existingDokumenPendukung]
+      .filter(isFileRemoved)
+      .flatMap((doc) => doc.ids ?? (doc.id != null ? [doc.id] : []));
 
     if (onSubmit) {
       onSubmit({
@@ -461,6 +489,9 @@ export default function TambahDokumenModal({
         nomorDokumen,
         dokumenTerkait,
         dokumenPendukung,
+        hapusFileIds,
+        jenisBerkasBaru: selectedFile && jenisFileBaru ? jenisFileBaru : undefined,
+        jenisPendukungBaru: selectedFilePendukung && jenisPendukungBaru ? jenisPendukungBaru : undefined,
         prodiId: unitProdiIdsToSend[0] ?? null,
         prodiIds: unitProdiIdsToSend,
         jurusanIds: formData.asalKategori === 'Jurusan' ? selectedJurusanIds : [],
@@ -672,18 +703,35 @@ export default function TambahDokumenModal({
                     <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Dokumen tersimpan</p>
                       <div className="space-y-2">
-                        {existingDokumen.map((doc, idx) => (
-                          <div key={idx} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1E376C]/10">
-                              <FileText size={14} className="text-[#1E376C]" />
+                        {existingDokumen.map((doc, idx) => {
+                          const removed = isFileRemoved(doc);
+                          return (
+                            <div key={idx} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${removed ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-white'}`}>
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1E376C]/10">
+                                <FileText size={14} className="text-[#1E376C]" />
+                              </div>
+                              <div className={`min-w-0 flex-1 ${removed ? 'opacity-60' : ''}`}>
+                                <p className={`truncate text-sm font-semibold text-gray-800 ${removed ? 'line-through' : ''}`}>{doc.nama}</p>
+                                <p className="text-xs text-gray-400">{removed ? 'Akan dihapus saat disimpan' : `${doc.ukuran} · ${doc.tanggal}`}</p>
+                              </div>
+                              {doc.id != null && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleFileRemoved(doc)}
+                                  title={removed ? 'Batalkan penghapusan' : 'Hapus dokumen ini'}
+                                  aria-label={removed ? `Batalkan penghapusan ${doc.nama}` : `Hapus ${doc.nama}`}
+                                  className={`shrink-0 rounded-lg p-1.5 transition-colors ${removed ? 'text-slate-500 hover:bg-white hover:text-slate-700' : 'text-slate-400 hover:bg-red-50 hover:text-red-600'}`}
+                                >
+                                  {removed ? <Undo2 size={15} /> : <X size={15} />}
+                                </button>
+                              )}
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-semibold text-gray-800">{doc.nama}</p>
-                              <p className="text-xs text-gray-400">{doc.ukuran} · {doc.tanggal}</p>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
+                      {uploadErrors.fileDokumen && documentMode === 'keep' && (
+                        <p className="mt-2 text-xs text-red-500">{uploadErrors.fileDokumen}</p>
+                      )}
 
                       {/* Toggle keep / replace */}
                       <div className="mt-3 flex flex-wrap gap-2">
@@ -692,6 +740,7 @@ export default function TambahDokumenModal({
                           onClick={() => {
                             setDocumentMode('keep');
                             setSelectedFile(null);
+                            setRemovedFileIds([]);
                             setUploadErrors({});
                           }}
                           className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
@@ -713,7 +762,7 @@ export default function TambahDokumenModal({
                           }`}
                         >
                           <Upload size={15} />
-                          Ganti Dokumen
+                          Tambah / Ganti Dokumen
                         </button>
                       </div>
                     </div>
@@ -763,6 +812,21 @@ export default function TambahDokumenModal({
                         )}
                       </label>
 
+                      {selectedFile && (formData.jenisList?.length ?? 0) > 1 && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <label className="text-xs font-semibold text-slate-700">Jenis dokumen ini *</label>
+                          <select
+                            value={jenisFileBaru}
+                            onChange={(e) => setJenisFileBaru(e.target.value)}
+                            className={`rounded-lg border bg-white px-2 py-1 text-xs ${jenisFileBaru ? 'border-slate-300 text-slate-700' : 'border-red-400 text-red-600 ring-1 ring-red-200'}`}
+                          >
+                            <option value="">Pilih jenis *</option>
+                            {JENIS_BERKAS_UTAMA.map((j) => (
+                              <option key={j} value={j}>{j}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       {uploadErrors.fileDokumen && <p className="mt-1 text-xs text-red-500">{uploadErrors.fileDokumen}</p>}
                     </>
                   )}
@@ -784,21 +848,35 @@ export default function TambahDokumenModal({
                     {existingDokumenPendukung.length > 0 && (
                       <div className="space-y-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Dokumen pendukung tersimpan</p>
-                        {existingDokumenPendukung.map((doc, idx) => (
-                          <div key={idx} className="flex items-center gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100">
-                              <FileText size={14} className="text-amber-700" />
+                        {existingDokumenPendukung.map((doc, idx) => {
+                          const removed = isFileRemoved(doc);
+                          return (
+                            <div key={idx} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${removed ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-white'}`}>
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100">
+                                <FileText size={14} className="text-amber-700" />
+                              </div>
+                              <div className={`min-w-0 flex-1 ${removed ? 'opacity-60' : ''}`}>
+                                <p className={`truncate text-sm font-semibold text-gray-800 ${removed ? 'line-through' : ''}`}>{doc.nama}</p>
+                                <p className="text-xs text-gray-400">{removed ? 'Akan dihapus saat disimpan' : `${doc.ukuran} · ${doc.tanggal}`}</p>
+                              </div>
+                              {doc.id != null && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleFileRemoved(doc)}
+                                  title={removed ? 'Batalkan penghapusan' : 'Hapus dokumen ini'}
+                                  aria-label={removed ? `Batalkan penghapusan ${doc.nama}` : `Hapus ${doc.nama}`}
+                                  className={`shrink-0 rounded-lg p-1.5 transition-colors ${removed ? 'text-slate-500 hover:bg-white hover:text-slate-700' : 'text-slate-400 hover:bg-red-50 hover:text-red-600'}`}
+                                >
+                                  {removed ? <Undo2 size={15} /> : <X size={15} />}
+                                </button>
+                              )}
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-semibold text-gray-800">{doc.nama}</p>
-                              <p className="text-xs text-gray-400">{doc.ukuran} · {doc.tanggal}</p>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
 
-                    {existingDokumenPendukung.length === 0 && !selectedFilePendukung && (
+                    {sisaDokumenPendukung.length === 0 && !selectedFilePendukung && (
                       <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2.5 text-[11px] text-amber-800">
                         <span className="mt-0.5 shrink-0">⚠</span>
                         <span>Belum ada dokumen pendukung yang dilampirkan. Harap unggah TOR, KAK, atau Proposal/Laporan Kegiatan.</span>
@@ -814,7 +892,7 @@ export default function TambahDokumenModal({
                       />
                       <Upload className={`mx-auto ${selectedFilePendukung ? 'text-green-600' : 'text-amber-600'}`} size={20} />
                       <p className="mt-2 text-sm font-semibold text-slate-800">
-                        {existingDokumenPendukung.length > 0 ? 'Ganti Dokumen Pendukung' : 'Upload TOR / KAK / Proposal / Laporan Kegiatan'}
+                        {existingDokumenPendukung.length > 0 ? 'Tambah / Ganti Dokumen Pendukung' : 'Upload TOR / KAK / Proposal / Laporan Kegiatan'}
                       </p>
                       <p className="mt-1 text-xs text-slate-400">PDF, DOC, atau DOCX — maks. 10 MB</p>
                       {selectedFilePendukung && (
@@ -824,6 +902,21 @@ export default function TambahDokumenModal({
                       )}
                     </label>
 
+                    {selectedFilePendukung && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-xs font-semibold text-amber-800">Jenis dokumen pendukung ini</label>
+                        <select
+                          value={jenisPendukungBaru}
+                          onChange={(e) => setJenisPendukungBaru(e.target.value)}
+                          className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-xs text-slate-700"
+                        >
+                          <option value="">Tidak dibedakan</option>
+                          {JENIS_BERKAS_PENDUKUNG.map((j) => (
+                            <option key={j} value={j}>{j}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     {uploadErrors.fileDokumenPendukung && <p className="mt-1 text-xs text-red-500">{uploadErrors.fileDokumenPendukung}</p>}
                   </div>
                 )}

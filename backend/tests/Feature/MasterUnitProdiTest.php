@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\MasterUnitProdi;
+use App\Models\Pengajuan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -311,6 +312,64 @@ class MasterUnitProdiTest extends TestCase
 
         $this->actingAs($admin)->deleteJson("/api/master/unit-prodi/{$unitKerja->id}")
             ->assertStatus(422);
+    }
+
+    private function buatPengajuanDenganUnit(array $unitIds): Pengajuan
+    {
+        $pengajuan = Pengajuan::create([
+            'nama_pengusul'     => 'Dr. Andi',
+            'judul_pengajuan'   => 'Kerja Sama Penelitian',
+            'jenis_dokumen'     => 'MOU',
+            'status_pengajuan'  => 'menunggu',
+            'ruang_lingkup_ids' => [],
+        ]);
+        $pengajuan->syncUnitProdi($unitIds);
+
+        return $pengajuan;
+    }
+
+    public function test_hapus_prodi_ditolak_bila_dipakai_pengajuan(): void
+    {
+        $admin     = $this->admin();
+        $jurusan   = $this->buatJurusan();
+        $prodi     = $this->buatProdi($jurusan->id, 'D3 Dipakai Pengajuan');
+        $prodiLain = $this->buatProdi($jurusan->id, 'D3 Lain');
+        // Prodi bukan unit utama (urutan kedua) pun harus tetap menahan penghapusan.
+        $this->buatPengajuanDenganUnit([$prodiLain->id, $prodi->id]);
+
+        $this->actingAs($admin)->deleteJson("/api/master/unit-prodi/{$prodi->id}")
+            ->assertStatus(422)
+            ->assertJsonFragment(['message' => 'Tidak bisa dihapus: masih dipakai 1 pengajuan. Atau pindahkan pengajuannya ke prodi/unit lain, atau nonaktifkan saja.']);
+
+        $this->assertDatabaseHas('master_unit_prodi', ['id' => $prodi->id]);
+    }
+
+    public function test_hapus_jurusan_ditolak_bila_prodi_di_bawahnya_dipakai_pengajuan(): void
+    {
+        $admin   = $this->admin();
+        $jurusan = $this->buatJurusan('Jurusan Dipakai');
+        $prodi   = $this->buatProdi($jurusan->id, 'Prodi Dipakai');
+        $this->buatPengajuanDenganUnit([$prodi->id]);
+
+        $this->actingAs($admin)->deleteJson("/api/master/unit-prodi/{$jurusan->id}")
+            ->assertStatus(422);
+
+        $this->assertDatabaseHas('master_unit_prodi', ['id' => $jurusan->id]);
+        $this->assertDatabaseHas('master_unit_prodi', ['id' => $prodi->id]);
+    }
+
+    public function test_hapus_prodi_boleh_bila_pengajuan_memakai_prodi_lain(): void
+    {
+        $admin     = $this->admin();
+        $jurusan   = $this->buatJurusan();
+        $prodi     = $this->buatProdi($jurusan->id, 'D3 Bebas');
+        $prodiLain = $this->buatProdi($jurusan->id, 'D3 Dipakai');
+        $this->buatPengajuanDenganUnit([$prodiLain->id]);
+
+        $this->actingAs($admin)->deleteJson("/api/master/unit-prodi/{$prodi->id}")
+            ->assertOk();
+
+        $this->assertDatabaseMissing('master_unit_prodi', ['id' => $prodi->id]);
     }
 
     public function test_hapus_unit_ditolak_bukan_admin(): void

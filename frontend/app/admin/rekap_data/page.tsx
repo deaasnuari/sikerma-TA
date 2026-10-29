@@ -26,8 +26,9 @@ import {
   semuaBulanLabel,
   type DokumenData,
   type RekapDokumen,
+  daftarJenisRekap,
 } from '@/services/adminRekapDataService';
-import { createDokumenKerjasama, dataUrlToBlob, deleteDokumenKerjasamaById, fetchRekapDokumenFromApi, mapJenisToApi, mapStatusToApi, updateDokumenKerjasamaById, updatePengajuanNamaMitra, uploadDokumenFile } from '@/services/dokumenKerjasamaApiService';
+import { createDokumenKerjasama, dataUrlToBlob, deleteDokumenFileById, deleteDokumenKerjasamaById, fetchRekapDokumenFromApi, mapJenisToApi, mapStatusToApi, updateDokumenKerjasamaById, updatePengajuanNamaMitra, uploadDokumenFile } from '@/services/dokumenKerjasamaApiService';
 import { exportToExcel } from '@/lib/exportExcel';
 import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
 import { updateMasterMitra, upsertMasterMitraByName } from '@/services/masterMitraService';
@@ -895,10 +896,18 @@ export default function RekapDataPage() {
                     <td className="px-4 py-3">
                       {linkBukti ? (
                         <FileDownloadLink url={linkBukti} downloadUrl={linkBuktiDownloadUrl} fileName={linkBuktiNama} className="cursor-pointer" >
-                          <span title="Lihat bukti kerja sama" className={`rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2 ${rekapJenisBadgeMap[row.jenis]}`}>{row.jenis}</span>
+                          <span className="inline-flex flex-wrap gap-1">
+                            {daftarJenisRekap(row).map((jenis) => (
+                              <span key={jenis} title="Lihat bukti kerja sama" className={`rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2 ${rekapJenisBadgeMap[jenis]}`}>{jenis}</span>
+                            ))}
+                          </span>
                         </FileDownloadLink>
                       ) : (
-                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${rekapJenisBadgeMap[row.jenis]}`} title="Belum ada file bukti kerja sama yang diupload">{row.jenis}</span>
+                        <span className="inline-flex flex-wrap gap-1">
+                          {daftarJenisRekap(row).map((jenis) => (
+                            <span key={jenis} className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${rekapJenisBadgeMap[jenis]}`} title="Belum ada file bukti kerja sama yang diupload">{jenis}</span>
+                          ))}
+                        </span>
                       )}
                     </td>
                     
@@ -1016,9 +1025,11 @@ export default function RekapDataPage() {
             <div className="flex-shrink-0 flex items-start justify-between gap-4 border-b border-gray-100 bg-gradient-to-r from-[#1E376C] to-[#2B4A93] px-6 pt-5 pb-5 rounded-t-2xl">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${jenisBadge[detailItem.jenis] || 'bg-white/20 text-white'}`}>
-                    {detailItem.jenis}
-                  </span>
+                  {daftarJenisRekap(detailItem).map((jenis) => (
+                    <span key={jenis} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${jenisBadge[jenis] || 'bg-white/20 text-white'}`}>
+                      {jenis}
+                    </span>
+                  ))}
                   <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${sb.bg} ${sb.text}`}>
                     {sb.icon}
                     {detailItem.status}
@@ -1058,13 +1069,21 @@ export default function RekapDataPage() {
                         downloadUrl={detailLinkBuktiDownloadUrl}
                         fileName={detailLinkBuktiNama}
                         title="Lihat dokumen bukti kerja sama"
-                        className={`mt-1 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2 ${jenisBadge[detailItem.jenis] || 'bg-gray-200 text-gray-700'}`}
+                        className="mt-1 inline-flex flex-wrap items-center gap-1"
                       >
-                        {detailItem.jenis}
+                        {daftarJenisRekap(detailItem).map((jenis) => (
+                          <span key={jenis} className={`rounded-md px-2 py-0.5 text-[10px] font-bold underline decoration-2 underline-offset-2 ${jenisBadge[jenis] || 'bg-gray-200 text-gray-700'}`}>
+                            {jenis}
+                          </span>
+                        ))}
                       </FileDownloadLink>
                     ) : (
-                      <span className={`mt-1 inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${jenisBadge[detailItem.jenis] || 'bg-gray-200 text-gray-700'}`}>
-                        {detailItem.jenis}
+                      <span className="mt-1 inline-flex flex-wrap gap-1">
+                        {daftarJenisRekap(detailItem).map((jenis) => (
+                          <span key={jenis} className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${jenisBadge[jenis] || 'bg-gray-200 text-gray-700'}`}>
+                            {jenis}
+                          </span>
+                        ))}
                       </span>
                     )}
                     {!detailLinkBukti && (
@@ -1433,7 +1452,7 @@ export default function RekapDataPage() {
                           </div>
                           <div className="min-w-0">
                             <div className="mb-0.5">
-                              <JenisBerkasBadge jenis={doc.jenisBerkas} />
+                              <JenisBerkasBadge jenis={doc.jenisBerkas} jenisDokumen={doc.jenisDokumen} />
                             </div>
                             <p className="truncate text-[10px] font-semibold text-gray-800">{doc.nama}</p>
                             <p className="text-[10.5px] text-gray-400">{doc.ukuran} · {doc.tanggal}</p>
@@ -1729,17 +1748,24 @@ export default function RekapDataPage() {
 
             await Promise.all(promises);
 
-            // Upload file baru jika user memilih "Ganti Dokumen"
+            // Berkas yang ditandai silang dihapus SATU PER SATU; berkas lain tidak tersentuh.
+            if (typeof editingItem.id === 'number') {
+              for (const fileId of mergedData.hapusFileIds ?? []) {
+                await deleteDokumenFileById(editingItem.id, fileId);
+              }
+            }
+
+            // Berkas baru hanya DITAMBAHKAN (tambah) — dulu upload mengganti semua berkas sejenis sekaligus.
             const newDoc = mergedData.dokumenTerkait?.[0];
             if (typeof editingItem.id === 'number' && newDoc?.url?.startsWith('data:')) {
               const blob = dataUrlToBlob(newDoc.url);
-              await uploadDokumenFile(editingItem.id, blob, newDoc.nama);
+              await uploadDokumenFile(editingItem.id, blob, newDoc.nama, 'dokumen_final', { tambah: true, jenisDokumen: mergedData.jenisBerkasBaru });
             }
 
             const newDocPendukung = mergedData.dokumenPendukung?.[0];
             if (typeof editingItem.id === 'number' && newDocPendukung?.url?.startsWith('data:')) {
               const blob = dataUrlToBlob(newDocPendukung.url);
-              await uploadDokumenFile(editingItem.id, blob, newDocPendukung.nama, 'dokumen_pendukung');
+              await uploadDokumenFile(editingItem.id, blob, newDocPendukung.nama, 'dokumen_pendukung', { tambah: true, jenisDokumen: mergedData.jenisPendukungBaru });
             }
 
             // Refresh dari API agar data konsisten

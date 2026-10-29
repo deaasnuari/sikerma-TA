@@ -98,12 +98,12 @@ class RegistrasiMasterMitraTest extends TestCase
         $mitra = MasterMitra::sole();
         // Kontak utama tetap pendaftar pertama.
         $this->assertSame('Sari Dewi', $mitra->nama_kontak_utama);
-        $this->assertDatabaseCount('kontak_mitra', 1);
-        $this->assertDatabaseHas('kontak_mitra', [
-            'mitra_id' => $mitra->id, 'nama' => 'Budi Santoso', 'jabatan' => 'HRD',
+        $this->assertCount(1, $mitra->kontak);
+        $this->assertEquals([
+            'nama' => 'Budi Santoso', 'jabatan' => 'HRD',
             'email' => 'budi@example.com', 'telepon' => '081111111111',
             'user_id' => User::where('email', 'budi@example.com')->value('id'),
-        ]);
+        ], collect($mitra->kontak[0])->only(['nama', 'jabatan', 'email', 'telepon', 'user_id'])->all());
 
         $admin = User::factory()->create(['role' => 'admin']);
         $this->actingAs($admin)->getJson('/api/master/mitra')
@@ -118,7 +118,7 @@ class RegistrasiMasterMitraTest extends TestCase
         $this->daftar('CV Berkah Jaya');
 
         $this->assertSame('Sari Dewi', MasterMitra::sole()->nama_kontak_utama);
-        $this->assertDatabaseCount('kontak_mitra', 0);
+        $this->assertSame([], MasterMitra::sole()->kontak);
     }
 
     public function test_registrasi_memakai_mitra_yang_dipilih_dari_autocomplete(): void

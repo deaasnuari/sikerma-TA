@@ -1,5 +1,7 @@
 'use client';
 
+import CatatanJenisDokumen from '@/components/CatatanJenisDokumen';
+
 import KategoriMitraDonutCard from '@/components/KategoriMitraDonutCard';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -20,6 +22,7 @@ import {
   getMonitoringData,
   getMonitoringStats,
 } from '@/services/adminMonitoringService';
+import { hitungJenisDokumen, type RingkasanJenis } from '@/lib/hitungJenisDokumen';
 import {
   refreshPengajuanDataFromApi,
   getPengajuanData,
@@ -40,11 +43,7 @@ function formatDate() {
 
 /* ───────── charts ───────── */
 
-interface JenisChartData {
-  MoU: number;
-  MoA: number;
-  IA: number;
-}
+type JenisChartData = RingkasanJenis;
 
 /* ───────── page ───────── */
 
@@ -96,7 +95,7 @@ export default function PimpinanPage() {
 
   const currentYear = new Date().getFullYear();
 
-  const [jenisDistribution, setJenisDistribution] = useState<JenisChartData>({ MoU: 0, MoA: 0, IA: 0 });
+  const [jenisDistribution, setJenisDistribution] = useState<JenisChartData>({ MoU: 0, MoA: 0, IA: 0, total: 0, jumlahDokumen: 0, gabungan: 0 });
 
   // Fetch monitoring data → kerjasama stats + distribusi jenis dokumen
   useEffect(() => {
@@ -114,11 +113,7 @@ export default function PimpinanPage() {
         setAkanBerakhirCount(stats.totalAkanBerakhir);
         setKadaluarsaCount(stats.totalKadaluarsa);
 
-        setJenisDistribution({
-          MoU: items.filter((item) => item.jenis === 'MoU').length,
-          MoA: items.filter((item) => item.jenis === 'MoA').length,
-          IA: items.filter((item) => item.jenis === 'IA').length,
-        });
+        setJenisDistribution(hitungJenisDokumen(items));
       })
       .catch(() => {
         // fallback: use cached local data
@@ -279,7 +274,7 @@ export default function PimpinanPage() {
             <div className="mt-4 flex items-center justify-center">
               <DonutChart
                 size={180}
-                centerLabel={String(jenisDistribution.MoU + jenisDistribution.MoA + jenisDistribution.IA)}
+                centerLabel={String(jenisDistribution.total)}
                 segments={[
                   { value: jenisDistribution.MoU, color: '#1D4ED8' },
                   { value: jenisDistribution.MoA, color: '#7C3AED' },
@@ -293,7 +288,7 @@ export default function PimpinanPage() {
                 { label: 'MoA', value: jenisDistribution.MoA, color: '#7C3AED' },
                 { label: 'IA', value: jenisDistribution.IA, color: '#A78BFA' },
               ].map((item) => {
-                const total = jenisDistribution.MoU + jenisDistribution.MoA + jenisDistribution.IA;
+                const total = jenisDistribution.total;
                 const pct = total > 0 ? Math.round((item.value / total) * 100) : 0;
                 return (
                   <div key={item.label}>
@@ -312,6 +307,7 @@ export default function PimpinanPage() {
                   </div>
                 );
               })}
+              <CatatanJenisDokumen />
             </div>
           </div>
         </div>

@@ -1,5 +1,8 @@
 # SIKERMA Database Redesign - Penjelasan Lengkap
 
+> **Catatan:** dokumen ini adalah rancangan awal dan sudah tidak sama dengan skema yang berjalan. Untuk ERD terbaru lihat [erd-sikerma-saat-ini.md](erd-sikerma-saat-ini.md).
+
+
 Dokumen ini menjelaskan desain database baru SIKERMA versi simplified (9 tabel domain inti + 1 tabel bootstrap users),
 perbandingan dengan tabel lama, dan mana yang terhubung atau tidak lagi dipakai.
 

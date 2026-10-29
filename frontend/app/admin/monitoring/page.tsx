@@ -1,5 +1,7 @@
 'use client';
 
+import JenisBadges from '@/components/JenisBadges';
+
 import { exportToExcel } from '@/lib/exportExcel';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Archive, Bell, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Eye, Filter, HandshakeIcon, Mail, MessageCircle, Phone, RefreshCw, Search, Trash2, X } from 'lucide-react';
@@ -274,7 +276,7 @@ export default function MonitoringdanstatusPage() {
         const searchText = [
           item.namaMitra,
           item.noDokumen,
-          item.jenis,
+          (item.jenisList ?? [item.jenis]).join(' + '),
           item.status,
           item.tanggalMulai,
           item.tanggalBerakhir,
@@ -343,7 +345,7 @@ export default function MonitoringdanstatusPage() {
                     <span className="font-semibold text-gray-900">{item.namaMitra}</span>
                     <span className="text-gray-400">&middot;</span>
                     <span>{item.noDokumen}</span>
-                    <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${monitoringJenisBadgeMap[item.jenis] || 'bg-slate-100 text-slate-700'}`}>{item.jenis}</span>
+                    <JenisBadges jenis={item.jenisList ?? [item.jenis]} warna={monitoringJenisBadgeMap} className="rounded px-1.5 py-0.5 text-[9px] font-bold" />
                     <span className="text-gray-400">&middot;</span>
                     <span>berakhir {item.tanggalBerakhir}</span>
                     {item.sisaMasaBerlaku && (
@@ -383,7 +385,7 @@ export default function MonitoringdanstatusPage() {
               ...filtered.map(item => [
                 item.namaMitra,
                 item.noDokumen,
-                item.jenis,
+                (item.jenisList ?? [item.jenis]).join(' + '),
                 item.status,
                 item.tanggalMulai,
                 item.tanggalBerakhir,
@@ -675,7 +677,7 @@ export default function MonitoringdanstatusPage() {
                   <div className="flex flex-col gap-0.5 md:gap-1">
                     <div className="flex items-center gap-2">
                       <p className="text-[13.5px] font-extrabold text-gray-900 md:text-[15px]">{item.namaMitra}</p>
-                      <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${monitoringJenisBadgeMap[item.jenis]}`}>{item.jenis}</span>
+                      <JenisBadges jenis={item.jenisList ?? [item.jenis]} warna={monitoringJenisBadgeMap} className="rounded-md px-2 py-0.5 text-[10px] font-bold" />
                     </div>
                     {item.judul && (
                       <p className="text-[12px] font-semibold text-blue-900 whitespace-pre-line break-words">{item.judul}</p>

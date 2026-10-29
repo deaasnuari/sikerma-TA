@@ -14,6 +14,7 @@ import RiwayatPerpanjangan, { statusKerjasamaBadge, type StatusKerjasama } from 
 export default function KartuDokumenKerjasama({
   noDokumen,
   jenis,
+  jenisList,
   status,
   diajukanPada,
   tanggalMulai,
@@ -24,6 +25,8 @@ export default function KartuDokumenKerjasama({
 }: {
   noDokumen: string;
   jenis: string;
+  /** Semua jenis bila dokumen ini memuat MoU + MoA sekaligus; kosong = hanya `jenis`. */
+  jenisList?: string[];
   status: StatusKerjasama;
   diajukanPada?: string;
   tanggalMulai?: string;
@@ -53,9 +56,11 @@ export default function KartuDokumenKerjasama({
               {status}
             </span>
           )}
-          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-            {jenis}
-          </span>
+          {(jenisList?.length ? jenisList : [jenis]).map((item) => (
+            <span key={item} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+              {item}
+            </span>
+          ))}
         </div>
       </div>
 

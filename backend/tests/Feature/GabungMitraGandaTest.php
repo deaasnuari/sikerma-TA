@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\DokumenKerjasama;
-use App\Models\KontakMitra;
 use App\Models\MasterMitra;
 use App\Models\MasterUnitProdi;
 use App\Models\Pengajuan;
@@ -189,20 +188,21 @@ class GabungMitraGandaTest extends TestCase
             'nama_mitra' => 'PT. Contoh', 'nama_kontak_utama' => 'Budi', 'jabatan_kontak_utama' => 'HRD',
             'email_kontak_utama' => 'budi@x.id', 'telepon_kontak_utama' => '0811',
         ]);
-        $dup->kontak()->create(['nama' => 'Citra', 'email' => 'citra@x.id']);
+        $dup->tambahKontak(['nama' => 'Citra', 'email' => 'citra@x.id']);
         // Email sama dengan kontak utama induk: tidak dicatat dobel.
-        $dup->kontak()->create(['nama' => 'Sari Lagi', 'email' => 'SARI@x.id']);
+        $dup->tambahKontak(['nama' => 'Sari Lagi', 'email' => 'SARI@x.id']);
 
         $this->artisan('sikerma:gabung-mitra-ganda --apply')->assertSuccessful();
 
         $this->assertSame(1, MasterMitra::count());
         $this->assertSame('Sari', $induk->fresh()->nama_kontak_utama);
-        $this->assertEqualsCanonicalizing(
-            ['budi@x.id', 'citra@x.id'],
-            KontakMitra::where('mitra_id', $induk->id)->pluck('email')->all(),
-        );
-        $this->assertDatabaseHas('kontak_mitra', ['mitra_id' => $induk->id, 'nama' => 'Budi', 'jabatan' => 'HRD', 'telepon' => '0811']);
-        $this->assertSame(2, KontakMitra::count());
+        $kontakInduk = collect($induk->fresh()->kontak);
+        $this->assertEqualsCanonicalizing(['budi@x.id', 'citra@x.id'], $kontakInduk->pluck('email')->all());
+        $budi = $kontakInduk->firstWhere('nama', 'Budi');
+        $this->assertSame('HRD', $budi['jabatan']);
+        $this->assertSame('0811', $budi['telepon']);
+        $this->assertSame([1, 2], $kontakInduk->pluck('id')->all(), 'tiap kontak punya id unik di induknya');
+        $this->assertSame(2, MasterMitra::all()->sum(fn ($m) => count($m->kontak)));
     }
 
     // ------------------------------------------------------------------
@@ -267,7 +267,7 @@ class GabungMitraGandaTest extends TestCase
         $this->assertNull($tujuan->jabatan_kontak_utama);
         $this->assertNull($tujuan->email_kontak_utama);
         $this->assertNull($tujuan->telepon_kontak_utama);
-        $this->assertSame(0, \App\Models\KontakMitra::where('mitra_id', $tujuan->id)->count(), 'PIC utama tidak dijadikan kontak tambahan');
+        $this->assertSame([], $tujuan->kontak, 'PIC utama tidak dijadikan kontak tambahan');
         $this->assertSame('perpus.example.id', $tujuan->website, 'kolom non-kontak tetap di-backfill');
     }
 
@@ -289,7 +289,7 @@ class GabungMitraGandaTest extends TestCase
         $this->assertNull($tujuan->alamat);
         $this->assertNull($tujuan->nama_kontak_utama);
         $this->assertSame('UN09', $tujuan->kode_mitra);
-        $this->assertSame(0, \App\Models\KontakMitra::where('mitra_id', $tujuan->id)->count());
+        $this->assertSame([], $tujuan->fresh()->kontak);
     }
 
     public function test_pasangan_tidak_menimpa_kolom_tujuan_yang_sudah_terisi(): void
@@ -339,6 +339,48 @@ class GabungMitraGandaTest extends TestCase
         $this->assertSame(3, MasterMitra::count());
     }
 
+    public function test_cadangan_versi_lama_yang_menyimpan_kontak_di_tabel_tetap_bisa_dirollback(): void
+    {
+        $tujuan = $this->mitra(['nama_mitra' => 'PT Cicor Panatec', 'kode_mitra' => 'PTC04']);
+        $tujuan->tambahKontak(['nama' => 'Fajar', 'email' => 'fajar@cicor.id']);
+        $hapus = $this->mitra([
+            'nama_mitra' => 'PT. Cicor', 'kode_mitra' => 'ZZ',
+            'nama_kontak_utama' => 'Dewi', 'email_kontak_utama' => 'dewi@cicor.id',
+        ]);
+        $hapus->tambahKontak(['nama' => 'Eko', 'email' => 'eko@cicor.id']);
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => "{$hapus->id}:{$tujuan->id}", '--apply' => true])->assertSuccessful();
+
+        // Ubah berkas cadangan ke bentuk versi 2: kontak tersimpan sebagai baris tabel kontak_mitra, bukan kolom JSON.
+        $berkas = $this->berkasCadangan();
+        $data = json_decode((string) file_get_contents($berkas), true);
+        $kontakMitra = [];
+        foreach ($data['mitra_dihapus'] as $i => $row) {
+            foreach (json_decode((string) $row['kontak_tambahan'], true) ?: [] as $k) {
+                $kontakMitra[] = ['id' => $k['id'], 'mitra_id' => $row['id'], 'user_id' => null, 'nama' => $k['nama'], 'jabatan' => $k['jabatan'], 'email' => $k['email'], 'telepon' => $k['telepon']];
+            }
+            unset($data['mitra_dihapus'][$i]['kontak_tambahan']);
+            // Cadangan lama juga masih memuat kolom yang sekarang sudah dihapus.
+            $data['mitra_dihapus'][$i]['kode_perusahaan'] = null;
+        }
+        $kontakInduk = [];
+        foreach ($data['induk_sebelum'] as $id => $row) {
+            foreach (json_decode((string) $row['kontak_tambahan'], true) ?: [] as $k) {
+                $kontakInduk[$id][] = ['id' => $k['id'], 'mitra_id' => (int) $id, 'user_id' => null, 'nama' => $k['nama'], 'jabatan' => $k['jabatan'], 'email' => $k['email'], 'telepon' => $k['telepon']];
+            }
+            unset($data['induk_sebelum'][$id]['kontak_tambahan']);
+        }
+        $data['versi'] = 2;
+        $data['kontak_mitra'] = $kontakMitra;
+        $data['kontak_induk_sebelum'] = $kontakInduk;
+        file_put_contents($berkas, json_encode($data));
+
+        $this->artisan('sikerma:gabung-mitra-ganda', ['--rollback' => $berkas, '--apply' => true])->assertSuccessful();
+
+        $this->assertSame(['eko@cicor.id'], collect(MasterMitra::findOrFail($hapus->id)->kontak)->pluck('email')->all(), 'kontak mitra yang dihidupkan kembali');
+        $this->assertSame(['fajar@cicor.id'], collect($tujuan->fresh()->kontak)->pluck('email')->all(), 'kontak asli induk kembali seperti sebelum digabung');
+    }
+
     public function test_rollback_menghidupkan_lagi_mitra_dan_mengembalikan_semuanya(): void
     {
         $tujuan = $this->mitra(['nama_mitra' => 'PT Cicor Panatec', 'kode_mitra' => 'PTC04']);
@@ -346,8 +388,7 @@ class GabungMitraGandaTest extends TestCase
             'nama_mitra' => 'PT. Cicor', 'kode_mitra' => 'ZZ',
             'nama_kontak_utama' => 'Dewi', 'email_kontak_utama' => 'dewi@cicor.id',
         ]);
-        $hapus->kontak()->create(['nama' => 'Eko', 'email' => 'eko@cicor.id']);
-        $kontakLama = KontakMitra::where('mitra_id', $hapus->id)->first();
+        $hapus->tambahKontak(['nama' => 'Eko', 'email' => 'eko@cicor.id']);
         $dok = $this->dokumenUntukMitra($hapus->id, 'D-1');
         $peng = $this->pengajuanUntukMitra($hapus->id, 'P-1');
         $tujuanAwal = $tujuan->fresh()->only(['nama_kontak_utama', 'email_kontak_utama', 'kode_mitra']);
@@ -355,7 +396,7 @@ class GabungMitraGandaTest extends TestCase
         $this->artisan('sikerma:gabung-mitra-ganda', ['--pasangan' => "{$hapus->id}:{$tujuan->id}", '--apply' => true])->assertSuccessful();
         $this->assertDatabaseMissing('master_mitra', ['id' => $hapus->id]);
         $this->assertSame($tujuan->id, $dok->fresh()->mitra_id);
-        $this->assertTrue(KontakMitra::where('mitra_id', $tujuan->id)->exists());
+        $this->assertNotEmpty($tujuan->fresh()->kontak, 'kontak duplikat pindah ke tujuan');
 
         // Pemetaan di berkas cadangan harus berkunci id mitra yang dihapus (bukan daftar tanpa kunci).
         $cadangan = json_decode((string) file_get_contents($this->berkasCadangan()), true);
@@ -370,8 +411,8 @@ class GabungMitraGandaTest extends TestCase
         $this->assertSame($hapus->id, $dok->fresh()->mitra_id);
         $this->assertSame($hapus->id, $peng->fresh()->mitra_id);
         $this->assertSame($tujuanAwal, $tujuan->fresh()->only(['nama_kontak_utama', 'email_kontak_utama', 'kode_mitra']), 'kolom tujuan yang di-backfill kembali seperti semula');
-        $this->assertSame(0, KontakMitra::where('mitra_id', $tujuan->id)->count(), 'kontak tambahan di tujuan dibuang');
-        $this->assertSame($hapus->id, (int) KontakMitra::find($kontakLama->id)->mitra_id, 'kontak lama kembali ke mitra asalnya');
+        $this->assertSame([], $tujuan->fresh()->kontak, 'kontak tambahan di tujuan dibuang');
+        $this->assertSame(['eko@cicor.id'], collect($hidup->kontak)->pluck('email')->all(), 'kontak lama kembali ke mitra asalnya');
     }
 
     public function test_kode_mitra_unik_disalin_ke_tujuan_tanpa_bentrok_dan_rollback_mengembalikannya(): void

@@ -275,7 +275,7 @@ class PengajuanTest extends TestCase
         $this->assertEquals($mitra->id, $response->json('data.mitra_id'));
     }
 
-    public function test_buat_pengajuan_dengan_no_telepon_mitra_tersimpan_dan_sinkron_ke_master_mitra(): void
+    public function test_buat_pengajuan_dengan_no_telepon_mitra_tersimpan_tapi_tidak_masuk_master_mitra(): void
     {
         $user = $this->internal();
 
@@ -297,7 +297,8 @@ class PengajuanTest extends TestCase
         $this->assertNotNull($mitraId);
         $this->assertDatabaseHas('master_mitra', [
             'id'               => $mitraId,
-            'no_telepon_mitra' => '0778469858',
+            'no_telepon_mitra' => null,
+            'whatsapp_mitra'   => null,
         ]);
     }
 
