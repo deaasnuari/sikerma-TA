@@ -131,4 +131,43 @@ class PengajuanRevisiFileTest extends TestCase
 
         $this->assertSame(['final.pdf'], $pengajuan->pengajuanFiles()->where('peran_berkas', 'dokumen_final')->pluck('nama_file')->all());
     }
+
+    public function test_berkas_pengajuan_baru_hanya_boleh_word(): void
+    {
+        Storage::fake('public');
+        $pemilik = User::factory()->create(['role' => 'internal']);
+        $pengajuan = $this->pengajuan($pemilik);
+
+        $kirim = fn (string $nama, string $mime) => $this->actingAs($pemilik)->patchJson("/api/pengajuan/{$pengajuan->id}", [
+            'file_attachments' => [[
+                'name' => $nama, 'type' => $mime, 'size' => 1,
+                'url' => 'data:'.$mime.';base64,'.base64_encode('isi'),
+            ]],
+        ]);
+
+        $kirim('proposal.pdf', 'application/pdf')->assertStatus(422)->assertJsonValidationErrors('file_attachments.0.name');
+        $kirim('data.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')->assertStatus(422);
+        $this->assertSame(0, $pengajuan->pengajuanFiles()->count());
+
+        $kirim('proposal.docx', self::DOCX_MIME)->assertOk();
+        $this->assertSame(['proposal.docx'], $pengajuan->pengajuanFiles()->pluck('nama_file')->all());
+    }
+
+    public function test_lampiran_lama_berupa_path_tidak_dicek_ulang_saat_pengusul_memperbaiki(): void
+    {
+        Storage::fake('public');
+        $pemilik = User::factory()->create(['role' => 'internal']);
+        $pengajuan = $this->pengajuan($pemilik);
+        Storage::disk('public')->put('pengajuan/2026/01/lama.pdf', 'pdf lama');
+        $pengajuan->pengajuanFiles()->create([
+            'peran_berkas' => 'pengajuan_awal', 'nama_file' => 'lama.pdf', 'path_file' => 'pengajuan/2026/01/lama.pdf',
+        ]);
+
+        $this->actingAs($pemilik)->patchJson("/api/pengajuan/{$pengajuan->id}", [
+            'judul_pengajuan' => 'Diperbaiki',
+            'file_attachments' => [[
+                'name' => 'lama.pdf', 'path_file' => 'pengajuan/2026/01/lama.pdf', 'url' => '',
+            ]],
+        ])->assertOk();
+    }
 }

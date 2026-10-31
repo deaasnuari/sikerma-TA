@@ -3,7 +3,7 @@
 import JenisBadges from '@/components/JenisBadges';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Trash2, Search, RotateCcw, Info, ShieldAlert, FileText, CheckSquare, Square, Filter } from 'lucide-react';
+import { Trash2, Search, RotateCcw, Info, ShieldAlert, FileText, CheckSquare, Square, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   fetchTrashDokumenFromApi,
   restoreDokumenKerjasamaById,
@@ -14,6 +14,7 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import FileDownloadLink from '@/components/FileDownloadLink';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import { useMasterUnitProdi } from '@/hooks/useMasterData';
+import { getPageNumbers } from '@/lib/pagination';
 
 const jenisColor: Record<string, string> = {
   MoA: 'bg-blue-50 text-blue-700',
@@ -38,6 +39,8 @@ export default function SampahDokumenPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkAction, setBulkAction] = useState<'restore' | 'delete' | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const loadTrash = async () => {
     setLoading(true);
@@ -114,6 +117,16 @@ export default function SampahDokumenPage() {
         item.noDokumen.toLowerCase().includes(search.toLowerCase())) &&
       cocokUnit(item, filterUnit)
   );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safePage - 1) * itemsPerPage;
+  const paginatedRows = filtered.slice(pageStartIndex, pageStartIndex + itemsPerPage);
+  const pageNumbers = getPageNumbers(safePage, totalPages);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterUnit]);
 
   // Yang dihitung "terpilih" hanya yang masih tampil di hasil pencarian saat ini.
   const selectedVisibleIds = filtered.filter((item) => selectedIds.has(item.id)).map((item) => item.id);
@@ -294,7 +307,7 @@ export default function SampahDokumenPage() {
                 </tr>
               )}
               {!loading &&
-                filtered.map((item) => (
+                paginatedRows.map((item) => (
                   <tr
                     key={item.id}
                     className={`border-b border-gray-100 transition-colors ${selectedIds.has(item.id) ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
@@ -371,6 +384,58 @@ export default function SampahDokumenPage() {
             </tbody>
           </table>
         </div>
+
+        {filtered.length > 0 && (
+          <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[12px] text-gray-500">
+              Menampilkan <span className="font-semibold text-gray-700">{pageStartIndex + 1}–{Math.min(pageStartIndex + itemsPerPage, filtered.length)}</span> dari{' '}
+              <span className="font-semibold text-gray-700">{filtered.length}</span> dokumen
+            </p>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={safePage === 1}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft size={14} />
+                Prev
+              </button>
+
+              {pageNumbers.map((page, idx) =>
+                page === '...' ? (
+                  <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`inline-flex h-8 min-w-[32px] items-center justify-center rounded-lg px-2 text-[12px] font-semibold transition-colors ${
+                      page === safePage
+                        ? 'bg-[#1E376C] text-white'
+                        : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                )
+              )}
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={safePage === totalPages}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <ConfirmDialog

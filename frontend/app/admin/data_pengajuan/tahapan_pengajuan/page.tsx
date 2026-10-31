@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Search, Loader2, AlertCircle, Check, X,
+  Search, Loader2, AlertCircle, Check, X, Paperclip,
   ChevronDown, GitBranch, StickyNote, History,
 } from 'lucide-react';
 import {
@@ -11,8 +11,9 @@ import {
   ALL_STAGES, GROUP_CONFIG, STAGE_DIBATALKAN, STAGE_SELESAI,
   type PengajuanTahapan, type StageGroup, type RiwayatEntry,
 } from '@/services/tahapanPengajuanService';
-import { fetchPengajuanDataFromApi, type PengajuanItem } from '@/services/adminPengajuanService';
+import { fetchPengajuanDataFromApi, daftarJenisDokumen, pengajuanDokumenBadge, type PengajuanItem } from '@/services/adminPengajuanService';
 import CatatanAdminPanel from '@/components/CatatanAdminPanel';
+import JenisBadges from '@/components/JenisBadges';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,43 @@ function formatDateTime(iso: string): string {
       hour: '2-digit', minute: '2-digit', hour12: false,
     }).format(new Date(iso));
   } catch { return iso; }
+}
+
+// ── Berkas yang dikirim pengusul ──────────────────────────────────────────────
+
+// Hanya lampiran dari pengusul; berkas final (ACC) milik admin tidak ikut ditampilkan di sini.
+function BerkasPengajuan({ item }: { item: PengajuanItem }) {
+  const files = (item.fileAttachments ?? []).filter((f) => !f.isAcc);
+  if (files.length === 0) {
+    return <span className="text-[11px] text-gray-300">Belum ada berkas</span>;
+  }
+  return (
+    <ul className="min-w-[180px] max-w-[260px] space-y-1 text-left">
+      {files.map((file, idx) => (
+        <li key={`${file.name}-${idx}`} className="flex items-center gap-1.5">
+          <Paperclip size={11} className="flex-shrink-0 text-gray-400" />
+          {file.url ? (
+            <a
+              href={file.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={file.name}
+              className="truncate text-[11px] font-medium text-blue-600 underline hover:text-blue-800"
+            >
+              {file.name}
+            </a>
+          ) : (
+            <span title={file.name} className="truncate text-[11px] text-gray-600">{file.name}</span>
+          )}
+          {file.jenisDokumen && (
+            <span className="flex-shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
+              {file.jenisDokumen}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 // ── Dropdown ──────────────────────────────────────────────────────────────────
@@ -418,12 +456,14 @@ export default function TahapanPengajuanPage() {
       ) : (
         <>
         <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="w-full min-w-[640px] text-left text-[12px]">
+          <table className="w-full min-w-[960px] text-left text-[12px]">
             <thead className="border-b border-gray-200 bg-gray-50">
               <tr>
                 <th className="px-3 py-2.5 font-semibold text-gray-600 text-center w-10">No</th>
                 <th className="px-3 py-2.5 font-semibold text-gray-600 whitespace-nowrap">No. Pengajuan</th>
                 <th className="px-3 py-2.5 font-semibold text-gray-600">Judul / Mitra</th>
+                <th className="px-3 py-2.5 font-semibold text-gray-600 text-center">Jenis Dokumen</th>
+                <th className="px-3 py-2.5 font-semibold text-gray-600">Berkas Pengajuan</th>
                 <th className="px-3 py-2.5 font-semibold text-gray-600 text-center">Status Tahapan</th>
                 <th className="px-3 py-2.5 font-semibold text-gray-600 text-center">Riwayat</th>
                 <th className="px-3 py-2.5 font-semibold text-gray-600 text-center">Catatan</th>
@@ -444,6 +484,17 @@ export default function TahapanPengajuanPage() {
                     <td className="px-3 py-2.5">
                       <p className="min-w-[240px] max-w-[420px] whitespace-normal break-words font-medium leading-snug text-gray-800">{item.judulPengajuan}</p>
                       <p className="mt-0.5 max-w-[420px] whitespace-normal break-words text-[10px] leading-snug text-gray-400">{item.namaMitra}</p>
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <JenisBadges
+                        jenis={daftarJenisDokumen(item)}
+                        warna={pengajuanDokumenBadge}
+                        className="inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold"
+                        wrapperClassName="inline-flex flex-wrap justify-center gap-1"
+                      />
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <BerkasPengajuan item={item} />
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <StatusBadge tahapan={tahapan} onUpdate={handleUpdate} />

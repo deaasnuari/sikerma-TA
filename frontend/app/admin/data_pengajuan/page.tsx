@@ -12,6 +12,9 @@ import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { invalidateRekapCache } from '@/services/dokumenKerjasamaApiService';
 import FileRevisiBox from '@/components/FileRevisiBox';
+import TahapanStepper from '@/components/TahapanStepper';
+import CatatanAdminPanel from '@/components/CatatanAdminPanel';
+import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
 import { buatUrlWhatsAppMitra, buildPesanWhatsAppPengajuan } from '@/lib/whatsappPesan';
 import InternalAjukanKerjasamaForm from '@/app/internal/data_pengajuan/AjukanKerjasamaForm';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
@@ -2742,6 +2745,40 @@ function addEditJurusanUnitOption() {
                   );
                 })()}
               </div>
+
+              {/* Hasil review, progres tahapan, dan catatan — sama seperti yang dilihat pengusul internal/eksternal,
+                  supaya admin yang mengajukan sendiri juga melihatnya di sini. */}
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="mb-1 text-[10px] font-semibold text-slate-700">Hasil Review Admin</p>
+                <p className="whitespace-pre-line text-[11px] text-slate-700">
+                  {detailItem.reviewComment ||
+                    ((detailItem.statusPengajuan !== 'Revisi' && detailItem.statusPengajuan !== 'Ditolak'
+                      ? reviewTextFromTahapan(detailItem.tahapanStage)
+                      : null) ||
+                      'Belum ada hasil review dari admin.')}
+                </p>
+                {detailItem.reviewedAt && (
+                  <p className="mt-1.5 text-[10px] text-slate-500">
+                    Diperbarui oleh {detailItem.reviewedBy || 'Admin'} pada {detailItem.reviewedAt}
+                  </p>
+                )}
+              </div>
+
+              {detailItem.tahapanStage && (
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold text-slate-700">Progres Tahapan</p>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <TahapanStepper
+                      tahapan={{
+                        stage: detailItem.tahapanStage ?? null,
+                        group: (detailItem.tahapanGroup as StageGroup | null) ?? null,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <CatatanAdminPanel pengajuanId={detailItem.id} />
 
               <button
                 type="button"

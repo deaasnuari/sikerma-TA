@@ -688,6 +688,37 @@ class PengajuanController extends Controller
 
     private const UKURAN_LAMPIRAN_MAKS_BYTE = 10 * 1024 * 1024;
 
+    /**
+     * Berkas pengajuan yang BARU diunggah (data URL) hanya boleh Word (.doc/.docx) — sama dengan formulir.
+     * Dicek di sini, sebelum pengajuan disimpan, karena sinkronisasi lampiran di store() sengaja
+     * menelan error. Berkas yang hanya dirujuk lewat path (lampiran lama, mis. data lama berformat PDF)
+     * dan berkas final (isAcc) tidak dicek supaya pengajuan lama tetap bisa diperbaiki.
+     */
+    private function pastikanBerkasPengajuanWord(Request $request): void
+    {
+        $attachments = $request->input('file_attachments');
+        if (! is_array($attachments)) {
+            return;
+        }
+
+        foreach ($attachments as $index => $attachment) {
+            if (! is_array($attachment) || ! empty($attachment['isAcc'])) {
+                continue;
+            }
+
+            if (! str_starts_with(trim((string) ($attachment['url'] ?? '')), 'data:')) {
+                continue;
+            }
+
+            $name = trim((string) ($attachment['name'] ?? $attachment['nama_file'] ?? ''));
+            if (! preg_match('/\.docx?$/i', $name)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    "file_attachments.{$index}.name" => 'Berkas pengajuan harus berformat Word (.doc atau .docx).',
+                ]);
+            }
+        }
+    }
+
     private function persistDataUrlAttachment(array $attachment): ?string
     {
         $rawUrl = trim((string) ($attachment['url'] ?? ''));
@@ -1353,6 +1384,8 @@ class PengajuanController extends Controller
 
     public function store(Request $request): Response
     {
+        $this->pastikanBerkasPengajuanWord($request);
+
         if (! $this->useNewPengajuanSchema()) {
             $legacyRequest = new Request($this->legacyPayloadFromRequest($request));
             $legacyRequest->setUserResolver(fn () => $request->user());
@@ -1502,6 +1535,11 @@ class PengajuanController extends Controller
 
     public function updateTahapan(Request $request, Pengajuan $pengajuan): Response
     {
+        $role = strtolower(str_replace([' ', '_'], '-', trim((string) ($request->user()?->role ?? ''))));
+        if (! in_array($role, ['admin', 'admin-humas'], true)) {
+            return response(['success' => false, 'message' => 'Hanya admin yang dapat mengubah tahapan pengajuan.'], 403);
+        }
+
         if (! $this->hasPengajuanColumn('tahapan_stage')) {
             return response([
                 'success' => false,
@@ -1618,6 +1656,8 @@ class PengajuanController extends Controller
                 'message' => 'Pengajuan updated successfully',
             ]);
         }
+
+        $this->pastikanBerkasPengajuanWord($request);
 
         $ruangLingkupIds = $this->normalizeRuangLingkupIds($request);
 

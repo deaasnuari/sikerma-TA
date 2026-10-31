@@ -607,7 +607,7 @@ class PengajuanTest extends TestCase
 
     public function test_update_tahapan_berhasil(): void
     {
-        $user      = $this->internal();
+        $user      = $this->admin();
         $pengajuan = $this->buatPengajuan([
             'tahapan_stage'   => 'Pengajuan Awal',
             'tahapan_group'   => 'todo',
@@ -624,7 +624,7 @@ class PengajuanTest extends TestCase
 
     public function test_update_tahapan_gagal_group_tidak_valid(): void
     {
-        $user      = $this->internal();
+        $user      = $this->admin();
         $pengajuan = $this->buatPengajuan();
 
         $this->actingAs($user)->patchJson("/api/pengajuan/{$pengajuan->id}/tahapan", [
@@ -635,7 +635,7 @@ class PengajuanTest extends TestCase
 
     public function test_riwayat_tahapan_terakumulasi(): void
     {
-        $user      = $this->internal();
+        $user      = $this->admin();
         $pengajuan = $this->buatPengajuan([
             'tahapan_stage'   => 'Pengajuan Awal',
             'tahapan_group'   => 'todo',
@@ -649,6 +649,20 @@ class PengajuanTest extends TestCase
 
         $riwayat = $pengajuan->fresh()->tahapan_riwayat;
         $this->assertCount(2, $riwayat);
+    }
+
+    // ------------------------------------------------------------------
+
+    public function test_non_admin_tidak_dapat_ubah_tahapan(): void
+    {
+        $pengajuan = $this->buatPengajuan(['tahapan_stage' => 'Pengajuan Awal', 'tahapan_group' => 'todo']);
+
+        $this->actingAs($this->internal())->patchJson("/api/pengajuan/{$pengajuan->id}/tahapan", [
+            'stage' => 'Selesai',
+            'group' => 'complete',
+        ])->assertForbidden();
+
+        $this->assertSame('Pengajuan Awal', $pengajuan->fresh()->tahapan_stage);
     }
 
     // ------------------------------------------------------------------
