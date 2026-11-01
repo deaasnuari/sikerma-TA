@@ -1019,7 +1019,7 @@ export default function RekapDataPage() {
         const detailLinkBuktiNama = detailItem.dokumenTerkait && detailItem.dokumenTerkait.length > 0 ? detailItem.dokumenTerkait[0].nama : null;
         return (
         <div className="fixed inset-0 z-[70] bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center px-4 py-6">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh]">
+          <div className="w-full max-w-2xl lg:max-w-6xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[92vh]">
 
             {/* Header */}
             <div className="flex-shrink-0 flex items-start justify-between gap-4 border-b border-gray-100 bg-gradient-to-r from-[#1E376C] to-[#2B4A93] px-6 pt-5 pb-5 rounded-t-2xl">
@@ -1048,10 +1048,12 @@ export default function RekapDataPage() {
             </div>
 
             {/* Scrollable body */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 lg:grid lg:grid-cols-3 lg:items-start lg:gap-4 lg:space-y-0">
 
+              {/* Kolom 1: identitas dokumen & mitra */}
+              <div className="space-y-4">
               {/* Info utama */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
                 <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
                   <Hash size={15} className="mt-0.5 shrink-0 text-[#1E376C]" />
                   <div>
@@ -1156,13 +1158,17 @@ export default function RekapDataPage() {
                 </div>
               </div>
 
+              </div>
+
+              {/* Kolom 2: periode, kontak, manfaat, nilai */}
+              <div className="space-y-4">
               {/* Periode */}
               <div className="rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
                 <div className="flex items-center gap-2 mb-3">
                   <CalendarDays size={14} className="text-[#1E376C]" />
                   <p className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide">Periode Kerjasama</p>
                 </div>
-                <div className="grid grid-cols-2 gap-3 text-[12px] sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 text-[12px] sm:grid-cols-4 lg:grid-cols-2">
                   <div>
                     <p className="text-[10.5px] text-gray-500">Tanggal Mulai</p>
                     <p className="font-semibold text-gray-800">{detailItem.tanggalMulai || '-'}</p>
@@ -1200,7 +1206,7 @@ export default function RekapDataPage() {
                   <Phone size={15} className="shrink-0 text-green-600" />
                   <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Kontak WhatsApp</p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
                   {[
                     {
                       judul: 'Mitra',
@@ -1333,6 +1339,10 @@ export default function RekapDataPage() {
                 )}
               </div>
 
+              </div>
+
+              {/* Kolom 3: luaran, monev, follow up, dokumen, riwayat */}
+              <div className="space-y-4">
               {/* Luaran Kerja Sama — sengaja tidak diisi pengaju saat pengajuan, admin yang
                   melengkapi di sini setelah kerja samanya berjalan/selesai. */}
               <div className="rounded-xl border border-gray-100 bg-slate-50 px-4 py-3">
@@ -1553,6 +1563,7 @@ export default function RekapDataPage() {
                   </button>
                 </div>
               )}
+              </div>
             </div>{/* end scrollable body */}
           </div>
         </div>

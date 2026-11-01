@@ -16,9 +16,11 @@ interface RenewalUploadFormProps {
   // (internal/eksternal) supaya tidak ada file kedua yang diam-diam terbuang.
   singleFile?: boolean;
   submitting?: boolean;
+  // Susun form jadi dua kolom di layar sedang ke atas supaya muat satu layar (dipakai modal pengusul).
+  twoColumns?: boolean;
 }
 
-export default function RenewalUploadForm({ onSubmit, singleFile = false, submitting = false, withRuangLingkup = false, initialRuangLingkup = [] }: RenewalUploadFormProps) {
+export default function RenewalUploadForm({ onSubmit, singleFile = false, submitting = false, withRuangLingkup = false, initialRuangLingkup = [], twoColumns = false }: RenewalUploadFormProps) {
   const [tanggalMulaiBaru, setTanggalMulaiBaru] = useState('');
   const [tanggalBerakhirBaru, setTanggalBerakhirBaru] = useState('');
   const [catatan, setCatatan] = useState('');
@@ -111,7 +113,8 @@ export default function RenewalUploadForm({ onSubmit, singleFile = false, submit
   };
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-lg border border-blue-200 bg-blue-50 p-4 mb-4">
+    <form onSubmit={handleSubmit} className={`rounded-lg border border-blue-200 bg-blue-50 p-4 mb-4${twoColumns ? ' md:grid md:grid-cols-2 md:items-start md:gap-x-5' : ''}`}>
+      <div>
       <div className="mb-3 flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
         <AlertCircle size={16} className="text-yellow-600" />
         <span className="text-xs text-yellow-800">Unggah dokumen kerja sama terbaru (MoU/MoA/IA) sebagai dasar perpanjangan.</span>
@@ -153,8 +156,10 @@ export default function RenewalUploadForm({ onSubmit, singleFile = false, submit
           />
         </div>
       </div>
+      </div>
+      <div>
       {withRuangLingkup && (
-        <div ref={ruangLingkupRef} className="relative mt-3">
+        <div ref={ruangLingkupRef} className={`relative${twoColumns ? '' : ' mt-3'}`}>
           <label className="mb-1 block text-xs font-semibold text-gray-700">Ruang Lingkup Kerjasama</label>
           <button
             type="button"
@@ -216,7 +221,7 @@ export default function RenewalUploadForm({ onSubmit, singleFile = false, submit
         value={catatan}
         onChange={(e) => setCatatan(e.target.value)}
         placeholder="Catatan perpanjangan (opsional)..."
-        rows={2}
+        rows={twoColumns ? 3 : 2}
         className="mt-3 w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
       />
       <div className="mt-4">
@@ -250,11 +255,12 @@ export default function RenewalUploadForm({ onSubmit, singleFile = false, submit
           {singleFile && dokumen.length > 0 ? 'Ganti Dokumen' : 'Tambah Dokumen'}
         </button>
       </div>
-      {error && <div className="mt-2 text-xs text-red-600">{error}</div>}
+      </div>
+      {error && <div className={`mt-2 text-xs text-red-600${twoColumns ? ' md:col-span-2' : ''}`}>{error}</div>}
       <button
         type="submit"
         disabled={submitting}
-        className="mt-3 inline-flex h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+        className={`mt-3 inline-flex h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60${twoColumns ? ' md:col-span-2 md:justify-self-end' : ''}`}
       >
         {submitting ? 'Mengirim...' : 'Ajukan Perpanjangan'}
       </button>

@@ -937,7 +937,7 @@ export default function MonitoringdanstatusPage() {
       {renewalModal.open && selectedRenewalItem && (
         <div className="fixed inset-x-0 bottom-0 top-16 z-[70] overflow-y-auto bg-slate-900/40 px-2 pb-4 pt-4">
 
-          <div className="relative mx-auto w-full max-w-2xl rounded-2xl bg-white p-0 shadow-2xl">
+          <div className="relative mx-auto w-full max-w-2xl rounded-2xl bg-white p-0 shadow-2xl lg:max-w-6xl">
             <div className="p-4">
             <h2 className="text-[15px] font-bold text-[#1E376C] mb-2">Form Perpanjangan Kerjasama</h2>
             {/* Form lengkap selalu tampil di atas */}

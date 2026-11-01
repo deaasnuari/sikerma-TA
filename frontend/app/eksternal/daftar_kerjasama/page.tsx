@@ -1011,6 +1011,9 @@ export default function DaftarKerjasamaEksternalPage() {
               noDokumen: perpanjangItem.noDokumen,
               berlakuHingga: perpanjangItem.berlakuHingga,
               ruangLingkup: perpanjangItem.ruangLingkup,
+              jenisKerjasama: perpanjangItem.jenisList.join(' + '),
+              judulKerjasama: perpanjangItem.judulPengajuan,
+              tanggalMulai: perpanjangItem.tanggalMulai,
             }}
             onClose={() => setPerpanjangItem(null)}
             onSubmitted={(message) => {

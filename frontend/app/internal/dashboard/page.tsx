@@ -203,9 +203,9 @@ export default function InternalDashboardPage() {
   });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-3">
       {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3 lg:shrink-0">
         <div>
           <h1 className="text-[17px] font-bold text-slate-900">Dashboard Internal</h1>
           <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
@@ -217,7 +217,7 @@ export default function InternalDashboardPage() {
 
       {/* Perlu perhatian */}
       {!loading && (totalAkanBerakhir > 0 || totalKadaluarsa > 0) && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 lg:shrink-0">
           <div className="flex items-start gap-2.5">
             <AlertCircle size={16} className="mt-0.5 shrink-0 text-amber-600" />
             <div>
@@ -240,11 +240,11 @@ export default function InternalDashboardPage() {
       )}
 
       {/* Kartu ringkasan */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:shrink-0 lg:grid-cols-4">
         {summaryCards.map((item) => {
           const Icon = item.icon;
           return (
-            <div key={item.title} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div key={item.title} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:p-3">
               <span className={`absolute inset-y-0 left-0 w-1 ${item.bar}`} />
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -252,7 +252,7 @@ export default function InternalDashboardPage() {
                   {loading ? (
                     <div className="mt-2 h-7 w-14 animate-pulse rounded bg-slate-200" />
                   ) : (
-                    <p className="mt-1 text-[24px] font-bold leading-tight text-slate-900">{item.value}</p>
+                    <p className="mt-1 text-[24px] font-bold leading-tight text-slate-900 lg:text-[20px]">{item.value}</p>
                   )}
                   <p className="mt-0.5 text-[10.5px] text-slate-400">{item.note}</p>
                 </div>
@@ -265,10 +265,11 @@ export default function InternalDashboardPage() {
         })}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+      {/* Desktop: tiga kolom mengisi sisa tinggi layar (daftar & kartu menggulir di dalamnya bila perlu). */}
+      <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_230px]">
         {/* Kerjasama terbaru */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex lg:min-h-0 lg:flex-col">
+          <div className="mb-4 flex items-center justify-between lg:mb-3 lg:shrink-0">
             <div>
               <h2 className="text-[13.5px] font-bold text-slate-900">Kerjasama Terbaru</h2>
               <p className="text-[12px] text-slate-500">Daftar kerja sama yang sudah disetujui di unit internal.</p>
@@ -279,7 +280,7 @@ export default function InternalDashboardPage() {
             </Link>
           </div>
 
-          <div className="space-y-2.5">
+          <div className="space-y-2.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="h-[60px] animate-pulse rounded-xl bg-slate-100" />
@@ -324,22 +325,153 @@ export default function InternalDashboardPage() {
           </div>
         </div>
 
-        <div className="space-y-4">
+
+        {/* Statistik Kerjasama: satu kartu, dua grafik berdampingan (seperti dashboard admin) */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:p-4 lg:flex lg:min-h-0 lg:flex-col">
+          <div className="mb-3 lg:shrink-0">
+            <h2 className="text-[13px] font-bold text-slate-900">Statistik Kerjasama</h2>
+            <p className="mt-0.5 text-[11px] text-slate-500">Status masa berlaku dan jenis dokumen dari kerja sama yang disetujui.</p>
+          </div>
+
+          <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:[&>*]:min-h-0 lg:[&>*]:overflow-y-auto">
+            {/* Status masa berlaku: donat */}
+            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-emerald-50 to-slate-50 p-3">
+              <h3 className="text-[12px] font-bold text-slate-800">Status Kerjasama</h3>
+              <p className="mt-0.5 text-[10px] text-slate-400">Berdasarkan masa berlaku dokumen</p>
+
+              {total === 0 ? (
+                <p className="py-8 text-center text-[12px] text-slate-400">{loading ? 'Memuat data…' : 'Belum ada data.'}</p>
+              ) : (
+                <>
+                  <div className="relative mx-auto mt-1 h-[130px] w-full max-w-[170px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={statusSegments}
+                          dataKey="count"
+                          nameKey="label"
+                          innerRadius="62%"
+                          outerRadius="92%"
+                          paddingAngle={statusSegments.filter((seg) => seg.count > 0).length > 1 ? 3 : 0}
+                          stroke="none"
+                          isAnimationActive={false}
+                        >
+                          {statusSegments.map((seg) => (
+                            <Cell key={seg.label} fill={seg.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value, name) => [`${value} dokumen (${pctJenis(Number(value))}%)`, String(name)]}
+                          contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                      <p className="text-[18px] font-bold leading-none text-slate-900">{total}</p>
+                      <p className="mt-0.5 text-[10px] text-slate-500">dokumen</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 space-y-1.5">
+                    {statusSegments.map((seg) => (
+                      <div key={seg.label}>
+                        <div className="mb-1 flex items-center justify-between text-[11px]">
+                          <span className="flex items-center gap-1.5 text-slate-600">
+                            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: seg.color }} />
+                            {seg.label}
+                          </span>
+                          <span className="font-semibold text-slate-800">
+                            {seg.count} <span className="font-normal text-slate-400">({pct(seg.count)}%)</span>
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pct(seg.count)}%`, backgroundColor: seg.color }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Jenis dokumen: lingkaran */}
+            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-slate-50 p-3">
+              <h3 className="text-[12px] font-bold text-slate-800">Jenis Kerjasama</h3>
+              <p className="mt-0.5 text-[10px] text-slate-400">Berdasarkan jenis dokumen</p>
+
+              {jenisKerjasama.length === 0 ? (
+                <p className="py-8 text-center text-[12px] text-slate-400">{loading ? 'Memuat data…' : 'Belum ada data.'}</p>
+              ) : (
+                <>
+                  <div className="mx-auto mt-1 h-[130px] w-full max-w-[170px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={jenisKerjasama}
+                          dataKey="total"
+                          nameKey="label"
+                          outerRadius="92%"
+                          paddingAngle={jenisKerjasama.length > 1 ? 2 : 0}
+                          stroke="#ffffff"
+                          strokeWidth={2}
+                          isAnimationActive={false}
+                        >
+                          {jenisKerjasama.map((item) => (
+                            <Cell key={item.label} fill={jenisWarna[jenisKey(item.label)] || '#64748b'} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value, name) => [`${value} dokumen (${pct(Number(value))}%)`, String(name)]}
+                          contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="mt-2 space-y-1.5">
+                    {jenisKerjasama.map((item) => {
+                      const warna = jenisWarna[jenisKey(item.label)] || '#64748b';
+                      return (
+                        <div key={item.label}>
+                          <div className="mb-1 flex items-center justify-between text-[11px]">
+                            <span className="flex items-center gap-1.5 text-slate-600">
+                              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: warna }} />
+                              {item.label}
+                            </span>
+                            <span className="font-semibold text-slate-800">
+                              {item.total} <span className="font-normal text-slate-400">({pctJenis(item.total)}%)</span>
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                            <div className="h-full rounded-full transition-all" style={{ width: `${pctJenis(item.total)}%`, backgroundColor: warna }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <CatatanJenisDokumen />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4 lg:flex lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-3">
           {/* Ringkasan */}
           <div className="rounded-2xl bg-gradient-to-br from-[#091222] to-[#173B82] p-4 text-white shadow-sm">
             <div className="flex items-center gap-2">
               <Building2 size={15} className="text-slate-300" />
               <p className="text-[12px] font-semibold">Ringkasan Kerjasama</p>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center lg:grid-cols-1 lg:gap-1.5">
               {[
                 { value: totalMitra, label: 'Total Mitra' },
                 { value: totalUnit, label: 'Unit Terlibat' },
                 { value: totalRuangLingkup, label: 'Ruang Lingkup' },
               ].map((tile) => (
-                <div key={tile.label} className="rounded-xl bg-white/10 px-2 py-3">
+                <div key={tile.label} className="rounded-xl bg-white/10 px-2 py-3 lg:flex lg:flex-row-reverse lg:items-center lg:justify-between lg:px-3 lg:py-2">
                   <p className="text-[18px] font-bold leading-none">{loading ? '–' : tile.value}</p>
-                  <p className="mt-1.5 text-[10.5px] text-slate-300">{tile.label}</p>
+                  <p className="mt-1.5 text-[10.5px] text-slate-300 lg:mt-0">{tile.label}</p>
                 </div>
               ))}
             </div>
@@ -351,156 +483,26 @@ export default function InternalDashboardPage() {
             <div className="mt-3 space-y-2.5">
               <Link
                 href="/internal/data_pengajuan?mode=ajukan"
-                className="flex w-full items-center justify-between rounded-xl bg-slate-900 px-4 py-3 text-[12px] font-semibold text-white transition hover:bg-slate-800"
+                className="flex w-full items-center justify-between rounded-xl bg-slate-900 px-4 py-3 text-[12px] font-semibold lg:py-2 text-white transition hover:bg-slate-800"
               >
                 Ajukan Kerjasama Baru
                 <ArrowRight size={16} />
               </Link>
               <Link
                 href="/internal/data_pengajuan"
-                className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-[12px] font-semibold lg:py-2 text-slate-700 transition hover:bg-slate-50"
               >
                 Lihat Pengajuan
                 <ArrowRight size={16} />
               </Link>
               <Link
                 href="/internal/rekap_data"
-                className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-[12px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-[12px] font-semibold lg:py-2 text-slate-700 transition hover:bg-slate-50"
               >
                 Rekap Data Kerjasama
                 <ArrowRight size={16} />
               </Link>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Statistik Kerjasama: satu kartu, dua grafik berdampingan (seperti dashboard admin) */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:p-4">
-        <div className="mb-3">
-          <h2 className="text-[13px] font-bold text-slate-900">Statistik Kerjasama</h2>
-          <p className="mt-0.5 text-[11px] text-slate-500">Status masa berlaku dan jenis dokumen dari kerja sama yang disetujui.</p>
-        </div>
-
-        <div className="grid gap-3 lg:grid-cols-2">
-          {/* Status masa berlaku: donat */}
-          <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-emerald-50 to-slate-50 p-3">
-            <h3 className="text-[12px] font-bold text-slate-800">Status Kerjasama</h3>
-            <p className="mt-0.5 text-[10px] text-slate-400">Berdasarkan masa berlaku dokumen</p>
-
-            {total === 0 ? (
-              <p className="py-8 text-center text-[12px] text-slate-400">{loading ? 'Memuat data…' : 'Belum ada data.'}</p>
-            ) : (
-              <>
-                <div className="relative mx-auto mt-1 h-[130px] w-full max-w-[170px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={statusSegments}
-                        dataKey="count"
-                        nameKey="label"
-                        innerRadius="62%"
-                        outerRadius="92%"
-                        paddingAngle={statusSegments.filter((seg) => seg.count > 0).length > 1 ? 3 : 0}
-                        stroke="none"
-                        isAnimationActive={false}
-                      >
-                        {statusSegments.map((seg) => (
-                          <Cell key={seg.label} fill={seg.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value, name) => [`${value} dokumen (${pctJenis(Number(value))}%)`, String(name)]}
-                        contentStyle={{ borderRadius: 8, fontSize: 12 }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                    <p className="text-[18px] font-bold leading-none text-slate-900">{total}</p>
-                    <p className="mt-0.5 text-[10px] text-slate-500">dokumen</p>
-                  </div>
-                </div>
-
-                <div className="mt-2 space-y-1.5">
-                  {statusSegments.map((seg) => (
-                    <div key={seg.label}>
-                      <div className="mb-1 flex items-center justify-between text-[11px]">
-                        <span className="flex items-center gap-1.5 text-slate-600">
-                          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: seg.color }} />
-                          {seg.label}
-                        </span>
-                        <span className="font-semibold text-slate-800">
-                          {seg.count} <span className="font-normal text-slate-400">({pct(seg.count)}%)</span>
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                        <div className="h-full rounded-full transition-all" style={{ width: `${pct(seg.count)}%`, backgroundColor: seg.color }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Jenis dokumen: lingkaran */}
-          <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-slate-50 p-3">
-            <h3 className="text-[12px] font-bold text-slate-800">Jenis Kerjasama</h3>
-            <p className="mt-0.5 text-[10px] text-slate-400">Berdasarkan jenis dokumen</p>
-
-            {jenisKerjasama.length === 0 ? (
-              <p className="py-8 text-center text-[12px] text-slate-400">{loading ? 'Memuat data…' : 'Belum ada data.'}</p>
-            ) : (
-              <>
-                <div className="mx-auto mt-1 h-[130px] w-full max-w-[170px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={jenisKerjasama}
-                        dataKey="total"
-                        nameKey="label"
-                        outerRadius="92%"
-                        paddingAngle={jenisKerjasama.length > 1 ? 2 : 0}
-                        stroke="#ffffff"
-                        strokeWidth={2}
-                        isAnimationActive={false}
-                      >
-                        {jenisKerjasama.map((item) => (
-                          <Cell key={item.label} fill={jenisWarna[jenisKey(item.label)] || '#64748b'} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value, name) => [`${value} dokumen (${pct(Number(value))}%)`, String(name)]}
-                        contentStyle={{ borderRadius: 8, fontSize: 12 }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div className="mt-2 space-y-1.5">
-                  {jenisKerjasama.map((item) => {
-                    const warna = jenisWarna[jenisKey(item.label)] || '#64748b';
-                    return (
-                      <div key={item.label}>
-                        <div className="mb-1 flex items-center justify-between text-[11px]">
-                          <span className="flex items-center gap-1.5 text-slate-600">
-                            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: warna }} />
-                            {item.label}
-                          </span>
-                          <span className="font-semibold text-slate-800">
-                            {item.total} <span className="font-normal text-slate-400">({pctJenis(item.total)}%)</span>
-                          </span>
-                        </div>
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${pctJenis(item.total)}%`, backgroundColor: warna }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <CatatanJenisDokumen />
-              </>
-            )}
           </div>
         </div>
       </div>

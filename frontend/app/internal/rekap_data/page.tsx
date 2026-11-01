@@ -862,6 +862,10 @@ export default function InternalRekapDataPage() {
             noDokumen: perpanjangItem.noDokumen,
             berlakuHingga: perpanjangItem.berlakuHingga,
             ruangLingkup: perpanjangItem.ruangLingkup,
+            jenisKerjasama: (perpanjangItem.jenisList ?? [perpanjangItem.jenis]).join(' + '),
+            judulKerjasama: perpanjangItem.judulKegiatan,
+            tanggalMulai: perpanjangItem.tanggalMulai,
+            berlakuHinggaRaw: perpanjangItem.berlakuHinggaRaw,
           }}
           onClose={() => setPerpanjangItem(null)}
           onSubmitted={(message) => {

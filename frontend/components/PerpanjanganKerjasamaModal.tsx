@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import RenewalUploadForm from '@/app/admin/monitoring/RenewalUploadForm';
+import RenewalFullForm from '@/app/admin/monitoring/RenewalFullForm';
+import { showNotice } from '@/lib/dialog';
 import { addRenewalRequest } from '@/services/adminRenewalRequestService';
 
 export interface PerpanjanganTarget {
@@ -13,6 +14,12 @@ export interface PerpanjanganTarget {
   berlakuHingga: string;
   /** Ruang lingkup kerja sama saat ini (nama), dipakai sebagai pilihan awal. */
   ruangLingkup?: string[];
+  jenisKerjasama?: string;
+  judulKerjasama?: string;
+  /** Tanggal mulai kerja sama saat ini (ditampilkan apa adanya). */
+  tanggalMulai?: string;
+  /** Tanggal berakhir format ISO (YYYY-MM-DD); jadi tanggal mulai awal perpanjangan. */
+  berlakuHinggaRaw?: string;
 }
 
 type Props = {
@@ -21,15 +28,6 @@ type Props = {
   /** Dipanggil setelah permintaan berhasil terkirim ke admin. */
   onSubmitted: (message: string) => void;
 };
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error('Gagal membaca file dokumen.'));
-    reader.readAsDataURL(file);
-  });
-}
 
 export default function PerpanjanganKerjasamaModal({ target, onClose, onSubmitted }: Props) {
   const [submitting, setSubmitting] = useState(false);
@@ -41,7 +39,7 @@ export default function PerpanjanganKerjasamaModal({ target, onClose, onSubmitte
         if (event.target === event.currentTarget && !submitting) onClose();
       }}
     >
-      <div className="relative mx-auto w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+      <div className="relative mx-auto w-full max-w-2xl rounded-2xl bg-white shadow-2xl md:max-w-4xl">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
           <div>
             <h2 className="text-[15px] font-bold text-[#1E376C]">Ajukan Perpanjangan Kerja Sama</h2>
@@ -60,30 +58,49 @@ export default function PerpanjanganKerjasamaModal({ target, onClose, onSubmitte
         </div>
 
         <div className="p-5">
-          <RenewalUploadForm
-            singleFile
-            withRuangLingkup
-            initialRuangLingkup={target.ruangLingkup ?? []}
-            submitting={submitting}
-            onSubmit={async ({ tanggalMulaiBaru, tanggalBerakhirBaru, catatan, dokumen, ruangLingkup }) => {
+          <RenewalFullForm
+            initialData={{
+              namaMitra: target.namaMitra,
+              jenisMitra: '',
+              teleponMitra: '',
+              emailMitra: '',
+              alamatLengkap: '',
+              negara: 'Indonesia',
+              jenisKerjasama: target.jenisKerjasama ?? '',
+              unitPelaksana: '',
+              tanggalMulai: target.tanggalMulai ?? '',
+              tanggalBerakhir: target.berlakuHinggaRaw ?? target.berlakuHingga,
+              judulKerjasama: target.judulKerjasama ?? '',
+              deskripsi: '',
+              ruangLingkup: target.ruangLingkup ?? [],
+              kontakNama: '',
+              kontakJabatan: '',
+              kontakEmail: '',
+              kontakTelepon: '',
+              tanggalMulaiBaru: '',
+              tanggalBerakhirBaru: '',
+              catatanPerpanjangan: '',
+            }}
+            onSubmit={async (data) => {
               setSubmitting(true);
               try {
-                const file = dokumen[0];
                 await addRenewalRequest({
                   kerjasamaId: target.dokumenId,
                   namaMitra: target.namaMitra,
                   noDokumen: target.noDokumen,
-                  tanggalMulaiBaru,
-                  tanggalBerakhirBaru,
-                  catatan,
-                  buktiPerpanjangan: await fileToDataUrl(file),
-                  buktiPerpanjanganNama: file.name,
-                  ruangLingkup,
+                  tanggalMulaiBaru: data.tanggalMulaiBaru,
+                  tanggalBerakhirBaru: data.tanggalBerakhirBaru,
+                  catatan: data.catatanPerpanjangan,
+                  buktiPerpanjangan: data.dokumen?.url ?? null,
+                  buktiPerpanjanganNama: data.dokumen?.nama ?? null,
+                  ruangLingkup: data.ruangLingkup ?? [],
                 });
+                onSubmitted('Permintaan perpanjangan terkirim. Admin akan memeriksa dokumen dan memutuskan persetujuan.');
+              } catch (err) {
+                showNotice(err instanceof Error ? err.message : 'Gagal mengirim permintaan perpanjangan.');
               } finally {
                 setSubmitting(false);
               }
-              onSubmitted('Permintaan perpanjangan terkirim. Admin akan memeriksa dokumen dan memutuskan persetujuan.');
             }}
           />
         </div>

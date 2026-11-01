@@ -25,23 +25,26 @@ const PALETTE = [
 export default function KategoriMitraDonutCard({
   total,
   kategori,
+  compact = false,
 }: {
   total: number;
   kategori: KategoriMitraStat[];
+  // Versi ringkas untuk dashboard satu layar: donat lebih kecil, jarak rapat, isi bisa digulir di dalam kartu.
+  compact?: boolean;
 }) {
   const items = kategori.map((item, index) => ({ ...item, color: PALETTE[index % PALETTE.length] }));
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-4 md:p-5">
+    <div className={`rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 ${compact ? 'min-h-0 overflow-y-auto p-3' : 'p-4 md:p-5'}`}>
       <h3 className="text-[12px] font-bold text-slate-800">Kategori Mitra</h3>
-      <div className="mt-4 flex items-center justify-center">
+      <div className={`flex items-center justify-center ${compact ? 'mt-2' : 'mt-4'}`}>
         <DonutChart
-          size={180}
+          size={compact ? 130 : 180}
           centerLabel={String(total)}
           segments={items.map((item) => ({ value: item.value, color: item.color }))}
         />
       </div>
-      <div className="mt-4 space-y-2">
+      <div className={compact ? 'mt-2 space-y-1' : 'mt-4 space-y-2'}>
         {items.map((item) => (
           <div key={item.label} className="flex items-center justify-between gap-3 text-[11px]">
             <span className="flex min-w-0 items-center gap-1.5 text-slate-600">

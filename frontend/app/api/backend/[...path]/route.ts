@@ -155,7 +155,8 @@ async function proxyRequest(request: NextRequest, pathSegments: string[]): Promi
       statusText: backendResponse.statusText,
       headers: responseHeaders,
     });
-  } catch {
+  } catch (error) {
+    console.error(`[proxy] Gagal menghubungi backend (${method} ${targetUrl}):`, error);
     return NextResponse.json(
       {
         message: 'Gagal terhubung ke backend API.',

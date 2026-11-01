@@ -194,7 +194,7 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
                 { label: 'Aktivitas', href: '/#aktivitas' },
                 { label: 'Kemitraan', href: '/#info-kerjasama' },
                 { label: 'Berita', href: 'https://www.polibatam.ac.id/category/kerja-sama/', external: true },
-                { label: 'Kontak', href: '/#kontak' },
+                { label: 'Kontak', href: '/#hubungi-kami' },
               ].map((item) => (
                 <a
                   key={item.label}
@@ -240,7 +240,7 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
                     { label: 'Aktivitas', href: '/#aktivitas' },
                     { label: 'Kemitraan', href: '/#info-kerjasama' },
                     { label: 'Berita', href: 'https://www.polibatam.ac.id/category/kerja-sama/', external: true },
-                    { label: 'Kontak', href: '/#kontak' },
+                    { label: 'Kontak', href: '/#hubungi-kami' },
                   ].map((item) => (
                     <a
                       key={item.label}

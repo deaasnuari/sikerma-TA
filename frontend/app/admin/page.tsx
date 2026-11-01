@@ -92,6 +92,7 @@ function getMitraStatHref(label: string): string | null {
 export default function AdminDashboard() {
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [carouselImages, setCarouselImages] = useState<CarouselImageItem[]>([]);
+  const [showCarouselModal, setShowCarouselModal] = useState(false);
   const [carouselTitle, setCarouselTitle] = useState('');
   const [isUploadingCarousel, setIsUploadingCarousel] = useState(false);
   const [carouselError, setCarouselError] = useState<string | null>(null);
@@ -375,63 +376,49 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-lg md:text-xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 text-[9px] mt-1">
-          Selamat datang di SIKERMA v2.0 — Sistem Informasi Kerjasama Politeknik Negeri Batam
-        </p>
-      </div>
-
-      <div className="card p-3 md:p-4">
-        <div className="flex items-center justify-between mb-3 gap-3">
-          <h2 className="text-xs font-semibold text-gray-900 flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-            Notifikasi Terbaru
-          </h2>
-          <Link href="/admin/notifikasi" className="text-xs text-[#173B82] hover:text-[#091222] font-medium">
-            Lihat Semua
-          </Link>
+    // Desktop (lg+): satu layar penuh tanpa scroll halaman — baris atas & statistik setinggi isinya, baris grafik
+    // mengisi sisa tinggi (isi kartu menggulir di dalam kartu bila layar terlalu pendek). Layar kecil: tumpuk biasa.
+    <div className="space-y-3 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-3">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between lg:shrink-0">
+        <div>
+          <h1 className="text-lg md:text-xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-500 text-[9px] mt-0.5">
+            Selamat datang di SIKERMA v2.0 — Sistem Informasi Kerjasama Politeknik Negeri Batam
+          </p>
         </div>
 
-        <div className="space-y-3">
-          {notifications.length > 0 ? (
-            notifications.slice(0, 3).map((notification, index) => (
-              <button
-                key={notification.id}
-                onClick={() => handleOpenNotification(notification)}
-                className={`w-full text-left bg-white border-l-4 ${index === 0 ? 'border-green-500' : 'border-[#173B82]'} rounded-lg p-3 flex gap-3 hover:shadow-md transition-shadow cursor-pointer ${!notification.read ? 'bg-slate-50/70' : ''}`}
-              >
-                <div className={`w-6 h-6 ${index === 0 ? 'bg-green-100' : 'bg-slate-100'} rounded-full flex items-center justify-center flex-shrink-0 mt-0.5`}>
-                  <svg className={`w-4 h-4 ${index === 0 ? 'text-green-600' : 'text-[#173B82]'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {index === 0 ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    )}
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-xs font-semibold text-gray-900">{notification.title}</p>
-                    <span className="text-[9px] text-slate-400 whitespace-nowrap">{notification.createdAt}</span>
-                  </div>
-                  <p className="text-xs text-gray-600 mt-1">{notification.message}</p>
-                  <p className="text-[9px] text-gray-500 mt-1">📌 dari: {notification.from}</p>
-                </div>
-              </button>
-            ))
-          ) : (
-            <div className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-gray-500">
-              Belum ada notifikasi terbaru.
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="card flex items-center gap-2 px-3 py-1.5">
+            <div className="leading-tight">
+              <p className="text-[10px] font-bold text-gray-900">Kerjasama Baru {currentYear}</p>
+              <p className="text-[8px] text-gray-500">Yang disetujui, per bulan</p>
             </div>
-          )}
+            <select
+              value={filterBulanBaru}
+              onChange={(e) => setFilterBulanBaru(e.target.value)}
+              className="input-field px-2 py-1 text-[10px] text-gray-700"
+            >
+              <option>{semuaBulanLabel}</option>
+              {bulanOptions.map((bulan) => (
+                <option key={bulan}>{bulan}</option>
+              ))}
+            </select>
+            <span className="text-lg font-bold text-[#173B82]">{kerjasamaBaruCount}</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowCarouselModal(true)}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            <Upload size={14} />
+            Kelola Carousel
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-600">{carouselImages.length}/7</span>
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 md:gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 lg:shrink-0">
         {dashboardStats.map((stat, idx) => {
           const IconComponent = statIcons[stat.iconKey];
           const href = getMitraStatHref(stat.label);
@@ -443,79 +430,109 @@ export default function AdminDashboard() {
               type="button"
               onClick={() => href && router.push(href)}
               disabled={!isClickable}
-              className={`${stat.color} rounded-lg p-3 text-center transition-all duration-200 ${isClickable ? 'cursor-pointer hover:shadow-lg hover:scale-105' : 'cursor-default opacity-90'}`}
+              className={`${stat.color} flex items-center justify-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all duration-200 ${isClickable ? 'cursor-pointer hover:shadow-lg hover:scale-[1.02]' : 'cursor-default opacity-90'}`}
             >
-              <div className="flex justify-center mb-1.5">
-                <IconComponent size={20} className={stat.textColor} />
+              <IconComponent size={20} className={`${stat.textColor} shrink-0`} />
+              <div className="min-w-0">
+                <p className={`truncate text-[9px] font-medium ${stat.textColor}`}>{stat.label}</p>
+                <p className="text-sm md:text-base font-bold leading-tight text-gray-900">{stat.value}</p>
               </div>
-              <p className={`text-[9px] font-medium ${stat.textColor}`}>{stat.label}</p>
-              <p className="text-xs md:text-base font-bold text-gray-900 mt-0.5">{stat.value}</p>
             </button>
           );
         })}
       </div>
 
-      <div className="card flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between md:p-4">
-        <div>
-          <h2 className="text-[9px] md:text-xs font-bold text-gray-900">Kerjasama Baru {currentYear}</h2>
-          <p className="text-[9px] text-gray-500 mt-0.5">Jumlah kerjasama baru yang disetujui, bisa difilter per bulan.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <select
-            value={filterBulanBaru}
-            onChange={(e) => setFilterBulanBaru(e.target.value)}
-            className="input-field px-3 py-2 text-[11px] text-gray-700"
-          >
-            <option>{semuaBulanLabel}</option>
-            {bulanOptions.map((bulan) => (
-              <option key={bulan}>{bulan}</option>
-            ))}
-          </select>
-          <span className="text-lg md:text-2xl font-bold text-[#173B82]">{kerjasamaBaruCount}</span>
-        </div>
-      </div>
-
-      <div className="card p-3 md:p-4">
-        <div className="mb-3">
-          <h2 className="text-[9px] md:text-xs font-bold text-gray-900">Quick Access</h2>
-          <p className="text-[9px] text-gray-500 mt-0.5">Akses cepat ke menu utama yang sering digunakan.</p>
+      <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="lg:min-h-0">
+          <AdminDashboardCharts
+            stats={publicStats}
+            jenisDistribution={jenisDistribution}
+            topRuangLingkup={topRuangLingkup}
+            compact
+          />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 md:gap-3">
-          {quickActions.map((action, idx) => {
-            const IconComponent = actionIcons[action.iconKey];
-            const isPrimary = idx === 0;
-
-            return (
-              <Link
-                key={action.href}
-                href={action.href}
-                className={`${action.color} border rounded-lg p-3 md:p-4 hover:shadow-md transition-all block`}
-              >
-                <div className="flex items-start justify-between gap-2 mb-2.5">
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${isPrimary ? 'bg-white/15' : 'bg-white'} border ${isPrimary ? 'border-white/20' : 'border-slate-200'}`}>
-                    <IconComponent size={18} className={isPrimary ? 'text-white' : 'text-[#173B82]'} />
-                  </div>
-                  <span className={`text-[9px] font-semibold ${isPrimary ? 'text-sky-100' : 'text-[#173B82]'}`}>Quick Access</span>
-                </div>
-
-                <h3 className={`text-xs font-bold ${isPrimary ? 'text-white' : 'text-gray-900'}`}>{action.label}</h3>
-                <p className={`text-[9px] mt-0.5 ${isPrimary ? 'text-slate-200' : 'text-gray-500'}`}>{action.description}</p>
-                <p className={`text-[9px] font-semibold mt-2 ${isPrimary ? 'text-sky-100' : 'text-[#173B82]'}`}>Buka menu →</p>
+        <div className="flex flex-col gap-3 lg:min-h-0">
+          <div className="card flex flex-col p-3 lg:min-h-0 lg:flex-1">
+            <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
+              <h2 className="text-xs font-semibold text-gray-900 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                Notifikasi Terbaru
+              </h2>
+              <Link href="/admin/notifikasi" className="text-[10px] text-[#173B82] hover:text-[#091222] font-medium">
+                Lihat Semua
               </Link>
-            );
-          })}
+            </div>
+
+            <div className="space-y-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+              {notifications.length > 0 ? (
+                notifications.slice(0, 3).map((notification, index) => (
+                  <button
+                    key={notification.id}
+                    onClick={() => handleOpenNotification(notification)}
+                    className={`w-full text-left bg-white border-l-4 ${index === 0 ? 'border-green-500' : 'border-[#173B82]'} rounded-lg p-2 hover:shadow-md transition-shadow cursor-pointer ${!notification.read ? 'bg-slate-50/70' : ''}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="line-clamp-1 text-[11px] font-semibold text-gray-900">{notification.title}</p>
+                      <span className="text-[8px] text-slate-400 whitespace-nowrap">{notification.createdAt}</span>
+                    </div>
+                    <p className="mt-0.5 line-clamp-2 text-[10px] text-gray-600">{notification.message}</p>
+                    <p className="mt-0.5 text-[8px] text-gray-500">📌 dari: {notification.from}</p>
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-[11px] text-gray-500">
+                  Belum ada notifikasi terbaru.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="card shrink-0 p-3">
+            <h2 className="mb-2 text-xs font-bold text-gray-900">Quick Access</h2>
+            <div className="flex flex-col gap-1.5">
+              {quickActions.map((action, idx) => {
+                const IconComponent = actionIcons[action.iconKey];
+                const isPrimary = idx === 0;
+
+                return (
+                  <Link
+                    key={action.href}
+                    href={action.href}
+                    title={action.description}
+                    className={`${action.color} flex items-center gap-2.5 rounded-lg border px-3 py-2 transition-all hover:shadow-md`}
+                  >
+                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${isPrimary ? 'border-white/20 bg-white/15' : 'border-slate-200 bg-white'}`}>
+                      <IconComponent size={15} className={isPrimary ? 'text-white' : 'text-[#173B82]'} />
+                    </div>
+                    <span className={`flex-1 text-[11px] font-bold ${isPrimary ? 'text-white' : 'text-gray-900'}`}>{action.label}</span>
+                    <span className={`text-[10px] font-semibold ${isPrimary ? 'text-sky-100' : 'text-[#173B82]'}`}>→</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 
-      <AdminDashboardCharts
-        stats={publicStats}
-        jenisDistribution={jenisDistribution}
-        topRuangLingkup={topRuangLingkup}
-      />
-
-      <div className="card p-3 md:p-4">
-        <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      {showCarouselModal && (
+        <div
+          className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowCarouselModal(false); }}
+        >
+          <div className="relative my-4 w-full max-w-4xl">
+            <button
+              type="button"
+              onClick={() => setShowCarouselModal(false)}
+              className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Tutup"
+            >
+              <X size={16} />
+            </button>
+      <div className="card p-3 md:p-4 !shadow-2xl">
+        <div className="mb-3 flex flex-col gap-2 pr-8 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-[9px] md:text-xs font-bold text-gray-900">Kelola Carousel Landing Page</h2>
             <p className="text-[9px] text-gray-500 mt-0.5">Upload maksimal 7 gambar. Perubahan akan otomatis tampil di menu Aktivitas. <span className="text-slate-400">Drag kartu untuk mengatur urutan slide.</span></p>
@@ -601,6 +618,9 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (

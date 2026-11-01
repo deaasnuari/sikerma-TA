@@ -24,9 +24,11 @@ type Props = {
   stats: PublicStats;
   jenisDistribution: JenisDistribution;
   topRuangLingkup: [string, number][];
+  // Versi ringkas untuk dashboard satu layar (tanpa scroll halaman).
+  compact?: boolean;
 };
 
-export default function AdminDashboardCharts({ stats, jenisDistribution, topRuangLingkup }: Props) {
+export default function AdminDashboardCharts({ stats, jenisDistribution, topRuangLingkup, compact = false }: Props) {
   const handleExportRegionalDistribution = () => {
     const header = ['Wilayah', 'Jumlah Kerjasama'];
     const rows = [
@@ -58,8 +60,8 @@ export default function AdminDashboardCharts({ stats, jenisDistribution, topRuan
   const jenisTotal = jenisDistribution.total;
 
   return (
-    <div className="card p-3 md:p-5">
-      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+    <div className={`card p-3 ${compact ? 'flex h-full min-h-0 flex-col' : 'md:p-5'}`}>
+      <div className={`flex flex-col gap-2 md:flex-row md:items-center md:justify-between ${compact ? 'mb-2' : 'mb-4'}`}>
         <div>
           <h2 className="text-sm md:text-base font-bold text-gray-900">Statistik Kerjasama</h2>
           <p className="mt-0.5 text-[11px] text-gray-500">Sama dengan yang ditampilkan di landing page.</p>
@@ -73,16 +75,16 @@ export default function AdminDashboardCharts({ stats, jenisDistribution, topRuan
         </button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className={`grid lg:grid-cols-3 ${compact ? 'min-h-0 flex-1 gap-3 lg:[&>*]:min-h-0' : 'gap-4'}`}>
         {/* Card 1: Kategori Mitra (sama dengan filter Kategori di Data Kemitraan) */}
-        <KategoriMitraDonutCard total={stats.total} kategori={stats.kategori} />
+        <KategoriMitraDonutCard total={stats.total} kategori={stats.kategori} compact={compact} />
 
         {/* Card 2: Komposisi Dokumen */}
-        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-slate-50 p-4 md:p-5">
+        <div className={`rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-slate-50 ${compact ? 'overflow-y-auto p-3' : 'p-4 md:p-5'}`}>
           <h3 className="text-[12px] font-bold text-slate-800">Komposisi Dokumen</h3>
-          <div className="mt-4 flex items-center justify-center">
+          <div className={`flex items-center justify-center ${compact ? 'mt-2' : 'mt-4'}`}>
             <DonutChart
-              size={180}
+              size={compact ? 130 : 180}
               centerLabel={String(jenisTotal)}
               segments={[
                 { value: jenisDistribution.MoU, color: '#1D4ED8' },
@@ -91,7 +93,7 @@ export default function AdminDashboardCharts({ stats, jenisDistribution, topRuan
               ]}
             />
           </div>
-          <div className="mt-4 space-y-2">
+          <div className={compact ? 'mt-2 space-y-1.5' : 'mt-4 space-y-2'}>
             {[
               { label: 'MoU', value: jenisDistribution.MoU, color: '#1D4ED8' },
               { label: 'MoA', value: jenisDistribution.MoA, color: '#7C3AED' },
@@ -120,10 +122,10 @@ export default function AdminDashboardCharts({ stats, jenisDistribution, topRuan
         </div>
 
         {/* Card 3: Top 5 Ruang Lingkup */}
-        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-cyan-50 to-slate-50 p-4 md:p-5">
+        <div className={`rounded-2xl border border-slate-200 bg-gradient-to-br from-cyan-50 to-slate-50 ${compact ? 'overflow-y-auto p-3' : 'p-4 md:p-5'}`}>
           <h3 className="text-[12px] font-bold text-slate-800">Top 5 Ruang Lingkup</h3>
           <p className="mt-0.5 text-[10px] text-slate-400">Bidang paling sering diajukan</p>
-          <div className="mt-5 space-y-3">
+          <div className={compact ? 'mt-3 space-y-2' : 'mt-5 space-y-3'}>
             {topRuangLingkup.length === 0 ? (
               <p className="text-center text-[11px] text-slate-400">Memuat data...</p>
             ) : (

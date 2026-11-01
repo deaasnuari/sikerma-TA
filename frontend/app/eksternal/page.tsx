@@ -145,9 +145,10 @@ export default function EksternalPage() {
   const isEmpty = !loading && total === 0;
 
   return (
-    <div className="space-y-5">
+    // Desktop (lg+): satu layar tanpa scroll halaman — daftar kerjasama menggulir di dalam kartunya.
+    <div className="space-y-4 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-3">
       {/* Header */}
-      <div>
+      <div className="lg:shrink-0">
         <h1 className="text-[17px] font-bold text-slate-900">Dashboard Mitra Eksternal</h1>
         <p className="mt-0.5 text-[12px] text-slate-500">
           Selamat datang, <span className="font-semibold text-slate-700">{user?.name || 'Mitra'}</span>. Kelola kerjasama dengan Politeknik Negeri Batam.
@@ -160,7 +161,7 @@ export default function EksternalPage() {
 
       {/* Perlu tindakan */}
       {!loading && (totalRevisi > 0 || totalDitolak > 0) && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-2 lg:shrink-0">
           <div className="flex items-start gap-2.5">
             <AlertTriangle size={16} className="mt-0.5 shrink-0 text-orange-600" />
             <div>
@@ -182,11 +183,11 @@ export default function EksternalPage() {
       )}
 
       {/* Kartu ringkasan */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:shrink-0 lg:grid-cols-4">
         {summaryCards.map((item) => {
           const Icon = item.icon;
           return (
-            <div key={item.title} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div key={item.title} className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:p-3">
               <span className={`absolute inset-y-0 left-0 w-1 ${item.bar}`} />
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -194,7 +195,7 @@ export default function EksternalPage() {
                   {loading ? (
                     <div className="mt-2 h-7 w-14 animate-pulse rounded bg-slate-200" />
                   ) : (
-                    <p className="mt-1 text-[24px] font-bold leading-tight text-slate-900">{item.value}</p>
+                    <p className="mt-1 text-[24px] font-bold leading-tight text-slate-900 lg:text-[20px]">{item.value}</p>
                   )}
                   <p className="mt-0.5 text-[10.5px] text-slate-400">{item.note}</p>
                 </div>
@@ -207,28 +208,10 @@ export default function EksternalPage() {
         })}
       </div>
 
-      {/* Ajukan kerjasama baru: tepat di bawah kartu ringkasan */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-orange-600">
-            <BriefcaseBusiness size={18} />
-            <p className="text-[13px] font-bold text-slate-900">Ajukan Kerjasama Baru</p>
-          </div>
-          <p className="mt-1 text-[12px] text-slate-500">Buat proposal kerjasama dengan institusi.</p>
-        </div>
-        <Link
-          href="/eksternal/pengajuan_baru"
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-[12px] font-semibold text-white transition hover:bg-slate-800"
-        >
-          <Plus size={15} />
-          Buat Pengajuan
-        </Link>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+      <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_300px]">
         {/* Kerjasama Anda */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex lg:min-h-0 lg:flex-col">
+          <div className="mb-4 flex items-center justify-between gap-3 lg:mb-3 lg:shrink-0">
             <div>
               <h2 className="text-[13.5px] font-bold text-slate-900">Kerjasama Anda</h2>
               <p className="text-[12px] text-slate-500">Pengajuan dan kerja sama terbaru dengan institusi.</p>
@@ -239,7 +222,7 @@ export default function EksternalPage() {
             </Link>
           </div>
 
-          <div className="space-y-2.5">
+          <div className="space-y-2.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-[64px] animate-pulse rounded-xl bg-slate-100" />)
             ) : isEmpty ? (
@@ -292,7 +275,25 @@ export default function EksternalPage() {
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 lg:flex lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-3">
+          {/* Ajukan kerjasama baru */}
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between lg:shrink-0 lg:flex-col lg:items-stretch lg:gap-2">
+            <div>
+              <div className="flex items-center gap-2 text-orange-600">
+                <BriefcaseBusiness size={18} />
+                <p className="text-[13px] font-bold text-slate-900">Ajukan Kerjasama Baru</p>
+              </div>
+              <p className="mt-1 text-[12px] text-slate-500">Buat proposal kerjasama dengan institusi.</p>
+            </div>
+            <Link
+              href="/eksternal/pengajuan_baru"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-[12px] font-semibold text-white transition hover:bg-slate-800"
+            >
+              <Plus size={15} />
+              Buat Pengajuan
+            </Link>
+          </div>
+
           {/* Profil */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-2 flex items-center gap-2 text-blue-600">

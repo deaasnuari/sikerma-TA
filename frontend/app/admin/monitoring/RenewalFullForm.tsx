@@ -134,7 +134,7 @@ export default function RenewalFullForm({ initialData, onSubmit }: RenewalFullFo
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5 p-0 md:p-0 bg-white">
+    <form onSubmit={handleSubmit} className="space-y-5 p-0 md:p-0 bg-white lg:grid lg:grid-cols-3 lg:items-start lg:gap-4 lg:space-y-0">
       {/* ===== BAGIAN 1: DATA KERJASAMA LAMA (READ-ONLY) ===== */}
       <div className="rounded-xl border border-gray-300 bg-gray-50 p-4">
         <h3 className="font-bold text-gray-900 mb-3 text-base flex items-center gap-2">
@@ -142,7 +142,7 @@ export default function RenewalFullForm({ initialData, onSubmit }: RenewalFullFo
           Data Kerjasama Saat Ini
         </h3>
 
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-2 gap-4 lg:grid-cols-1 lg:gap-2">
           <div className="bg-white rounded-lg p-3 border border-gray-200">
             <label className="block text-xs font-semibold text-gray-600 mb-1">Nama Mitra</label>
             <p className="text-sm font-medium text-gray-900">{initialData.namaMitra}</p>
@@ -160,7 +160,7 @@ export default function RenewalFullForm({ initialData, onSubmit }: RenewalFullFo
             <p className="text-sm font-medium text-gray-900">{initialData.tanggalBerakhir}</p>
           </div>
           {initialData.judulKerjasama && (
-            <div className="bg-white rounded-lg p-3 border border-gray-200 md:col-span-2">
+            <div className="bg-white rounded-lg p-3 border border-gray-200 md:col-span-2 lg:col-span-1">
               <label className="block text-xs font-semibold text-gray-600 mb-1">Judul Kerjasama</label>
               <p className="text-sm font-medium text-gray-900">{initialData.judulKerjasama}</p>
             </div>
@@ -317,18 +317,18 @@ export default function RenewalFullForm({ initialData, onSubmit }: RenewalFullFo
 
       {/* ===== ERROR MESSAGE ===== */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 flex gap-2">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 flex gap-2 lg:col-span-3">
           <AlertCircle size={16} className="text-red-600 mt-0.5 shrink-0" />
           <p className="text-xs font-medium text-red-700">{error}</p>
         </div>
       )}
 
       {/* ===== ACTION BUTTONS ===== */}
-      <div className="flex gap-2 pt-2">
+      <div className="flex gap-2 pt-2 lg:col-span-3 lg:justify-end">
         <button
           type="submit"
           disabled={isSubmitting}
-          className="flex-1 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-3 text-sm transition-all hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="flex-1 lg:flex-none lg:px-8 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-3 text-sm transition-all hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isSubmitting ? (
             <>

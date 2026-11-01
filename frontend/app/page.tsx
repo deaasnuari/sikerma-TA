@@ -98,6 +98,19 @@ export default function Home() {
   const [selectedRow, setSelectedRow] = useState<KerjasamaRow | null>(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
+
+  // Menu "Kontak" di navbar mengarah ke /#hubungi-kami: buka modal Hubungi Kami (bukan scroll ke footer).
+  // Hash dibersihkan setelahnya supaya klik berikutnya pada menu yang sama tetap memicu pembukaan.
+  useEffect(() => {
+    const bukaJikaHubungi = () => {
+      if (window.location.hash !== '#hubungi-kami') return;
+      setShowContactModal(true);
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    };
+    bukaJikaHubungi();
+    window.addEventListener('hashchange', bukaJikaHubungi);
+    return () => window.removeEventListener('hashchange', bukaJikaHubungi);
+  }, []);
   const [search, setSearch] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [selectedWilayah, setSelectedWilayah] = useState('Semua Wilayah');
