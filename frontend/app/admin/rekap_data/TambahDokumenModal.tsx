@@ -9,6 +9,7 @@ import { getMasterMitra, type MasterMitra } from '@/services/masterMitraService'
 import { getMasterRuangLingkup, type MasterRuangLingkup } from '@/services/masterRuangLingkupService';
 import { getMasterNegara } from '@/services/masterNegaraService';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
+import { showNotice } from '@/lib/dialog';
 import { downloadTemplate, templateFilesByJenis } from '@/lib/templateDokumen';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 
@@ -422,6 +423,24 @@ export default function TambahDokumenModal({
     if (Object.keys(newErrors).length > 0 || Object.keys(nextUploadErrors).length > 0) {
       setErrors(newErrors);
       setUploadErrors(nextUploadErrors);
+
+      // Beritahu lewat dialog kolom mana saja yang belum lengkap (pesan di bawah tiap kolom bisa
+      // tidak terlihat bila letaknya di luar layar).
+      const belumLengkap: string[] = [];
+      if (newErrors.jenisDokumen) belumLengkap.push('Jenis Dokumen');
+      if (newErrors.namaMitra) belumLengkap.push('Nama Mitra');
+      if (newErrors.namaPIC) belumLengkap.push('Nama PIC');
+      if (newErrors.kategoriMitra) belumLengkap.push('Kategori Mitra');
+      if (newErrors.unitKerja) belumLengkap.push(newErrors.unitKerja.replace(/ wajib dipilih$/, ''));
+      if (newErrors.status) belumLengkap.push('Status');
+      if (newErrors.tanggalMulai) belumLengkap.push('Tanggal Mulai');
+      if (newErrors.tanggalBerakhir) belumLengkap.push('Tanggal Berakhir');
+      if (newErrors.alamatMitra) belumLengkap.push('Alamat Mitra');
+      if (nextUploadErrors.fileDokumen) {
+        belumLengkap.push(nextUploadErrors.fileDokumen.startsWith('Upload dokumen wajib') ? 'Dokumen Kerjasama (upload file)' : nextUploadErrors.fileDokumen);
+      }
+      if (nextUploadErrors.fileDokumenPendukung) belumLengkap.push('Dokumen Pendukung (TOR, KAK, atau Proposal/Laporan Kegiatan)');
+      showNotice(`Data belum lengkap. Lengkapi kolom bertanda * berikut: ${belumLengkap.join(', ')}.`, { title: 'Data belum lengkap' });
       return;
     }
 
@@ -587,6 +606,9 @@ export default function TambahDokumenModal({
         </div>
 
         <form onSubmit={handleSubmit} className="px-4 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-5">
+          <p className="mb-4 text-xs text-slate-500">
+            Kolom bertanda <span className="font-semibold text-rose-500">*</span> wajib diisi.
+          </p>
           <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:gap-y-5 md:grid-cols-2">
             <Field label={isEditMode ? 'Nomor Dokumen (dapat diubah)' : 'Nomor Dokumen'} error={errors.nomorDokumen}>
               <TextInput
@@ -1324,7 +1346,16 @@ function Field({ label, error, children, asDiv = false }: { label: string; error
   const Wrapper = asDiv ? 'div' : 'label';
   return (
     <Wrapper className="block">
-      <span className="mb-2 block text-sm font-semibold text-gray-900">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-gray-900">
+        {label.endsWith(' *') ? (
+          <>
+            {label.slice(0, -2)}
+            <span className="text-rose-500"> *</span>
+          </>
+        ) : (
+          label
+        )}
+      </span>
       {children}
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
     </Wrapper>

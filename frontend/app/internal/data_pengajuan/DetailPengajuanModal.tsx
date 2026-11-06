@@ -117,9 +117,6 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
             <div className="grid gap-3 sm:grid-cols-2">
               <InfoRow icon={<Building2 size={15} />} label="Mitra" value={item.namaMitra} />
               <InfoRow icon={<User size={15} />} label="Pengusul" value={item.namaPengusul} />
-              {item.picPolibatamNama && (
-                <InfoRow icon={<User size={15} />} label="PIC Polibatam" value={[item.picPolibatamNama, item.picPolibatamJabatan, item.picPolibatamEmail, item.picPolibatamTelepon ? `+62 ${item.picPolibatamTelepon}` : ''].filter(Boolean).join(' · ')} />
-              )}
               <InfoRow icon={<Tag size={15} />} label="Jurusan / Prodi / Unit" value={item.namaUnitProdi} />
               <InfoRow icon={<FileText size={15} />} label="Jenis Dokumen" value={labelJenisDokumen(item)} />
               {item.tanggalMulai && (
@@ -146,6 +143,50 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
                     {scope}
                   </span>
                 ))}
+              </div>
+            </section>
+          )}
+
+          {/* Kontak Person PIC / Koresponden Mitra */}
+          <section>
+            <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
+              Kontak Person PIC / Koresponden Mitra
+            </h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <InfoRow icon={<User size={15} />} label="Nama" value={item.mitraPicNama} />
+              <InfoRow icon={<Tag size={15} />} label="Jabatan" value={item.mitraPicJabatan} />
+              <InfoRow
+                icon={<User size={15} />}
+                label="Email"
+                value={item.mitraPicEmail ? <a href={`mailto:${item.mitraPicEmail}`} className="break-all text-slate-800 underline hover:text-slate-600">{item.mitraPicEmail}</a> : null}
+              />
+              <InfoRow
+                icon={<Phone size={15} />}
+                label="Telepon / WhatsApp"
+                value={(item.mitraPicTelepon || item.whatsappPengusul) ? <WhatsAppLink number={(item.mitraPicTelepon || item.whatsappPengusul) as string} negara={item.mitraNegara} /> : null}
+              />
+            </div>
+          </section>
+
+          {/* Kontak Person Polibatam (tidak ada untuk pengajuan eksternal) */}
+          {(item.picPolibatamNama || item.picPolibatamJabatan || item.picPolibatamEmail || item.picPolibatamTelepon) && (
+            <section>
+              <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
+                Kontak Person Polibatam
+              </h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <InfoRow icon={<User size={15} />} label="Nama" value={item.picPolibatamNama} />
+                <InfoRow icon={<Tag size={15} />} label="Jabatan" value={item.picPolibatamJabatan} />
+                <InfoRow
+                  icon={<User size={15} />}
+                  label="Email"
+                  value={item.picPolibatamEmail ? <a href={`mailto:${item.picPolibatamEmail}`} className="break-all text-slate-800 underline hover:text-slate-600">{item.picPolibatamEmail}</a> : null}
+                />
+                <InfoRow
+                  icon={<Phone size={15} />}
+                  label="WhatsApp"
+                  value={item.picPolibatamTelepon ? <PolibatamWhatsAppLink number={item.picPolibatamTelepon} /> : null}
+                />
               </div>
             </section>
           )}
@@ -360,6 +401,26 @@ function WhatsAppLink({ number, negara }: { number: string; negara?: string | nu
       className="inline-flex items-center gap-1 text-green-700 underline hover:text-green-800"
     >
       {number}
+      <ExternalLink size={13} />
+    </a>
+  );
+}
+
+function PolibatamWhatsAppLink({ number }: { number: string }) {
+  // Nomor PIC Polibatam disimpan tanpa kode negara (awalan +62 dari form).
+  const local = number.replace(/\D/g, '').replace(/^62/, '').replace(/^0+/, '');
+  if (!local) {
+    return <span>{number || '-'}</span>;
+  }
+
+  return (
+    <a
+      href={`https://wa.me/62${local}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-green-700 underline hover:text-green-800"
+    >
+      +62 {number}
       <ExternalLink size={13} />
     </a>
   );

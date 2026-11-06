@@ -18,27 +18,37 @@ import {
   Upload,
   Trash2,
   GripVertical,
+  SlidersHorizontal,
   X,
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
 import {
-  getAdminNotifications,
   getDashboardStats,
   getQuickActions,
-  markNotificationAsRead,
 } from '@/services/adminService';
+import { useAuth } from '@/context/AuthContext';
+import { useNotifikasi } from '@/hooks/useNotifikasi';
 import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
 import { bulanOptions, getRekapStats, semuaBulanLabel } from '@/services/adminRekapDataService';
 import { countKerjasamaBaru, refreshPengajuanDataFromApi, type PengajuanItem } from '@/services/adminPengajuanService';
 import { apiRequest } from '@/lib/api';
 import type { AdminNotification } from '@/types/admin';
 import {
+  CAROUSEL_TAMPILAN_DEFAULT,
+  CAROUSEL_ZOOM_MAX,
+  CAROUSEL_ZOOM_MIN,
+  carouselImageStyle,
   deleteCarouselImage,
   getCarouselImages,
+  getCarouselTampilan,
   updateCarouselSortOrder,
+  updateCarouselTampilan,
   uploadCarouselImage,
+  validateCarouselFile,
+  CAROUSEL_RULES_TEXT,
   type CarouselImageItem,
+  type CarouselTampilan,
 } from '@/services/carouselService';
 
 type ToastState = {
@@ -90,13 +100,49 @@ function getMitraStatHref(label: string): string | null {
 }
 
 export default function AdminDashboard() {
-  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  // Notifikasi dari server (lintas perangkat) + konfirmasi aksi admin di browser ini, sama dengan lonceng di navbar.
+  const { user: pengguna } = useAuth();
+  const { notifications, tandaiDibaca } = useNotifikasi(pengguna?.role);
   const [carouselImages, setCarouselImages] = useState<CarouselImageItem[]>([]);
   const [showCarouselModal, setShowCarouselModal] = useState(false);
   const [carouselTitle, setCarouselTitle] = useState('');
   const [isUploadingCarousel, setIsUploadingCarousel] = useState(false);
   const [carouselError, setCarouselError] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState<number | null>(null);
+  // Ukuran kartu pratinjau di modal Kelola Carousel; pilihan diingat per browser.
+  // Lebar kartu (px); tinggi gambar mengikuti (rasio 16:10). Bisa ditarik lewat pegangan sudut kartu
+  // seperti memperbesar gambar di Word, atau lewat slider.
+  const CAROUSEL_MIN_WIDTH = 120;
+  const CAROUSEL_MAX_WIDTH = 800;
+  const [carouselWidth, setCarouselWidth] = useState(260);
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem('carouselPreviewWidth'));
+      if (saved >= CAROUSEL_MIN_WIDTH && saved <= CAROUSEL_MAX_WIDTH) setCarouselWidth(saved);
+    } catch {}
+  }, []);
+  const changeCarouselWidth = (width: number) => {
+    const clamped = Math.min(CAROUSEL_MAX_WIDTH, Math.max(CAROUSEL_MIN_WIDTH, Math.round(width)));
+    setCarouselWidth(clamped);
+    try { localStorage.setItem('carouselPreviewWidth', String(clamped)); } catch {}
+  };
+  const startResizeCarousel = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const target = event.currentTarget;
+    target.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startWidth = carouselWidth;
+    const onMove = (e: PointerEvent) => changeCarouselWidth(startWidth + (e.clientX - startX));
+    const onUp = () => {
+      target.removeEventListener('pointermove', onMove);
+      target.removeEventListener('pointerup', onUp);
+      target.removeEventListener('pointercancel', onUp);
+    };
+    target.addEventListener('pointermove', onMove);
+    target.addEventListener('pointerup', onUp);
+    target.addEventListener('pointercancel', onUp);
+  };
   const dragIndexRef = useRef<number | null>(null);
   const router = useRouter();
   const [dashboardStats, setDashboardStats] = useState(getDashboardStats());
@@ -125,17 +171,6 @@ export default function AdminDashboard() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CarouselImageItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  useEffect(() => {
-    const syncNotifications = () => {
-      setNotifications(getAdminNotifications());
-    };
-
-    syncNotifications();
-    window.addEventListener('admin-notifications-updated', syncNotifications);
-
-    return () => window.removeEventListener('admin-notifications-updated', syncNotifications);
-  }, []);
 
   useEffect(() => {
     getCarouselImages()
@@ -253,7 +288,7 @@ export default function AdminDashboard() {
   }, []);
 
   const handleOpenNotification = (notification: AdminNotification) => {
-    setNotifications(markNotificationAsRead(notification.id));
+    tandaiDibaca(notification);
     router.push(notification.href || '/admin/notifikasi');
   };
 
@@ -292,30 +327,114 @@ export default function AdminDashboard() {
       return;
     }
 
+    event.target.value = '';
     setCarouselError(null);
-    setIsUploadingCarousel(true);
 
-    try {
-      await uploadCarouselImage({
-        file,
-        title: carouselTitle.trim() || undefined,
-      });
-
-      setCarouselTitle('');
-      await refreshCarouselImages();
-      setToast({ type: 'success', message: 'Gambar carousel berhasil diupload.' });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Upload gambar carousel gagal.';
-      setCarouselError(msg);
-      setToast({ type: 'error', message: msg });
-    } finally {
-      setIsUploadingCarousel(false);
-      event.target.value = '';
+    // Periksa aturan ukuran/format dulu; kalau tidak lolos, tampilkan pesan dan jangan buka editor.
+    const problem = await validateCarouselFile(file);
+    if (problem) {
+      setCarouselError(problem);
+      setToast({ type: 'error', message: problem });
+      return;
     }
+
+    // Foto belum diupload: atur dulu ukuran/posisinya di editor, lalu klik Upload di sana.
+    closeTampilanEditor();
+    setPendingUpload({ file, previewUrl: URL.createObjectURL(file) });
+    setTampilanDraft(CAROUSEL_TAMPILAN_DEFAULT);
   };
 
   const handleDeleteCarousel = (image: CarouselImageItem) => {
     setDeleteTarget(image);
+  };
+
+  // Editor tampilan foto (zoom + geser) untuk satu foto carousel.
+  const [tampilanTarget, setTampilanTarget] = useState<CarouselImageItem | null>(null);
+  const [tampilanDraft, setTampilanDraft] = useState<CarouselTampilan>(CAROUSEL_TAMPILAN_DEFAULT);
+  const [pendingUpload, setPendingUpload] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [isSavingTampilan, setIsSavingTampilan] = useState(false);
+  const tampilanFrameRef = useRef<HTMLDivElement>(null);
+
+  const closeTampilanEditor = () => {
+    setTampilanTarget(null);
+    setPendingUpload((prev) => {
+      if (prev) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+  };
+
+  const openTampilanEditor = (image: CarouselImageItem) => {
+    setTampilanTarget(image);
+    setTampilanDraft(getCarouselTampilan(image));
+  };
+
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+  const startPanTampilan = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const frame = tampilanFrameRef.current;
+    if (!frame) return;
+    const target = event.currentTarget;
+    target.setPointerCapture(event.pointerId);
+    const width = frame.getBoundingClientRect().width || 1;
+    const height = frame.getBoundingClientRect().height || 1;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const start = tampilanDraft;
+    // Seret ke kanan = bagian kiri foto terlihat (titik fokus bergeser ke kiri), sama seperti menggeser foto.
+    const onMove = (e: PointerEvent) =>
+      setTampilanDraft({
+        ...start,
+        pos_x: clamp(Math.round((start.pos_x - ((e.clientX - startX) / width) * 100) * 10) / 10, 0, 100),
+        pos_y: clamp(Math.round((start.pos_y - ((e.clientY - startY) / height) * 100) * 10) / 10, 0, 100),
+      });
+    const onUp = () => {
+      target.removeEventListener('pointermove', onMove);
+      target.removeEventListener('pointerup', onUp);
+      target.removeEventListener('pointercancel', onUp);
+    };
+    target.addEventListener('pointermove', onMove);
+    target.addEventListener('pointerup', onUp);
+    target.addEventListener('pointercancel', onUp);
+  };
+
+  const saveTampilan = async () => {
+    if (pendingUpload) {
+      setIsSavingTampilan(true);
+      setIsUploadingCarousel(true);
+      try {
+        await uploadCarouselImage({
+          file: pendingUpload.file,
+          title: carouselTitle.trim() || undefined,
+          tampilan: tampilanDraft,
+        });
+        setCarouselTitle('');
+        await refreshCarouselImages();
+        setToast({ type: 'success', message: 'Gambar carousel berhasil diupload.' });
+        closeTampilanEditor();
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Upload gambar carousel gagal.';
+        setCarouselError(msg);
+        setToast({ type: 'error', message: msg });
+      } finally {
+        setIsSavingTampilan(false);
+        setIsUploadingCarousel(false);
+      }
+      return;
+    }
+
+    if (!tampilanTarget) return;
+    setIsSavingTampilan(true);
+    try {
+      await updateCarouselTampilan(tampilanTarget.id, tampilanDraft);
+      setCarouselImages((prev) => prev.map((item) => (item.id === tampilanTarget.id ? { ...item, ...tampilanDraft } : item)));
+      setToast({ type: 'success', message: 'Tampilan foto disimpan.' });
+      setTampilanTarget(null);
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Gagal menyimpan tampilan foto.' });
+    } finally {
+      setIsSavingTampilan(false);
+    }
   };
 
   const confirmDeleteCarousel = async () => {
@@ -470,7 +589,7 @@ export default function AdminDashboard() {
               {notifications.length > 0 ? (
                 notifications.slice(0, 3).map((notification, index) => (
                   <button
-                    key={notification.id}
+                    key={`${notification.source ?? 'local'}-${notification.id}`}
                     onClick={() => handleOpenNotification(notification)}
                     className={`w-full text-left bg-white border-l-4 ${index === 0 ? 'border-green-500' : 'border-[#173B82]'} rounded-lg p-2 hover:shadow-md transition-shadow cursor-pointer ${!notification.read ? 'bg-slate-50/70' : ''}`}
                   >
@@ -559,7 +678,7 @@ export default function AdminDashboard() {
             {isUploadingCarousel ? 'Uploading...' : 'Upload Gambar'}
             <input
               type="file"
-              accept=".jpg,.jpeg,.png,.webp"
+              accept=".jpg,.jpeg,.png"
               className="hidden"
               onChange={handleUploadCarousel}
               disabled={isUploadingCarousel || carouselImages.length >= 7}
@@ -567,9 +686,34 @@ export default function AdminDashboard() {
           </label>
         </div>
 
-        {carouselError && <p className="mt-3 text-xs text-red-600">{carouselError}</p>}
+        <p className="mt-2 text-[9px] text-slate-500">{CAROUSEL_RULES_TEXT}</p>
+        {carouselError && (
+          <div role="alert" className="mt-2 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+            <span>{carouselError}</span>
+          </div>
+        )}
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <span className="text-[9px] font-medium text-slate-600">Ukuran pratinjau</span>
+          <input
+            type="range"
+            min={CAROUSEL_MIN_WIDTH}
+            max={CAROUSEL_MAX_WIDTH}
+            step={10}
+            value={carouselWidth}
+            onChange={(e) => changeCarouselWidth(Number(e.target.value))}
+            aria-label="Ukuran pratinjau gambar carousel"
+            className="w-32 accent-[#173B82]"
+          />
+          <span className="w-10 text-right text-[9px] tabular-nums text-slate-500">{carouselWidth}px</span>
+        </div>
+        <p className="mt-1 text-right text-[9px] text-slate-400">Tarik pegangan di sudut kanan bawah gambar untuk memperbesar atau memperkecil.</p>
+
+        <div
+          className="mt-2 grid gap-3"
+          style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${carouselWidth}px), ${carouselWidth}px))` }}
+        >
           {carouselImages.length === 0 ? (
             <div className="col-span-full rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-500">
               Belum ada gambar carousel. Upload gambar pertama untuk menampilkan aktivitas di landing page.
@@ -585,8 +729,22 @@ export default function AdminDashboard() {
                 onDragEnd={handleDragEnd}
                 className={`overflow-hidden rounded-xl border bg-white transition-all ${isDraggingOver === index ? 'scale-[1.02] border-[#173B82] shadow-md' : 'border-slate-200'}`}
               >
-                <div className="relative">
-                  <img src={image.image_url} alt={image.title || 'Carousel'} className="h-40 w-full object-cover" />
+                <div className="relative overflow-hidden">
+                  <img
+                    src={image.image_url}
+                    alt={image.title || 'Carousel'}
+                    draggable={false}
+                    className="w-full object-cover"
+                    style={{ height: Math.round(carouselWidth * 0.625), ...carouselImageStyle(getCarouselTampilan(image)) }}
+                  />
+                  <div
+                    onPointerDown={startResizeCarousel}
+                    title="Tarik untuk mengubah ukuran"
+                    role="presentation"
+                    className="absolute bottom-1 right-1 flex h-5 w-5 cursor-nwse-resize touch-none items-center justify-center rounded-sm border border-white bg-[#173B82] shadow"
+                  >
+                    <span className="block h-2 w-2 border-b-2 border-r-2 border-white" />
+                  </div>
                   <div className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full border border-white/20 bg-slate-900/55 px-2 py-0.5 text-[9px] font-bold text-white">
                     #{index + 1}
                   </div>
@@ -606,6 +764,14 @@ export default function AdminDashboard() {
                   </div>
                   <button
                     type="button"
+                    onClick={() => openTampilanEditor(image)}
+                    className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50"
+                    title="Atur tampilan foto (perbesar & geser)"
+                  >
+                    <SlidersHorizontal size={14} />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleDeleteCarousel(image)}
                     className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-red-200 text-red-600 transition-colors hover:bg-red-50"
                     title="Hapus gambar"
@@ -618,6 +784,111 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+          </div>
+        </div>
+      )}
+
+      {(tampilanTarget || pendingUpload) && (
+        <div
+          className="fixed inset-0 z-[85] flex items-center justify-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget && !isSavingTampilan) closeTampilanEditor(); }}
+        >
+          <div className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-2xl">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">{pendingUpload ? 'Atur Foto Sebelum Upload' : 'Atur Tampilan Foto'}</h3>
+                <p className="mt-0.5 text-[10px] text-gray-500">
+                  Bingkai di bawah sama dengan carousel di landing page. Pilih Tampil utuh agar foto tidak terpotong, seret foto untuk menggeser, dan gunakan slider atau scroll mouse untuk memperbesar atau memperkecil.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeTampilanEditor}
+                disabled={isSavingTampilan}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Tutup"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div
+              ref={tampilanFrameRef}
+              onPointerDown={startPanTampilan}
+              onWheel={(e) =>
+                setTampilanDraft((d) => ({
+                  ...d,
+                  zoom: clamp(Math.round((d.zoom - Math.sign(e.deltaY) * 0.1) * 100) / 100, CAROUSEL_ZOOM_MIN, CAROUSEL_ZOOM_MAX),
+                }))
+              }
+              className="relative aspect-[16/7] w-full cursor-grab touch-none select-none overflow-hidden rounded-xl border border-slate-200 bg-slate-100 active:cursor-grabbing"
+            >
+              <img
+                src={pendingUpload?.previewUrl ?? tampilanTarget?.image_url}
+                alt={(pendingUpload ? carouselTitle : tampilanTarget?.title) || 'Carousel'}
+                draggable={false}
+                className="h-full w-full object-cover"
+                style={carouselImageStyle(tampilanDraft)}
+              />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-900/55 via-slate-900/10 to-transparent" />
+              <p className="pointer-events-none absolute bottom-2 left-3 text-[11px] font-semibold text-white">
+                {(pendingUpload ? carouselTitle : tampilanTarget?.title) || 'Tanpa Judul'}
+              </p>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-[10px] font-medium text-slate-700">
+                Perbesar
+                <input
+                  type="range"
+                  min={CAROUSEL_ZOOM_MIN}
+                  max={CAROUSEL_ZOOM_MAX}
+                  step={0.05}
+                  value={tampilanDraft.zoom}
+                  onChange={(e) => setTampilanDraft((d) => ({ ...d, zoom: Number(e.target.value) }))}
+                  className="w-40 accent-[#173B82]"
+                />
+                <span className="w-10 tabular-nums text-slate-500">{tampilanDraft.zoom.toFixed(2)}x</span>
+              </label>
+              <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+                {([['cover', 'Isi bingkai'], ['contain', 'Tampil utuh']] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setTampilanDraft((d) => ({ ...d, fit: value }))}
+                    aria-pressed={tampilanDraft.fit === value}
+                    className={`px-3 py-1.5 text-[10px] font-semibold transition-colors ${tampilanDraft.fit === value ? 'bg-[#173B82] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setTampilanDraft(CAROUSEL_TAMPILAN_DEFAULT)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Reset
+              </button>
+              <div className="ml-auto flex gap-2">
+                <button
+                  type="button"
+                  onClick={closeTampilanEditor}
+                  disabled={isSavingTampilan}
+                  className="rounded-lg border border-slate-200 px-4 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveTampilan()}
+                  disabled={isSavingTampilan}
+                  className="rounded-lg bg-[#173B82] px-4 py-1.5 text-[11px] font-semibold text-white hover:bg-[#2A4A8F] disabled:opacity-60"
+                >
+                  {isSavingTampilan ? (pendingUpload ? 'Mengupload...' : 'Menyimpan...') : pendingUpload ? 'Upload' : 'Simpan'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

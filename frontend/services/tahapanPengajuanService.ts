@@ -98,6 +98,14 @@ export function getTahapan(pengajuanId: number): PengajuanTahapan {
   };
 }
 
+/** Kembalikan catatan tahapan ke keadaan sebelumnya (dipakai bila penyimpanan ke server gagal). */
+export function restoreTahapan(record: PengajuanTahapan): PengajuanTahapan {
+  const all = readAll();
+  all[String(record.pengajuanId)] = record;
+  saveAll(all);
+  return record;
+}
+
 /** Sync data dari API ke localStorage cache. */
 export function syncFromApi(
   pengajuanId: number,

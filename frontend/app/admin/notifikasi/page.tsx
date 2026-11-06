@@ -1,37 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Bell, CheckCheck } from 'lucide-react';
 import type { AdminNotification } from '@/types/admin';
-import {
-  getAdminNotifications,
-  markAllNotificationsAsRead,
-  markNotificationAsRead,
-} from '@/services/adminService';
+import { useAuth } from '@/context/AuthContext';
+import { useNotifikasi } from '@/hooks/useNotifikasi';
 
 export default function AdminNotificationsPage() {
-  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
-
-  useEffect(() => {
-    const syncNotifications = () => {
-      setNotifications(getAdminNotifications());
-    };
-
-    syncNotifications();
-    window.addEventListener('admin-notifications-updated', syncNotifications);
-
-    return () => window.removeEventListener('admin-notifications-updated', syncNotifications);
-  }, []);
+  const { user } = useAuth();
+  const { notifications, tandaiDibaca, tandaiSemuaDibaca } = useNotifikasi(user?.role);
 
   const unreadCount = notifications.filter((notification) => !notification.read).length;
 
   const handleMarkAll = () => {
-    setNotifications(markAllNotificationsAsRead());
+    tandaiSemuaDibaca();
   };
 
-  const handleMarkOne = (id: number) => {
-    setNotifications(markNotificationAsRead(id));
+  const handleMarkOne = (notification: AdminNotification) => {
+    tandaiDibaca(notification);
   };
 
   return (
@@ -81,7 +67,7 @@ export default function AdminNotificationsPage() {
           {notifications.length > 0 ? (
             notifications.map((notification) => (
               <div
-                key={notification.id}
+                key={`${notification.source ?? 'local'}-${notification.id}`}
                 className={`rounded-xl border p-4 transition-all ${
                   !notification.read ? 'border-blue-200 bg-sky-50/70' : 'border-slate-200 bg-white'
                 }`}
@@ -104,7 +90,7 @@ export default function AdminNotificationsPage() {
                   <div className="flex flex-wrap md:flex-col md:items-end gap-2 md:min-w-[170px] text-[12px]">
                     {!notification.read && (
                       <button
-                        onClick={() => handleMarkOne(notification.id)}
+                        onClick={() => handleMarkOne(notification)}
                         className="font-bold text-[#173B82] hover:text-[#3B82F6] transition-colors"
                       >
                         Tandai Dibaca

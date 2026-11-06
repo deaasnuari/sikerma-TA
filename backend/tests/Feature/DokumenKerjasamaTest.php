@@ -555,6 +555,27 @@ class DokumenKerjasamaTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_perpanjangan_kedua_ditolak_selama_yang_pertama_menunggu_lalu_boleh_setelah_diputuskan(): void
+    {
+        Storage::fake('public');
+        $pemilik = $this->internal();
+        $dokumen = $this->dokumenMilik($pemilik);
+        $url = "/api/dokumen-kerjasama/{$dokumen->id}/perpanjangan";
+
+        $this->actingAs($pemilik)->postJson($url, $this->payloadPerpanjangan())->assertCreated();
+
+        // Selama yang pertama belum diputuskan admin, permintaan kedua ditolak server.
+        $this->actingAs($pemilik)->postJson($url, $this->payloadPerpanjangan())
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Sudah ada permintaan perpanjangan yang menunggu keputusan admin untuk kerja sama ini.');
+        $this->assertSame(1, DokumenLog::where('dokumen_id', $dokumen->id)->where('tipe_log', 'perpanjangan')->count());
+
+        // Setelah admin memutuskan (ditolak), pemilik boleh mengajukan lagi.
+        $logId = DokumenLog::where('dokumen_id', $dokumen->id)->value('id');
+        $this->actingAs($this->admin())->patchJson("/api/dokumen-kerjasama/perpanjangan/{$logId}/status", ['status' => 'ditolak'])->assertOk();
+        $this->actingAs($pemilik)->postJson($url, $this->payloadPerpanjangan())->assertCreated();
+    }
+
     public function test_daftar_dokumen_menyertakan_berkas_pengajuan_final_dan_perpanjangan_tapi_tidak_lampiran_lain(): void
     {
         $dokumen = $this->dokumenMilik($this->internal());

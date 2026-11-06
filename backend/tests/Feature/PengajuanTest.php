@@ -622,6 +622,69 @@ class PengajuanTest extends TestCase
         $response->assertOk()->assertJsonPath('data.tahapan_stage', 'Review Dokumen');
     }
 
+    public function test_pindah_ke_tahap_sedang_berjalan_mengubah_status_jadi_diproses(): void
+    {
+        foreach (['Penyusunan Dokumen', 'Koordinasi & Review Internal', 'Review & Negosiasi Mitra', 'Finalisasi & Penandatanganan Dokumen'] as $tahap) {
+            $pengajuan = $this->buatPengajuan(['status_pengajuan' => 'menunggu', 'tahapan_stage' => 'Pengajuan Awal', 'tahapan_group' => 'todo']);
+
+            $this->actingAs($this->admin())->patchJson("/api/pengajuan/{$pengajuan->id}/tahapan", ['stage' => $tahap, 'group' => 'in_progress'])
+                ->assertOk()
+                ->assertJsonPath('data.status_pengajuan', 'diproses');
+
+            $this->assertSame('diproses', $pengajuan->fresh()->status_pengajuan, $tahap);
+        }
+    }
+
+    public function test_kembali_ke_pengajuan_awal_mengembalikan_status_menunggu(): void
+    {
+        $pengajuan = $this->buatPengajuan(['status_pengajuan' => 'diproses', 'tahapan_stage' => 'Penyusunan Dokumen', 'tahapan_group' => 'in_progress']);
+
+        $this->actingAs($this->admin())->patchJson("/api/pengajuan/{$pengajuan->id}/tahapan", ['stage' => 'Pengajuan Awal', 'group' => 'todo'])
+            ->assertOk();
+
+        $this->assertSame('menunggu', $pengajuan->fresh()->status_pengajuan);
+    }
+
+    public function test_pindah_tahapan_tidak_menimpa_status_lain(): void
+    {
+        foreach (['revisi', 'disetujui_internal', 'disetujui_mitra', 'final_approved', 'ditolak'] as $status) {
+            $pengajuan = $this->buatPengajuan(['status_pengajuan' => $status, 'tahapan_stage' => 'Pengajuan Awal', 'tahapan_group' => 'todo']);
+
+            $this->actingAs($this->admin())->patchJson("/api/pengajuan/{$pengajuan->id}/tahapan", ['stage' => 'Penyusunan Dokumen', 'group' => 'in_progress'])
+                ->assertOk();
+
+            $this->assertSame($status, $pengajuan->fresh()->status_pengajuan, $status);
+        }
+    }
+
+    public function test_status_persetujuan_sebagian_internal_dan_mitra_tidak_lagi_diterima(): void
+    {
+        $admin = $this->admin();
+
+        foreach (['disetujui_internal', 'disetujui_mitra'] as $status) {
+            $pengajuan = $this->buatPengajuan(['status_pengajuan' => 'diproses']);
+
+            $this->actingAs($admin)->putJson("/api/pengajuan/{$pengajuan->id}", ['status_pengajuan' => $status])
+                ->assertStatus(422);
+
+            $this->assertSame('diproses', $pengajuan->fresh()->status_pengajuan, $status);
+        }
+    }
+
+    public function test_acc_actor_diabaikan_dan_tidak_membuat_status_final_otomatis(): void
+    {
+        $pengajuan = $this->buatPengajuan(['status_pengajuan' => 'diproses']);
+
+        foreach (['internal', 'mitra'] as $actor) {
+            $this->actingAs($this->admin())->putJson("/api/pengajuan/{$pengajuan->id}", ['acc_actor' => $actor])->assertOk();
+        }
+
+        $pengajuan = $pengajuan->fresh();
+        $this->assertSame('diproses', $pengajuan->status_pengajuan);
+        $this->assertNull($pengajuan->acc_internal_at);
+        $this->assertNull($pengajuan->acc_mitra_at);
+    }
+
     public function test_update_tahapan_gagal_group_tidak_valid(): void
     {
         $user      = $this->admin();

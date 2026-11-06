@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\NotifikasiService;
 use App\Exceptions\PengajuanKonflikException;
 use App\Models\DokumenFile;
 use App\Models\DokumenLog;
@@ -42,7 +43,6 @@ class PengajuanController extends Controller
         'keputusan',
         'final_file_name',
         'final_file_path',
-        'acc_actor',
         'diajukan_pada',
         'email_terverifikasi_pada',
         'distribusi_user_ids',
@@ -717,6 +717,26 @@ class PengajuanController extends Controller
                 ]);
             }
         }
+    }
+
+    /** Perkiraan ukuran isi (byte) dari data URL base64 tanpa mendekodenya; null bila bukan data URL base64. */
+    private function ukuranDataUrlByte(string $url): ?int
+    {
+        $url = trim($url);
+        if (! str_starts_with($url, 'data:')) {
+            return null;
+        }
+
+        $koma = strpos($url, ',');
+        if ($koma === false || ! str_contains(substr($url, 0, $koma), ';base64')) {
+            return null;
+        }
+
+        $payload = preg_replace('/\s+/', '', substr($url, $koma + 1)) ?? '';
+        $panjang = strlen($payload);
+        $padding = substr_count(substr($payload, -2), '=');
+
+        return max(0, intdiv($panjang * 3, 4) - $padding);
     }
 
     private function persistDataUrlAttachment(array $attachment): ?string
@@ -1517,6 +1537,16 @@ class PengajuanController extends Controller
             ], 422);
         }
 
+        // Beri tahu admin ada pengajuan baru (kecuali bila admin sendiri yang membuatnya).
+        NotifikasiService::kirimKeAdmin(
+            'Pengajuan Baru Masuk',
+            'Pengajuan "'.($pengajuan->judul_pengajuan ?? '-').'" dari '.($pengajuan->nama_pengusul ?? 'pengusul').' menunggu review.',
+            '/admin/data_pengajuan?status=Menunggu',
+            'info',
+            $request->user()?->id,
+            'Sistem'
+        );
+
         if ($this->shouldLoadPengajuanRelations()) {
             $pengajuan->load([
                 'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
@@ -1531,6 +1561,73 @@ class PengajuanController extends Controller
             'data' => $pengajuan,
             'message' => 'Pengajuan created successfully',
         ], 201);
+    }
+
+    /** Notifikasi lonceng saat status pengajuan berubah: keputusan admin -> pengusul; revisi dikirim ulang -> admin. */
+    private function kirimNotifikasiPerubahanStatus(?Pengajuan $pengajuan, string $statusLama, string $statusBaru, bool $isAdmin, Request $request): void
+    {
+        if (! $pengajuan) {
+            return;
+        }
+
+        $judul = (string) ($pengajuan->judul_pengajuan ?? '-');
+        $lama = strtolower(trim($statusLama));
+        $baru = strtolower(trim($statusBaru));
+        $pelaku = $request->user()?->id;
+
+        if (! $isAdmin) {
+            // Pengusul memperbaiki pengajuan yang diminta revisi -> admin perlu meninjau lagi.
+            if ($lama === 'revisi' && $baru === 'menunggu') {
+                NotifikasiService::kirimKeAdmin(
+                    'Revisi Pengajuan Dikirim Ulang',
+                    'Pengusul telah memperbaiki pengajuan "'.$judul.'" dan menunggu review ulang.',
+                    '/admin/data_pengajuan?status=Menunggu',
+                    'comment',
+                    $pelaku
+                );
+            }
+
+            return;
+        }
+
+        if ($baru === $lama) {
+            return;
+        }
+
+        $href = NotifikasiService::hrefUntuk($pengajuan->user_pengusul_id);
+        $catatan = trim((string) ($request->input('catatan_revisi') ?: $request->input('keputusan') ?: $request->input('review_comment') ?: $request->input('catatan')));
+        $akhiran = $catatan !== '' ? ' Catatan: '.$catatan : '';
+
+        [$judulNotif, $pesan, $kategori] = match ($baru) {
+            'revisi' => ['Pengajuan Diminta Revisi', 'Pengajuan "'.$judul.'" perlu direvisi.'.$akhiran, 'comment'],
+            'ditolak' => ['Pengajuan Ditolak', 'Pengajuan "'.$judul.'" ditolak.'.$akhiran, 'approval'],
+            'disetujui', 'final_approved' => ['Pengajuan Disetujui', 'Pengajuan "'.$judul.'" disetujui.'.$akhiran, 'approval'],
+            'diproses' => ['Pengajuan Sedang Diproses', 'Pengajuan "'.$judul.'" sedang diproses admin.', 'info'],
+            default => [null, null, null],
+        };
+
+        if ($judulNotif) {
+            NotifikasiService::kirimKePengguna($pengajuan->user_pengusul_id, $pelaku, $judulNotif, $pesan, $href, $kategori);
+        }
+
+        // Riwayat aktivitas untuk semua admin (termasuk pelakunya): revisi, tolak, dan ACC tercatat di lonceng.
+        $namaAdmin = (string) ($request->user()?->name ?: 'Admin');
+        $aksiAdmin = match ($baru) {
+            'revisi' => ['Pengajuan Direvisi', 'meminta revisi pengajuan', 'comment'],
+            'ditolak' => ['Pengajuan Ditolak', 'menolak pengajuan', 'approval'],
+            'disetujui', 'final_approved' => ['Pengajuan Di-ACC', 'menyetujui (ACC) pengajuan', 'approval'],
+            default => null,
+        };
+        if ($aksiAdmin) {
+            NotifikasiService::kirimKeAdmin(
+                $aksiAdmin[0],
+                $namaAdmin.' '.$aksiAdmin[1].' "'.$judul.'".'.$akhiran,
+                '/admin/data_pengajuan',
+                $aksiAdmin[2],
+                null,
+                $namaAdmin
+            );
+        }
     }
 
     public function updateTahapan(Request $request, Pengajuan $pengajuan): Response
@@ -1560,11 +1657,37 @@ class PengajuanController extends Controller
             'changed_by' => $request->user()?->name ?? 'Admin',
         ];
 
-        $pengajuan->update([
+        $perubahan = [
             'tahapan_stage'   => $validated['stage'],
             'tahapan_group'   => $validated['group'],
             'tahapan_riwayat' => $currentRiwayat,
-        ]);
+        ];
+
+        // Status di Data Pengajuan mengikuti tahapan: begitu admin memindahkan pengajuan ke tahap
+        // "Sedang Berjalan" (Penyusunan Dokumen s/d Finalisasi & Penandatanganan) statusnya jadi
+        // Diproses; selama masih di tahap awal (Pengajuan Awal) tetap Menunggu Review. Hanya
+        // menyentuh status menunggu/diproses; revisi, ditolak, dan persetujuan tidak ditimpa.
+        $kolomStatus = $this->hasPengajuanColumn('status_pengajuan') ? 'status_pengajuan' : 'status';
+        $statusSekarang = strtolower(trim((string) ($pengajuan->{$kolomStatus} ?? 'menunggu')));
+        if ($validated['group'] === 'in_progress' && $statusSekarang === 'menunggu') {
+            $perubahan[$kolomStatus] = 'diproses';
+        } elseif ($validated['group'] === 'todo' && $statusSekarang === 'diproses') {
+            $perubahan[$kolomStatus] = 'menunggu';
+        }
+
+        $tahapanLama = (string) $pengajuan->tahapan_stage;
+        $pengajuan->update($perubahan);
+
+        if ($tahapanLama !== (string) $validated['stage']) {
+            NotifikasiService::kirimKePengguna(
+                $pengajuan->user_pengusul_id,
+                $request->user()?->id,
+                'Tahapan Pengajuan Diperbarui',
+                'Pengajuan "'.($pengajuan->judul_pengajuan ?? '-').'" sekarang berada di tahap '.$validated['stage'].'.',
+                NotifikasiService::hrefUntuk($pengajuan->user_pengusul_id),
+                'info'
+            );
+        }
 
         return response([
             'success' => true,
@@ -1573,6 +1696,7 @@ class PengajuanController extends Controller
                 'tahapan_stage'    => $pengajuan->tahapan_stage,
                 'tahapan_group'    => $pengajuan->tahapan_group,
                 'tahapan_riwayat'  => $pengajuan->tahapan_riwayat,
+                'status_pengajuan' => $pengajuan->{$kolomStatus},
             ],
             'message' => 'Tahapan berhasil diperbarui',
         ]);
@@ -1699,13 +1823,12 @@ class PengajuanController extends Controller
             'kategori_pengajuan' => ['nullable', 'in:internal,eksternal'],
             'tanggal_mulai' => ['nullable', 'date'],
             'tanggal_berakhir' => ['nullable', 'date', 'after_or_equal:tanggal_mulai'],
-            'status_pengajuan' => ['nullable', 'in:menunggu,diproses,disetujui,ditolak,revisi,disetujui_internal,disetujui_mitra,final_approved'],
+            'status_pengajuan' => ['nullable', 'in:menunggu,diproses,disetujui,ditolak,revisi,final_approved'],
             'catatan' => ['nullable', 'string'],
             'catatan_revisi' => ['nullable', 'string'],
             'keputusan' => ['nullable', 'string'],
             'final_file_name' => ['nullable', 'string', 'max:500'],
             'final_file_path' => ['nullable', 'string', 'max:1000'],
-            'acc_actor' => ['nullable', 'in:internal,mitra'],
             'diajukan_pada' => ['nullable', 'date'],
             'email_terverifikasi_pada' => ['nullable', 'date'],
             'distribusi_user_ids' => ['nullable', 'array'],
@@ -1729,6 +1852,20 @@ class PengajuanController extends Controller
                 throw \Illuminate\Validation\ValidationException::withMessages([
                     "acc_file_attachments.{$index}.name" => 'Berkas final harus berformat PDF.',
                 ]);
+            }
+        }
+
+        // Ukuran SEBENARNYA berkas final dan berkas revisi (dari isi data URL, bukan angka 'size' kiriman klien)
+        // maksimal 10 MB. Dicek di sini karena sinkronisasi lampiran di bawah menelan error, sehingga berkas
+        // terlalu besar akan hilang diam-diam sementara status pengajuan tetap berubah.
+        foreach (['acc_file_attachments' => 'Berkas final', 'revisi_file_attachments' => 'File revisi'] as $kolom => $label) {
+            foreach ((array) $request->input($kolom, []) as $index => $lampiran) {
+                $ukuran = is_array($lampiran) ? $this->ukuranDataUrlByte((string) ($lampiran['url'] ?? '')) : null;
+                if ($ukuran !== null && $ukuran > self::UKURAN_LAMPIRAN_MAKS_BYTE) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "{$kolom}.{$index}.url" => "{$label} maksimal 10 MB.",
+                    ]);
+                }
             }
         }
 
@@ -1892,36 +2029,12 @@ class PengajuanController extends Controller
                     $pengajuan->save();
                 }
 
-                if ($statusBaruNormalized === 'disetujui_internal') {
-                    $pengajuan->acc_internal_at = now();
-                    $pengajuan->save();
-                }
-
-                if ($statusBaruNormalized === 'disetujui_mitra') {
-                    $pengajuan->acc_mitra_at = now();
-                    $pengajuan->save();
-                }
-
-                if ($request->filled('acc_actor')) {
-                    $actor = (string) $request->input('acc_actor');
-                    if ($actor === 'internal') {
-                        $pengajuan->acc_internal_at = now();
-                    } elseif ($actor === 'mitra') {
-                        $pengajuan->acc_mitra_at = now();
-                    }
-                }
-
                 if ($request->filled('final_file_name')) {
                     $pengajuan->final_file_name = (string) $request->input('final_file_name');
                 }
 
                 if ($request->filled('final_file_path')) {
                     $pengajuan->final_file_path = (string) $request->input('final_file_path');
-                }
-
-                if (!empty($pengajuan->acc_internal_at) && !empty($pengajuan->acc_mitra_at)) {
-                    $pengajuan->status_pengajuan = 'final_approved';
-                    $pengajuan->final_approved_at = now();
                 }
 
                 $pengajuan->save();
@@ -1949,6 +2062,7 @@ class PengajuanController extends Controller
         }
 
         $freshPengajuan = $pengajuan->fresh();
+        $this->kirimNotifikasiPerubahanStatus($freshPengajuan, $statusLama, $statusBaru, $isAdmin, $request);
 
         // Load relations so the response mirrors what index() returns.
         // Without this, unit_prodi / mitra objects are absent and the frontend
@@ -1962,15 +2076,10 @@ class PengajuanController extends Controller
             ]);
         }
 
-        $message = 'Pengajuan updated successfully';
-        if (!empty($freshPengajuan?->acc_internal_at) && !empty($freshPengajuan?->acc_mitra_at)) {
-            $message = 'Berkas final telah disetujui oleh kedua belah pihak.';
-        }
-
         return response([
             'success' => true,
             'data' => $freshPengajuan,
-            'message' => $message,
+            'message' => 'Pengajuan updated successfully',
         ]);
     }
 
@@ -2004,6 +2113,8 @@ class PengajuanController extends Controller
             $pengajuan->dihapus_user_pada = now();
             $pengajuan->save();
 
+            $this->kirimNotifikasiPengusulMenghapus($pengajuan, $user?->id);
+
             return response([
                 'success' => true,
                 'data' => null,
@@ -2027,6 +2138,8 @@ class PengajuanController extends Controller
                 $pengajuan->dihapus_admin_pada = now();
                 $pengajuan->save();
 
+                $this->kirimNotifikasiAdminMenghapus($pengajuan, $request);
+
                 return response([
                     'success' => true,
                     'data' => null,
@@ -2038,13 +2151,63 @@ class PengajuanController extends Controller
         // Hapus PERMANEN — dipakai saat pemilik menghapus pengajuannya sendiri, atau admin
         // menghapus pengajuan yang tidak lagi dilihat siapa pun. Hapus di sini TIDAK ikut
         // menghapus dokumen kerjasama terkait (FK sumber_pengajuan_id nullOnDelete).
+        $judulDihapus = $pengajuan->judul_pengajuan;
+        $pengusulDihapus = $pengajuan->nama_pengusul;
         $pengajuan->delete();
+
+        if ($isAdmin) {
+            NotifikasiService::kirimKeAdmin(
+                'Pengajuan Dihapus',
+                (string) ($user?->name ?: 'Admin').' menghapus pengajuan "'.($judulDihapus ?? '-').'" dari '.($pengusulDihapus ?? 'pengusul').'.',
+                '/admin/data_pengajuan',
+                'reminder',
+                null,
+                (string) ($user?->name ?: 'Admin')
+            );
+        }
+
+        // Pengusul (bukan admin) menghapus pengajuannya sendiri -> admin diberi tahu.
+        if (! $isAdmin) {
+            NotifikasiService::kirimKeAdmin(
+                'Pengajuan Dihapus Pengusul',
+                'Pengajuan "'.($judulDihapus ?? '-').'" dari '.($pengusulDihapus ?? 'pengusul').' dihapus oleh pengusul.',
+                '/admin/data_pengajuan',
+                'reminder',
+                $user?->id
+            );
+        }
 
         return response([
             'success' => true,
             'data' => null,
             'message' => 'Pengajuan deleted successfully',
         ]);
+    }
+
+    /** Admin menghapus pengajuan dari Data Pengajuan -> tercatat di lonceng semua admin (riwayat aktivitas). */
+    private function kirimNotifikasiAdminMenghapus(Pengajuan $pengajuan, Request $request): void
+    {
+        $namaAdmin = (string) ($request->user()?->name ?: 'Admin');
+        NotifikasiService::kirimKeAdmin(
+            'Pengajuan Dihapus',
+            $namaAdmin.' menghapus pengajuan "'.($pengajuan->judul_pengajuan ?? '-').'" dari '.($pengajuan->nama_pengusul ?? 'pengusul').'.',
+            '/admin/data_pengajuan',
+            'reminder',
+            null,
+            $namaAdmin
+        );
+    }
+
+    /** Pengusul eksternal menghapus pengajuannya dari daftar mereka -> admin diberi tahu. */
+    private function kirimNotifikasiPengusulMenghapus(Pengajuan $pengajuan, ?int $pelakuId): void
+    {
+        NotifikasiService::kirimKeAdmin(
+            'Pengajuan Dihapus Pengusul',
+            'Pengajuan "'.($pengajuan->judul_pengajuan ?? '-').'" dari '.($pengajuan->nama_pengusul ?? 'pengusul').' dihapus oleh pengusul dari daftarnya.',
+            '/admin/data_pengajuan',
+            'reminder',
+            $pelakuId
+        );
     }
 
     private function ensureDistribusiAccess(Request $request): ?Response

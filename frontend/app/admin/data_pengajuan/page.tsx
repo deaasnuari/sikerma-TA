@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { FileText, Clock, CheckCircle, XCircle, Search, Filter, Plus, Eye, MessageSquare, X, ThumbsUp, FilePenLine, CalendarDays, ChevronLeft, ChevronRight, Pencil, Trash2, ExternalLink, Paperclip, Download, Upload, Bell, CheckSquare, Square } from 'lucide-react';
 import { addAdminNotification, markNotificationsByHrefPrefixAsRead } from '@/services/adminService';
+import { bacaNotifikasiByHref } from '@/services/notifikasiService';
 import AdminAjukanKerjasamaForm from './AjukanKerjasamaForm';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -185,6 +186,53 @@ function KoresponMitraCard({ item }: { item: PengajuanItem }) {
             </a>
           ) : (
             <p className="text-gray-900 font-medium">{telepon || '-'}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Kontak person dari pihak Polibatam yang mengajukan (diisi di bagian "Kontak Person Polibatam" pada form
+// pengajuan). Tidak ada untuk pengajuan eksternal (form eksternal menyembunyikan bagian ini), jadi kartu
+// hanya muncul bila ada datanya.
+function PicPolibatamCard({ item }: { item: PengajuanItem }) {
+  if (!item.picPolibatamNama && !item.picPolibatamJabatan && !item.picPolibatamEmail && !item.picPolibatamTelepon) {
+    return null;
+  }
+  const waUrl = buildPolibatamWhatsAppUrl(item.picPolibatamTelepon, buildPesanWhatsAppPengajuan(item, item.picPolibatamNama));
+
+  return (
+    <div className="bg-white rounded-lg px-4 py-3 border border-[#D9DCE4]">
+      <p className="text-[12px] font-semibold text-gray-900 mb-3">Kontak Person Polibatam</p>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[10px]">
+        <div>
+          <p className="text-gray-500">Nama</p>
+          <p className="text-gray-900 font-medium">{item.picPolibatamNama || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-500">Jabatan</p>
+          <p className="text-gray-900 font-medium">{item.picPolibatamJabatan || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-500">Email</p>
+          {item.picPolibatamEmail ? (
+            <a href={`mailto:${item.picPolibatamEmail}`} className="font-medium text-gray-900 underline hover:text-gray-700 break-all">
+              {item.picPolibatamEmail}
+            </a>
+          ) : (
+            <p className="text-gray-900 font-medium">-</p>
+          )}
+        </div>
+        <div>
+          <p className="text-gray-500">WhatsApp</p>
+          {item.picPolibatamTelepon && waUrl ? (
+            <a href={waUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-green-700 underline hover:text-green-800">
+              +62 {item.picPolibatamTelepon}
+              <ExternalLink size={12} />
+            </a>
+          ) : (
+            <p className="text-gray-900 font-medium">-</p>
           )}
         </div>
       </div>
@@ -408,13 +456,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
       // If this is not the first load and there's an increase, notify admin
       if (previousPendingRef.current > 0 && currentPending > previousPendingRef.current) {
         const newSubmissions = currentPending - previousPendingRef.current;
-        addAdminNotification({
-          title: 'Pengajuan Baru Masuk',
-          message: `Ada ${newSubmissions} pengajuan baru yang menunggu review. Silakan periksa sekarang!`,
-          from: 'Sistem',
-          href: '/admin/data_pengajuan?status=Menunggu',
-          category: 'info',
-        });
+        // Notifikasi pengajuan baru kini dibuat server (lihat NotifikasiService) dan muncul di lonceng admin.
       }
       
       // Update the ref for next comparison
@@ -536,6 +578,7 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
   // Tandai notifikasi data pengajuan sebagai sudah dibaca saat halaman ini dibuka
   useEffect(() => {
     markNotificationsByHrefPrefixAsRead('/admin/data_pengajuan');
+    void bacaNotifikasiByHref('/admin/data_pengajuan').catch(() => {});
   }, []);
 
   // Kandidat Ketua Jurusan/Ketua Prodi untuk pilihan "Distribusi" di modal review —
@@ -663,11 +706,16 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
       prodiByParent.set(prodi.parent_id, current);
     });
 
-    return masterJurusanRows.map((jurusan) => ({
-      ...jurusan,
-      children: prodiByParent.get(jurusan.id) || [],
-    }));
-  }, [masterJurusanRows, masterProdiRows]);
+    // Jurusan (beserta prodinya) DAN unit kerja: form pengajuan memisahkan keduanya lewat kategori_unit,
+    // jadi pilihan "Unit" kosong kalau unit kerja tidak ikut dikirim ke form.
+    return [
+      ...masterJurusanRows.map((jurusan) => ({
+        ...jurusan,
+        children: prodiByParent.get(jurusan.id) || [],
+      })),
+      ...masterUnitRows.map((unit) => ({ ...unit, children: [] })),
+    ];
+  }, [masterJurusanRows, masterUnitRows, masterProdiRows]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1123,30 +1171,6 @@ async function saveReview() {
       try {
         const updated = await savePengajuanRevisionApi(reviewItem.id, reviewComment, reviewComment, reviewItem.updatedAt, revisiFilePayload());
         setPengajuanData((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
-        addAdminNotification({
-          title: 'Pengajuan Diminta Revisi',
-          message: `Pengajuan "${judulShort}" diminta revisi. Perbarui data/dokumen pada pengajuan yang sama, tidak perlu membuat pengajuan baru. Catatan: ${reviewComment}`,
-          from: 'Admin',
-          href: '/internal/data_pengajuan',
-          category: 'comment',
-          targetRole: 'internal',
-        });
-        addAdminNotification({
-          title: 'Pengajuan Diminta Revisi',
-          message: `Pengajuan "${judulShort}" diminta revisi oleh admin. Cukup perbarui data/dokumen pada pengajuan ini, tidak perlu membuat pengajuan baru. Catatan: ${reviewComment}`,
-          from: 'Admin',
-          href: '/eksternal/daftar_kerjasama',
-          category: 'comment',
-          targetRole: 'external',
-        });
-        addAdminNotification({
-          title: 'Revisi Pengajuan Dikirim',
-          message: `Anda meminta revisi pengajuan "${judulShort}". Pengusul cukup memperbarui data/dokumen pada pengajuan yang sama dan tidak perlu membuat pengajuan baru.`,
-          from: 'Sistem',
-          href: '/admin/data_pengajuan',
-          category: 'comment',
-          targetRole: 'admin',
-        });
         setInfoModalMessage('Revisi pengajuan berhasil disimpan dan notifikasi dikirim.');
         void refreshPengajuanData(true);
       } catch (err) {
@@ -1157,30 +1181,6 @@ async function saveReview() {
       try {
         const updated = await savePengajuanReviewApi(reviewItem.id, 'Ditolak', reviewComment, undefined, reviewItem.updatedAt);
         setPengajuanData((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
-        addAdminNotification({
-          title: 'Pengajuan Ditolak',
-          message: `Pengajuan "${judulShort}" ditolak oleh admin. Alasan: ${reviewComment.trim()}. Pengajuan yang ditolak tidak bisa diperbaiki, silakan buat pengajuan baru bila ingin mengajukan kembali.`,
-          from: 'Admin',
-          href: '/internal/data_pengajuan',
-          category: 'approval',
-          targetRole: 'internal',
-        });
-        addAdminNotification({
-          title: 'Pengajuan Ditolak',
-          message: `Pengajuan "${judulShort}" ditolak. Alasan: ${reviewComment.trim()}. Pengajuan yang ditolak tidak bisa diperbaiki, silakan buat pengajuan baru bila ingin mengajukan kembali.`,
-          from: 'Admin',
-          href: '/eksternal/daftar_kerjasama',
-          category: 'approval',
-          targetRole: 'external',
-        });
-        addAdminNotification({
-          title: 'Pengajuan Ditolak',
-          message: `Anda menolak pengajuan "${judulShort}". Pengusul harus membuat pengajuan baru bila ingin mengajukan kembali.`,
-          from: 'Sistem',
-          href: '/admin/data_pengajuan',
-          category: 'approval',
-          targetRole: 'admin',
-        });
         setInfoModalMessage('Pengajuan ditolak dan notifikasi dikirim ke pengusul.');
         void refreshPengajuanData(true);
       } catch (err) {
@@ -1258,39 +1258,7 @@ async function saveReview() {
 
         const catatanAcc = reviewComment.trim();
         if (hasFinalFiles || usingLink) {
-          addAdminNotification({
-            title: 'Dokumen Final Diupload',
-            message: `Dokumen final untuk "${judulShort}" telah diupload dan di-ACC oleh admin.${catatanAcc ? ` Catatan: ${catatanAcc}` : ''}`,
-            from: 'Admin',
-            href: '/internal/data_pengajuan',
-            category: 'approval',
-            targetRole: 'internal',
-          });
-          addAdminNotification({
-            title: 'Dokumen Final Siap Diunduh',
-            message: `Dokumen final "${judulShort}" telah di-ACC dan siap diunduh.${catatanAcc ? ` Catatan: ${catatanAcc}` : ''}`,
-            from: 'Admin',
-            href: '/eksternal/daftar_kerjasama',
-            category: 'approval',
-            targetRole: 'external',
-          });
         } else {
-          addAdminNotification({
-            title: 'Status Pengajuan Diperbarui',
-            message: `Pengajuan "${judulShort}" telah disetujui oleh admin.${catatanAcc ? ` Catatan: ${catatanAcc}` : ''}`,
-            from: 'Admin',
-            href: '/internal/data_pengajuan',
-            category: 'approval',
-            targetRole: 'internal',
-          });
-          addAdminNotification({
-            title: 'Pengajuan Disetujui',
-            message: `Pengajuan "${judulShort}" telah disetujui.${catatanAcc ? ` Catatan: ${catatanAcc}` : ''}`,
-            from: 'Admin',
-            href: '/eksternal/daftar_kerjasama',
-            category: 'approval',
-            targetRole: 'external',
-          });
         }
         // Dokumen final baru langsung masuk Rekap Data: buang cache daftar rekap dan kabari halaman
         // Rekap yang sedang terbuka supaya mengambil ulang (dokumen terbaru tampil paling atas).
@@ -2610,6 +2578,8 @@ function addEditJurusanUnitOption() {
 
               <KoresponMitraCard item={detailItem} />
 
+              <PicPolibatamCard item={detailItem} />
+
               <div className="bg-white rounded-lg px-4 py-3 border border-[#D9DCE4]">
                 <p className="text-[12px] font-semibold text-gray-900 mb-3">Informasi Pengajuan</p>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[10px]">
@@ -2832,6 +2802,8 @@ function addEditJurusanUnitOption() {
               </div>
 
               <KoresponMitraCard item={reviewItem} />
+
+              <PicPolibatamCard item={reviewItem} />
 
 <div>
                 <p className="text-[10px] font-semibold text-gray-700 mb-2">Keputusan *</p>

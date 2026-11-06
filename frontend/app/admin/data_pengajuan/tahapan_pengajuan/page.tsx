@@ -7,12 +7,13 @@ import {
   ChevronDown, GitBranch, StickyNote, History,
 } from 'lucide-react';
 import {
-  getTahapan, syncFromApi, setStage, updateTahapanViaApi,
+  getTahapan, syncFromApi, setStage, restoreTahapan, updateTahapanViaApi,
   ALL_STAGES, GROUP_CONFIG, STAGE_DIBATALKAN, STAGE_SELESAI,
   type PengajuanTahapan, type StageGroup, type RiwayatEntry,
 } from '@/services/tahapanPengajuanService';
 import { fetchPengajuanDataFromApi, daftarJenisDokumen, pengajuanDokumenBadge, type PengajuanItem } from '@/services/adminPengajuanService';
 import CatatanAdminPanel from '@/components/CatatanAdminPanel';
+import { showNotice } from '@/lib/dialog';
 import JenisBadges from '@/components/JenisBadges';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -68,7 +69,8 @@ function BerkasPengajuan({ item }: { item: PengajuanItem }) {
 interface DropdownProps {
   pengajuanId: number;
   currentStage: string | null;
-  onSelect: (t: PengajuanTahapan) => void;
+  // revert = true: dipanggil untuk mengembalikan tampilan karena penyimpanan ke server gagal
+  onSelect: (t: PengajuanTahapan, revert?: boolean) => void;
   onClose: () => void;
 }
 
@@ -83,21 +85,32 @@ function StageDropdown({ pengajuanId, currentStage, onSelect, onClose }: Dropdow
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
+  // Simpan ke server di belakang layar. Bila gagal, tampilan dikembalikan ke tahapan sebelumnya
+  // dan admin diberi tahu (sebelumnya error diabaikan sehingga layar terlihat berubah padahal tidak tersimpan).
+  const simpanKeServer = (stage: typeof ALL_STAGES[number], sebelumnya: PengajuanTahapan) => {
+    void updateTahapanViaApi(pengajuanId, stage).catch((error) => {
+      onSelect(restoreTahapan(sebelumnya), true);
+      const alasan = error instanceof Error && error.message ? ` ${error.message}` : '';
+      showNotice(`Tahapan gagal disimpan ke server dan dikembalikan ke tahap sebelumnya.${alasan}`);
+    });
+  };
+
   const handleSelect = (stage: typeof ALL_STAGES[number]) => {
     // Optimistic: update localStorage dan tutup dropdown langsung
+    const sebelumnya = getTahapan(pengajuanId);
     const optimistic = setStage(pengajuanId, stage);
     onSelect(optimistic);
     onClose();
-    // Sync ke server di background
-    void updateTahapanViaApi(pengajuanId, stage).catch(() => {});
+    simpanKeServer(stage, sebelumnya);
   };
 
   const handleClear = () => {
     const awal = ALL_STAGES.find((s) => s.name === 'Pengajuan Awal') ?? ALL_STAGES[0];
+    const sebelumnya = getTahapan(pengajuanId);
     const optimistic = setStage(pengajuanId, awal);
     onSelect(optimistic);
     onClose();
-    void updateTahapanViaApi(pengajuanId, awal).catch(() => {});
+    simpanKeServer(awal, sebelumnya);
   };
 
   const groups: StageGroup[] = ['todo', 'in_progress', 'complete'];
@@ -185,7 +198,7 @@ function StatusBadge({
   onUpdate,
 }: {
   tahapan: PengajuanTahapan;
-  onUpdate: (t: PengajuanTahapan) => void;
+  onUpdate: (t: PengajuanTahapan, revert?: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const stage = ALL_STAGES.find((s) => s.name === tahapan.stage);
@@ -218,8 +231,8 @@ function StatusBadge({
         <StageDropdown
           pengajuanId={tahapan.pengajuanId}
           currentStage={tahapan.stage}
-          onSelect={(t) => {
-            onUpdate(t);
+          onSelect={(t, revert) => {
+            onUpdate(t, revert);
             setOpen(false);
           }}
           onClose={() => setOpen(false)}
@@ -368,11 +381,11 @@ export default function TahapanPengajuanPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleUpdate = useCallback((updated: PengajuanTahapan) => {
+  const handleUpdate = useCallback((updated: PengajuanTahapan, revert = false) => {
     setTahapanMap((prev) => ({ ...prev, [updated.pengajuanId]: updated }));
 
-    // Auto-redirect ke halaman Review saat memilih Selesai atau Dibatalkan
-    if (updated.stage === STAGE_SELESAI || updated.stage === STAGE_DIBATALKAN) {
+    // Auto-redirect ke halaman Review saat memilih Selesai atau Dibatalkan (tidak saat hanya mengembalikan tampilan)
+    if (!revert && (updated.stage === STAGE_SELESAI || updated.stage === STAGE_DIBATALKAN)) {
       router.push(`/admin/data_pengajuan?review=${updated.pengajuanId}`);
     }
   }, [router]);

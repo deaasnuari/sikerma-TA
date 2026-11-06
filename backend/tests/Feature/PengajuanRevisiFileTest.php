@@ -170,4 +170,68 @@ class PengajuanRevisiFileTest extends TestCase
             ]],
         ])->assertOk();
     }
+
+    public function test_file_revisi_lebih_dari_10mb_ditolak(): void
+    {
+        ini_set('memory_limit', '768M'); // payload base64 belasan MB dibuat berulang dalam tes ini
+        Storage::fake('public');
+        $admin = User::factory()->admin()->create();
+        $pengajuan = $this->pengajuan(User::factory()->create(['role' => 'internal']));
+
+        // Ukuran yang dilaporkan klien melebihi batas.
+        $payload = $this->revisiPayload('Draf Besar.docx');
+        $payload['revisi_file_attachments'][0]['size'] = 10 * 1024 * 1024 + 1;
+        $respons = $this->actingAs($admin)->patchJson("/api/pengajuan/{$pengajuan->id}", $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('revisi_file_attachments.0.size');
+        $this->assertSame('File revisi maksimal 10 MB.', $respons->json('errors')['revisi_file_attachments.0.size'][0]);
+
+        // Ukuran dilaporkan kecil tapi isi berkas sebenarnya lebih dari 10 MB: tetap ditolak server.
+        $isi = str_repeat('x', 10 * 1024 * 1024 + 1);
+        $payload = $this->revisiPayload('Draf Besar.docx');
+        $payload['revisi_file_attachments'][0]['url'] = 'data:'.self::DOCX_MIME.';base64,'.base64_encode($isi);
+        $respons = $this->actingAs($admin)->patchJson("/api/pengajuan/{$pengajuan->id}", $payload)->assertStatus(422);
+        $this->assertSame('File revisi maksimal 10 MB.', $respons->json('errors')['revisi_file_attachments.0.url'][0]);
+
+        $this->assertSame(0, $pengajuan->pengajuanFiles()->count());
+        $this->assertSame('menunggu', $pengajuan->fresh()->status_pengajuan);
+    }
+
+    public function test_file_revisi_tepat_10mb_diterima(): void
+    {
+        ini_set('memory_limit', '768M'); // payload base64 belasan MB dibuat berulang dalam tes ini
+        Storage::fake('public');
+        $admin = User::factory()->admin()->create();
+        $pengajuan = $this->pengajuan(User::factory()->create(['role' => 'internal']));
+
+        $payload = $this->revisiPayload('Draf Batas.docx');
+        $payload['revisi_file_attachments'][0]['size'] = 10 * 1024 * 1024;
+        $payload['revisi_file_attachments'][0]['url'] = 'data:'.self::DOCX_MIME.';base64,'.base64_encode(str_repeat('x', 10 * 1024 * 1024));
+
+        $this->actingAs($admin)->patchJson("/api/pengajuan/{$pengajuan->id}", $payload)->assertOk();
+        $this->assertSame(1, $pengajuan->pengajuanFiles()->where('peran_berkas', 'dokumen_revisi')->count());
+    }
+
+    public function test_berkas_final_pdf_lebih_dari_10mb_ditolak_dan_status_tidak_berubah(): void
+    {
+        ini_set('memory_limit', '768M'); // payload base64 belasan MB dibuat berulang dalam tes ini
+        Storage::fake('public');
+        $admin = User::factory()->admin()->create();
+        $pengajuan = $this->pengajuan(User::factory()->create(['role' => 'internal']));
+        $pengajuan->update(['status_pengajuan' => 'diproses']);
+
+        $respons = $this->actingAs($admin)->patchJson("/api/pengajuan/{$pengajuan->id}", [
+            'status_pengajuan' => 'disetujui',
+            'acc_file_attachments' => [[
+                'name' => 'Final Besar.pdf',
+                'type' => 'application/pdf',
+                'size' => 1,
+                'jenis_dokumen' => 'MoU',
+                'url' => 'data:application/pdf;base64,'.base64_encode(str_repeat('x', 10 * 1024 * 1024 + 1)),
+            ]],
+        ])->assertStatus(422);
+
+        $this->assertSame('Berkas final maksimal 10 MB.', $respons->json('errors')['acc_file_attachments.0.url'][0]);
+        $this->assertSame('diproses', $pengajuan->fresh()->status_pengajuan);
+    }
 }

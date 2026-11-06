@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { Pencil, X } from 'lucide-react';
 import { generateNoDokumen } from '@/services/adminMonitoringService';
+import { validateSelectedFile } from '@/lib/fileUploadUtils';
+import { showNotice } from '@/lib/dialog';
 
 type ApprovalStatus = 'Menunggu' | 'Disetujui' | 'Ditolak';
 type Jenis = 'MoU' | 'MoA' | 'IA';
@@ -76,6 +78,13 @@ export default function EditDokumenModal({ item, onClose, onSave }: EditDokumenM
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const file = files[0];
+    // Sesuai keterangan di form: PDF, maksimal 10 MB.
+    const validationError = validateSelectedFile(file, { accept: '.pdf', maxSizeBytes: 10 * 1024 * 1024 });
+    if (validationError) {
+      showNotice(`${file.name}: ${validationError}`);
+      e.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => {
       const url = ev.target?.result as string;
@@ -229,6 +238,7 @@ export default function EditDokumenModal({ item, onClose, onSave }: EditDokumenM
             <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">Upload Dokumen (PDF, max 10MB)</label>
             <input
               type="file"
+              accept=".pdf"
               onChange={handleFileChange}
               className="input-field w-full px-3 py-2 text-[12px] text-gray-700"
             />

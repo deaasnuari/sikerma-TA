@@ -14,6 +14,7 @@ import {
   type RenewalRequestStatus,
 } from '@/services/adminRenewalRequestService';
 import { addAdminNotification, markNotificationsByHrefAsRead } from '@/services/adminService';
+import { bacaNotifikasiByHref } from '@/services/notifikasiService';
 import { invalidateRekapCache } from '@/services/dokumenKerjasamaApiService';
 import { showNotice } from '@/lib/dialog';
 
@@ -45,6 +46,7 @@ export default function MonitoringPerpanjanganPage() {
   useEffect(() => {
     // Tandai notifikasi perpanjangan sebagai sudah dibaca saat halaman ini dibuka
     markNotificationsByHrefAsRead('/admin/monitoring/perpanjangan');
+    void bacaNotifikasiByHref('/admin/monitoring/perpanjangan').catch(() => {});
 
     const syncItems = async () => {
       try {
@@ -98,14 +100,6 @@ export default function MonitoringPerpanjanganPage() {
         window.dispatchEvent(new Event('rekap-data-updated'));
       }
 
-      addAdminNotification({
-        title: status === 'disetujui' ? 'Perpanjangan Disetujui' : 'Perpanjangan Ditolak',
-        message: `Permintaan perpanjangan ${item.noDokumen} (${item.namaMitra}) telah ${status}.`,
-        from: 'Admin Monitoring',
-        href: item.notificationHref,
-        category: status === 'disetujui' ? 'approval' : 'reminder',
-        targetRole: item.requesterRole,
-      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Gagal memproses keputusan perpanjangan.';
       showNotice(`✗ ${message}`);

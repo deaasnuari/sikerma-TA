@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\NotifikasiService;
 use App\Models\DokumenFile;
 use App\Models\DokumenLog;
 use App\Models\DokumenKerjasama;
@@ -1546,6 +1547,16 @@ class DokumenKerjasamaController extends Controller
 
         $log->load(['dokumen:id,nomor_dokumen,mitra_id', 'dokumen.mitra:id,nama_mitra']);
 
+        if (! $isAdmin) {
+            NotifikasiService::kirimKeAdmin(
+                'Permintaan Perpanjangan Baru',
+                'Ada permintaan perpanjangan untuk kerja sama '.($log->dokumen?->mitra?->nama_mitra ?? ($log->dokumen?->nomor_dokumen ?? '-')).' yang menunggu keputusan.',
+                '/admin/monitoring/perpanjangan',
+                'reminder',
+                $request->user()?->id
+            );
+        }
+
         return response([
             'success' => true,
             'data' => $this->mapRenewalLogToResponse($log),
@@ -1576,6 +1587,19 @@ class DokumenKerjasamaController extends Controller
         $dokumen_log->diputuskan_oleh = $validated['diputuskan_oleh']
             ?? (string) ($request->user()?->name ?: 'Admin SIKERMA');
         $dokumen_log->save();
+
+        // Beri tahu pemilik dokumen (pengusul yang mengajukan perpanjangan).
+        $dokumenKeputusan = $dokumen_log->dokumen;
+        $pemilikId = $dokumenKeputusan?->pengajuan?->user_pengusul_id ?? $dokumenKeputusan?->dibuat_oleh_user_id;
+        $disetujui = $validated['status'] === 'disetujui';
+        NotifikasiService::kirimKePengguna(
+            $pemilikId ? (int) $pemilikId : null,
+            $request->user()?->id,
+            $disetujui ? 'Perpanjangan Disetujui' : 'Perpanjangan Ditolak',
+            'Permintaan perpanjangan kerja sama '.($dokumenKeputusan?->nomor_dokumen ?? '').($disetujui ? ' disetujui admin.' : ' ditolak admin.'),
+            NotifikasiService::hrefUntuk($pemilikId ? (int) $pemilikId : null, 'rekap'),
+            'approval'
+        );
 
         if ($validated['status'] === 'disetujui') {
             $dokumen = $dokumen_log->dokumen;

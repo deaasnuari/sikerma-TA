@@ -10,7 +10,7 @@ import Image from 'next/image';
 import AdminNavbar from '@/components/admin/AdminNavbar';
 import AdminFooter from '@/components/admin/AdminFooter';
 import DonutChart from '@/components/DonutChart';
-import { getCarouselImages, type CarouselImageItem } from '@/services/carouselService';
+import { carouselImageStyle, getCarouselImages, getCarouselTampilan, type CarouselImageItem } from '@/services/carouselService';
 import { apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 
@@ -149,6 +149,7 @@ export default function Home() {
         id: item.id,
         title: item.title || `Aktivitas Kerjasama ${index + 1}`,
         imageUrl: item.image_url,
+        tampilan: getCarouselTampilan(item),
       }));
     }
 
@@ -156,6 +157,7 @@ export default function Home() {
       id: index + 1,
       title: `Aktivitas Kerjasama ${index + 1}`,
       imageUrl: '/polibatam.jpg',
+      tampilan: getCarouselTampilan({}),
     }));
   }, [carouselImages]);
 
@@ -422,11 +424,12 @@ export default function Home() {
               style={{ transform: `translateX(-${activeSlide * 100}%)` }}
             >
               {carouselSlides.map((slide) => (
-                <div key={slide.id} className="relative h-[260px] w-full flex-shrink-0 sm:h-[340px] lg:h-[420px]">
+                <div key={slide.id} className="relative h-[260px] w-full flex-shrink-0 overflow-hidden sm:h-[340px] lg:h-[420px]">
                   <img
                     src={slide.imageUrl}
                     alt={slide.title}
                     className="h-full w-full object-cover"
+                    style={carouselImageStyle(slide.tampilan)}
                     loading="lazy"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900/55 via-slate-900/10 to-transparent" />

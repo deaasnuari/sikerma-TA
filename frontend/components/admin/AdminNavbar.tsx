@@ -4,13 +4,7 @@ import Image from 'next/image';
 import { useState, useRef, useEffect } from 'react';
 import { Menu, LogOut, User, Bell, CheckCheck, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import {
-  getAdminNotifications,
-  markAllNotificationsAsRead,
-  markNotificationAsRead,
-  deleteNotification,
-  deleteAllNotifications,
-} from '@/services/adminService';
+import { useNotifikasi } from '@/hooks/useNotifikasi';
 import { useRouter } from 'next/navigation';
 import type { AdminNotification } from '@/types/admin';
 
@@ -24,21 +18,22 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showPublicMenu, setShowPublicMenu] = useState(false);
-  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const publicMenuRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
   const router = useRouter();
 
+  const { notifications, tandaiDibaca, tandaiSemuaDibaca, hapus, hapusSemua } = useNotifikasi(user?.role);
+
   // Hapus satu notifikasi
-  const handleDeleteNotification = (id: number) => {
-    setNotifications(deleteNotification(id));
+  const handleDeleteNotification = (notif: AdminNotification) => {
+    hapus(notif);
   };
 
   // Hapus semua notifikasi
   const handleDeleteAllNotifications = () => {
-    setNotifications(deleteAllNotifications());
+    hapusSemua();
   };
 
   const unreadCount = notifications.filter((notification) => !notification.read).length;
@@ -73,20 +68,6 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
   const menuInfoTitle = instansiLabel ? 'Instansi' : 'Peran';
   const menuInfoValue = instansiLabel ?? userSubLabel;
 
-  const refreshNotifications = () => {
-    const allNotifications = getAdminNotifications();
-    // Filter notifikasi berdasarkan role user
-    const filteredNotifications = allNotifications.filter((notif) => {
-      // Admin bisa lihat semua notifikasi (dari semua role)
-      if (user?.role === 'admin') {
-        return true;
-      }
-      // Selain admin, notifikasi tanpa targetRole dianggap notifikasi admin lama.
-      return notif.targetRole === user?.role;
-    });
-    setNotifications(filteredNotifications);
-  };
-
   const handleLogout = () => {
     logout();
     router.push('/login');
@@ -107,13 +88,13 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
   };
 
   const handleOpenNotification = (notification: AdminNotification) => {
-    setNotifications(markNotificationAsRead(notification.id));
+    tandaiDibaca(notification);
     setShowNotifications(false);
     router.push(resolveNotificationRoute(notification));
   };
 
   const handleMarkAllAsRead = () => {
-    setNotifications(markAllNotificationsAsRead());
+    tandaiSemuaDibaca();
   };
 
   const handleViewAll = () => {
@@ -135,15 +116,10 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
       }
     }
 
-    const syncNotifications = () => refreshNotifications();
-
-    refreshNotifications();
     document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('admin-notifications-updated', syncNotifications);
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('admin-notifications-updated', syncNotifications);
     };
   }, []);
 
@@ -331,7 +307,7 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
                   <div className="max-h-96 overflow-y-auto">
                     {notifications.length > 0 ? (
                       notifications.slice(0, 5).map((notif) => (
-                        <div key={notif.id} className="relative group">
+                        <div key={`${notif.source ?? 'local'}-${notif.id}`} className="relative group">
                           <button
                             onClick={() => handleOpenNotification(notif)}
                             className={`w-full text-left px-3 py-2.5 border-b border-slate-100 hover:bg-slate-50 transition-colors ${!notif.read ? 'bg-slate-50' : ''}`}
@@ -349,7 +325,7 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
                             </div>
                           </button>
                           <button
-                            onClick={() => handleDeleteNotification(notif.id)}
+                            onClick={() => handleDeleteNotification(notif)}
                             className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity"
                             title="Hapus notifikasi"
                           >

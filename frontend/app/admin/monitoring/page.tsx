@@ -1007,14 +1007,6 @@ export default function MonitoringdanstatusPage() {
                   );
 
                   // Notifikasi untuk pihak pengusul
-                  addAdminNotification({
-                    title: 'Permintaan Perpanjangan Kerjasama',
-                    message: `Perpanjangan kerjasama dengan ${selectedRenewalItem.namaMitra} (${selectedRenewalItem.noDokumen}) telah diajukan. Periode baru: ${data.tanggalMulaiBaru} s/d ${data.tanggalBerakhirBaru}`,
-                    from: 'Admin SIKERMA',
-                    href: renewalNotificationTarget.href,
-                    category: 'info',
-                    targetRole: renewalNotificationTarget.targetRole,
-                  });
 
                   // Notifikasi untuk admin agar muncul di sidebar "Permintaan Perpanjangan"
                   addAdminNotification({

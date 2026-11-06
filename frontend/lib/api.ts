@@ -51,6 +51,16 @@ export async function apiRequest<T>(endpoint: string, { skipAuthRedirect, ...opt
       throw new Error('Unauthenticated.');
     }
 
+    // Dibatasi backend (throttle login/OTP/API): pesan bawaan Laravel berbahasa Inggris.
+    if (response.status === 429) {
+      const retryAfter = Number(response.headers.get('retry-after'));
+      throw new Error(
+        retryAfter > 0
+          ? `Terlalu banyak percobaan, coba lagi dalam ${retryAfter} detik.`
+          : 'Terlalu banyak percobaan, coba lagi sebentar lagi.',
+      );
+    }
+
     const validationMessage =
       typeof body === 'object' && body !== null && 'errors' in body && body.errors
         ? Object.values(body.errors as Record<string, string[]>)

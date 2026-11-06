@@ -8,6 +8,8 @@ export interface AdminNotification {
   href?: string;
   category?: 'approval' | 'comment' | 'reminder' | 'info';
   targetRole?: 'admin' | 'internal' | 'eksternal' | 'external' | 'pimpinan';
+  // 'server' = notifikasi dari server (per pengguna); kosong = notifikasi lokal di browser ini.
+  source?: 'server' | 'local';
 }
 
 export interface DashboardStat {

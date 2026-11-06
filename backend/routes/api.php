@@ -10,6 +10,7 @@ use App\Http\Controllers\MasterNegaraController;
 use App\Http\Controllers\MasterRuangLingkupController;
 use App\Http\Controllers\OtpController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\NotifikasiController;
 use App\Http\Controllers\MasterUnitProdiController;
 use App\Http\Controllers\CatatanAdminController;
 use App\Http\Controllers\PengajuanController;
@@ -98,6 +99,13 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::post('/admin/carousel-images', [CarouselImageController::class, 'store']);
 	Route::patch('/admin/carousel-images/{carouselImage}', [CarouselImageController::class, 'update']);
 	Route::delete('/admin/carousel-images/{carouselImage}', [CarouselImageController::class, 'destroy']);
+	// Notifikasi lonceng milik pengguna yang login (tersimpan di server).
+	Route::get('/notifikasi', [NotifikasiController::class, 'index']);
+	Route::post('/notifikasi/baca-semua', [NotifikasiController::class, 'bacaSemua']);
+	Route::post('/notifikasi/baca-href', [NotifikasiController::class, 'bacaHref']);
+	Route::delete('/notifikasi', [NotifikasiController::class, 'hapusSemua']);
+	Route::patch('/notifikasi/{id}/baca', [NotifikasiController::class, 'baca'])->whereNumber('id');
+	Route::delete('/notifikasi/{id}', [NotifikasiController::class, 'hapus'])->whereNumber('id');
 	Route::post('/notifications/send-email', [NotificationController::class, 'sendEmail']);
 	Route::post('/notifications/send-bulk', [NotificationController::class, 'sendBulk']);
 

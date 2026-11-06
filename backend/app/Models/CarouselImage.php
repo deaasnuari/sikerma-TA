@@ -14,5 +14,9 @@ class CarouselImage extends Model
         'image_path',
         'sort_order',
         'is_active',
+        'zoom',
+        'pos_x',
+        'pos_y',
+        'fit',
     ];
 }
