@@ -55,9 +55,9 @@ const jenisBadge: Record<string, string> = {
 };
 
 const jenisWarna: Record<string, string> = {
-  mou: '#8b5cf6',
-  moa: '#2563eb',
-  ia: '#f59e0b',
+  mou: '#1D4ED8',
+  moa: '#7C3AED',
+  ia: '#A78BFA',
 };
 
 function jenisKey(value?: string): string {
@@ -176,9 +176,7 @@ export default function InternalDashboardPage() {
         { label: 'MoU', total: ringkasJenis.MoU },
         { label: 'MoA', total: ringkasJenis.MoA },
         { label: 'IA', total: ringkasJenis.IA },
-      ]
-        .filter((item) => item.total > 0)
-        .sort((a, b) => b.total - a.total),
+      ],
     [ringkasJenis],
   );
 
@@ -266,7 +264,7 @@ export default function InternalDashboardPage() {
       </div>
 
       {/* Desktop: tiga kolom mengisi sisa tinggi layar (daftar & kartu menggulir di dalamnya bila perlu). */}
-      <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_230px]">
+      <div className="grid gap-4 lg:shrink-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_230px]">
         {/* Kerjasama terbaru */}
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex lg:min-h-0 lg:flex-col">
           <div className="mb-4 flex items-center justify-between lg:mb-3 lg:shrink-0">
@@ -333,7 +331,7 @@ export default function InternalDashboardPage() {
             <p className="mt-0.5 text-[11px] text-slate-500">Status masa berlaku dan jenis dokumen dari kerja sama yang disetujui.</p>
           </div>
 
-          <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:[&>*]:min-h-0 lg:[&>*]:overflow-y-auto">
+          <div className="grid gap-3 lg:grid-cols-2">
             {/* Status masa berlaku: donat */}
             <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-emerald-50 to-slate-50 p-3">
               <h3 className="text-[12px] font-bold text-slate-800">Status Kerjasama</h3>
@@ -396,22 +394,23 @@ export default function InternalDashboardPage() {
 
             {/* Jenis dokumen: lingkaran */}
             <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-slate-50 p-3">
-              <h3 className="text-[12px] font-bold text-slate-800">Jenis Kerjasama</h3>
+              <h3 className="text-[12px] font-bold text-slate-800">Komposisi Dokumen</h3>
               <p className="mt-0.5 text-[10px] text-slate-400">Berdasarkan jenis dokumen</p>
 
-              {jenisKerjasama.length === 0 ? (
+              {ringkasJenis.total === 0 ? (
                 <p className="py-8 text-center text-[12px] text-slate-400">{loading ? 'Memuat data…' : 'Belum ada data.'}</p>
               ) : (
                 <>
-                  <div className="mx-auto mt-1 h-[130px] w-full max-w-[170px]">
+                  <div className="relative mx-auto mt-1 h-[130px] w-full max-w-[170px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
                           data={jenisKerjasama}
                           dataKey="total"
                           nameKey="label"
+                          innerRadius="62%"
                           outerRadius="92%"
-                          paddingAngle={jenisKerjasama.length > 1 ? 2 : 0}
+                          paddingAngle={jenisKerjasama.filter((item) => item.total > 0).length > 1 ? 2 : 0}
                           stroke="#ffffff"
                           strokeWidth={2}
                           isAnimationActive={false}
@@ -421,11 +420,15 @@ export default function InternalDashboardPage() {
                           ))}
                         </Pie>
                         <Tooltip
-                          formatter={(value, name) => [`${value} dokumen (${pct(Number(value))}%)`, String(name)]}
+                          formatter={(value, name) => [`${value} dokumen (${pctJenis(Number(value))}%)`, String(name)]}
                           contentStyle={{ borderRadius: 8, fontSize: 12 }}
                         />
                       </PieChart>
                     </ResponsiveContainer>
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                      <p className="text-[18px] font-bold leading-none text-slate-900">{ringkasJenis.total}</p>
+                      <p className="mt-0.5 text-[10px] text-slate-500">Total</p>
+                    </div>
                   </div>
 
                   <div className="mt-2 space-y-1.5">

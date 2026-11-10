@@ -392,6 +392,7 @@ export default function TambahDokumenModal({
     const newErrors: Partial<Record<keyof DokumenData, string>> = {};
     if (!formData.jenisDokumen || formData.jenisDokumen === 'Pilih Jenis') newErrors.jenisDokumen = 'Jenis dokumen wajib dipilih';
     if (!formData.namaMitra.trim()) newErrors.namaMitra = 'Nama mitra wajib diisi';
+    if (!isEditMode && !formData.nomorDokumen.trim()) newErrors.nomorDokumen = 'Nomor dokumen wajib diisi';
     if (!isEditMode && !formData.namaPIC.trim()) newErrors.namaPIC = 'Nama PIC wajib diisi';
     if (!isEditMode && (!formData.kategoriMitra || formData.kategoriMitra === 'Pilih Kategori')) newErrors.kategoriMitra = 'Kategori mitra wajib dipilih';
     if (!formData.unitKerja || formData.unitKerja === 'Pilih Jurusan' || formData.unitKerja === 'Pilih Unit') newErrors.unitKerja = `${formData.asalKategori} wajib dipilih`;
@@ -428,6 +429,7 @@ export default function TambahDokumenModal({
       // tidak terlihat bila letaknya di luar layar).
       const belumLengkap: string[] = [];
       if (newErrors.jenisDokumen) belumLengkap.push('Jenis Dokumen');
+      if (newErrors.nomorDokumen) belumLengkap.push('Nomor Dokumen');
       if (newErrors.namaMitra) belumLengkap.push('Nama Mitra');
       if (newErrors.namaPIC) belumLengkap.push('Nama PIC');
       if (newErrors.kategoriMitra) belumLengkap.push('Kategori Mitra');
@@ -447,29 +449,8 @@ export default function TambahDokumenModal({
     setErrors({});
     setUploadErrors({});
 
-    // In edit mode, keep existing nomor dokumen
-    let nomorDokumen = formData.nomorDokumen;
-    if (!isEditMode) {
-      let allData = [];
-      try {
-        allData = JSON.parse(window.localStorage.getItem('adminRekapDokumenData') || '[]');
-      } catch {}
-      const lastId = allData.length > 0 ? Math.max(...allData.map((d: any) => d.id ?? 0)) : 0;
-      const nextId = lastId + 1;
-
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { generateNoDokumen } = require('@/services/adminMonitoringService');
-        nomorDokumen = generateNoDokumen({
-          urutan: nextId,
-          jenis: formData.jenisDokumen,
-          tanggal: formData.tanggalMulai,
-          unitName: selectedJurusanNodes[0]?.nama ?? formData.unitKerja,
-        });
-      } catch {
-        nomorDokumen = nextId.toString().padStart(2, '0');
-      }
-    }
+    // Nomor dokumen diketik manual oleh admin (tidak dibuat otomatis).
+    const nomorDokumen = formData.nomorDokumen.trim();
 
     let dokumenTerkait = formData.dokumenTerkait;
     if (selectedFile && (documentMode === 'replace' || !hasExistingDokumen)) {
@@ -610,16 +591,16 @@ export default function TambahDokumenModal({
             Kolom bertanda <span className="font-semibold text-rose-500">*</span> wajib diisi.
           </p>
           <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:gap-y-5 md:grid-cols-2">
-            <Field label={isEditMode ? 'Nomor Dokumen (dapat diubah)' : 'Nomor Dokumen'} error={errors.nomorDokumen}>
+            <Field label={isEditMode ? 'Nomor Dokumen (dapat diubah)' : 'Nomor Dokumen *'} error={errors.nomorDokumen}>
               <TextInput
-                placeholder="Contoh: 001/MoU/2026"
+                placeholder="Contoh: 017/MOU.PL29/XI/2026"
                 value={formData.nomorDokumen}
                 onChange={(e) => handleInputChange('nomorDokumen', e.target.value)}
                 hasError={!!errors.nomorDokumen}
               />
-              {isEditMode && (
-                <p className="mt-1 text-[11px] text-slate-400">Ubah nomor dokumen jika diperlukan, lalu simpan perubahan.</p>
-              )}
+              <p className="mt-1 text-[11px] text-slate-400">
+                {isEditMode ? 'Ubah nomor dokumen jika diperlukan, lalu simpan perubahan.' : 'Ketik manual. Nomor tidak boleh sama dengan dokumen lain.'}
+              </p>
             </Field>
 
             <Field label="Judul Kegiatan Kerja Sama">

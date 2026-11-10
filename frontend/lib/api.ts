@@ -77,6 +77,13 @@ export async function apiRequest<T>(endpoint: string, { skipAuthRedirect, ...opt
     throw new Error(String(message));
   }
 
+  // Setelah aksi yang mengubah data (simpan, hapus, dsb.) berhasil, lonceng notifikasi disegarkan
+  // supaya catatan aksinya langsung muncul, tanpa menunggu pembaruan berkala.
+  const metode = (options.method || 'GET').toUpperCase();
+  if (metode !== 'GET' && !endpoint.startsWith('/notifikasi') && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('notifikasi-server-updated'));
+  }
+
   return body as T;
 }
 

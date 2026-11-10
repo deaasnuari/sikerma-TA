@@ -599,6 +599,18 @@ const [detailItem, setDetailItem] = useState<PengajuanItem | null>(null);
     };
   }, []);
 
+  // Buka detail pengajuan saat diarahkan dari notifikasi lonceng (?detail=ID); hanya sekali per ID.
+  const detailTargetId = searchParams.get('detail') ? Number(searchParams.get('detail')) : null;
+  const detailDibukaRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!detailTargetId || pengajuanLoading || pengajuanData.length === 0 || detailDibukaRef.current === detailTargetId) return;
+    const target = pengajuanData.find((p) => p.id === detailTargetId);
+    if (target) {
+      detailDibukaRef.current = detailTargetId;
+      setDetailItem(target);
+    }
+  }, [detailTargetId, pengajuanLoading, pengajuanData]);
+
   // Auto-buka review modal saat diarahkan dari halaman Tahapan (?review=ID)
   useEffect(() => {
     if (!reviewTargetId || pengajuanLoading || pengajuanData.length === 0) return;

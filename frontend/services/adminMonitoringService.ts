@@ -1,3 +1,4 @@
+import { normalisasiNomorWhatsAppMitra } from '@/lib/whatsappPesan';
 // Utility untuk generate nomor dokumen sesuai format:
 // no-urut/JENIS.KODE-DIREKTUR/BULAN-ROMAWI/TAHUN
 export function generateNoDokumen({
@@ -5,48 +6,17 @@ export function generateNoDokumen({
   jenis,
   tanggal,
   unitName,
+  urutanTigaDigit,
 }: {
   urutan: number;
+  /** true => nomor urut 3 digit berawalan 0 (017), sesuai deret nomor di Rekap Data. */
+  urutanTigaDigit?: boolean;
   jenis: 'MoU' | 'MoA' | 'IA';
   tanggal: string; // format: 'dd/mm/yyyy' atau ISO string
   unitName?: string;
 }): string {
-  const resolveDirekturCode = (name?: string) => {
-    const normalized = (name || '').trim().toLowerCase();
-    if (!normalized) return 'PL29';
-
-    const patterns: Array<{ code: string; keys: string[] }> = [
-      { code: 'PL29.5', keys: ['spi', 'satuan pengawas internal'] },
-      { code: 'PL29.6', keys: ['p4m', 'penjaminan mutu'] },
-      { code: 'PL29.7', keys: ['p3m', 'penelitian dan pengabdian'] },
-      { code: 'PL29.8', keys: ['akademik', 'subag akademik'] },
-      { code: 'PL29.9', keys: ['sbum', 'sub bagian umum'] },
-      { code: 'PL29.10', keys: ['teknik elektro'] },
-      { code: 'PL29.11', keys: ['teknik informatika'] },
-      { code: 'PL29.12', keys: ['teknik mesin'] },
-      { code: 'PL29.13', keys: ['manajemen dan bisnis'] },
-      { code: 'PL29.14', keys: ['shilau'] },
-      { code: 'PL29.15', keys: ['upa perpustakaan'] },
-      { code: 'PL29.16', keys: ['upa tik'] },
-      { code: 'PL29.17', keys: ['upa pp', 'perawatan dan perbaikan'] },
-      { code: 'PL29.18', keys: ['upa pkk', 'pengembangan karier'] },
-      { code: 'PL29.19', keys: ['osdm', 'organisasi dan sdm'] },
-      { code: 'PL29.20', keys: ['pokja keuangan'] },
-      { code: 'PL29.21', keys: ['pokja perencanaan'] },
-      { code: 'PL29.22', keys: ['pokja bmn', 'pengadaan'] },
-      { code: 'PL29.23', keys: ['pokja kemahasiswaan'] },
-      { code: 'PL29.24', keys: ['pokja humas', 'kerja sama'] },
-    ];
-
-    for (const pattern of patterns) {
-      if (pattern.keys.some((key) => normalized.includes(key))) {
-        return pattern.code;
-      }
-    }
-
-    return 'PL29';
-  };
-
+  // Kode selalu PL29 (tidak lagi dibedakan per unit/jurusan).
+  const kodeDirektur = 'PL29';
   // Nomor urut dokumen mengikuti nilai urutan asli.
   const urutanDokumen = Math.max(1, Math.trunc(typeof urutan === 'number' && !isNaN(urutan) ? urutan : 1));
   // Jenis kapital
@@ -73,8 +43,8 @@ export function generateNoDokumen({
     '', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII',
   ];
   const bulanRomawi = bulanRomawiArr[bulan] || '';
-  const kodeDirektur = resolveDirekturCode(unitName);
-  return `${urutanDokumen}/${jenisUpper}.${kodeDirektur}/${bulanRomawi}/${tahun}`;
+  const urutanTeks = urutanTigaDigit ? String(urutanDokumen).padStart(3, '0') : String(urutanDokumen);
+  return `${urutanTeks}/${jenisUpper}.${kodeDirektur}/${bulanRomawi}/${tahun}`;
 }
 // Service monitoring kerjasama untuk halaman admin.
 // File ini dipakai agar data, tipe, dan helper bisnis tidak bercampur dengan komponen UI Next.js.
@@ -137,6 +107,13 @@ export interface Kerjasama {
   ruangLingkup: string[];
   whatsappNumber: string;
   emailMitra: string;
+  // Asal kontak yang ditampilkan: milik mitra atau pengusul (supaya admin tahu siapa yang dihubungi).
+  whatsappSumber?: 'Mitra' | 'Pengusul';
+  emailSumber?: 'Mitra' | 'Pengusul';
+  // Kontak dipisah: milik mitra dan milik pengusul (kosong = belum tersedia).
+  negaraMitra?: string;
+  kontakMitra?: { email: string; whatsapp: string };
+  kontakPengusul?: { email: string; whatsapp: string };
   // Catatan & bukti kalau kerja sama ini pernah ditandai TIDAK diperpanjang — sama dengan
   // yang tampil di kolom "Catatan/Bukti Tidak Diperpanjang" pada tabel Arsip Dokumen.
   alasanArsip?: string | null;
@@ -544,9 +521,21 @@ export async function fetchMonitoringDataFromApi(options?: { forceRefresh?: bool
         emailMitra:
           row.mitra?.email_mitra ||
           row.mitra?.email_kontak_utama ||
+          row.pengajuan?.email_mitra ||
           row.pengajuan?.email_pengusul ||
           row.snap_email_pengusul ||
           '-',
+        negaraMitra: row.mitra?.negara || undefined,
+        kontakMitra: {
+          email: row.mitra?.email_mitra || row.mitra?.email_kontak_utama || row.pengajuan?.email_mitra || '',
+          whatsapp: row.mitra?.whatsapp_mitra || row.pengajuan?.whatsapp_mitra || row.mitra?.telepon_kontak_utama || row.mitra?.no_telepon_mitra || row.pengajuan?.no_telepon_mitra || '',
+        },
+        kontakPengusul: {
+          email: row.pengajuan?.email_pengusul || row.snap_email_pengusul || '',
+          whatsapp: row.pengajuan?.whatsapp_pengusul || row.snap_whatsapp_pengusul || '',
+        },
+        whatsappSumber: (row.pengajuan?.whatsapp_pengusul || row.snap_whatsapp_pengusul) ? 'Pengusul' : 'Mitra',
+        emailSumber: (row.mitra?.email_mitra || row.mitra?.email_kontak_utama || row.pengajuan?.email_mitra) ? 'Mitra' : 'Pengusul',
         alasanArsip: row.alasan_arsip || null,
         buktiTidakDiperpanjang: (() => {
           const file = (row.dokumen_files || []).find((f: any) => f.peran_berkas === 'bukti_tidak_diperpanjang');
@@ -678,18 +667,26 @@ export function hasWhatsAppNumber(item: Kerjasama): boolean {
   return String(item.whatsappNumber || '').replace(/[^0-9]/g, '').length >= 8;
 }
 
+export function emailValid(email?: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
+
+export function nomorValid(nomor?: string): boolean {
+  return String(nomor || '').replace(/[^0-9]/g, '').length >= 8;
+}
+
 export function hasEmailMitra(item: Kerjasama): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(item.emailMitra || '').trim());
 }
 
 // Buka halaman tulis email Gmail di tab baru (mailto: tidak jalan kalau PC tidak punya
 // aplikasi email default).
-export function createEmailLink(item: Kerjasama): string {
+export function createEmailLink(item: Kerjasama, email?: string): string {
   const judul = item.judul || item.noDokumen || '';
   const params = new URLSearchParams({
     view: 'cm',
     fs: '1',
-    to: String(item.emailMitra).trim(),
+    to: String(email ?? item.emailMitra).trim(),
     su: `Kerja Sama ${judul}`.trim(),
     body: `Halo ${item.namaMitra},\n\nsaya ingin membahas tentang kerjasama ${judul}.\n`,
   });
@@ -697,11 +694,9 @@ export function createEmailLink(item: Kerjasama): string {
 }
 
 // Buat tautan WhatsApp otomatis untuk menghubungi mitra.
-export function createWhatsAppLink(item: Kerjasama): string {
-  let nomor = String(item.whatsappNumber).replace(/[^0-9]/g, '');
-  if (nomor.startsWith('0')) {
-    nomor = '62' + nomor.slice(1);
-  }
+// Kode negara mengikuti negara mitra (form menyimpan nomor tanpa kode negara); negara kosong = Indonesia.
+export function createWhatsAppLink(item: Kerjasama, nomorKontak?: string, negara?: string | null): string {
+  const nomor = normalisasiNomorWhatsAppMitra(String(nomorKontak ?? item.whatsappNumber), negara);
   const judul = item.judul || item.noDokumen || '';
   const pesan = `Halo ${item.namaMitra}, saya ingin membahas tentang kerjasama ${judul}`;
   return `https://wa.me/${nomor}?text=${encodeURIComponent(pesan)}`;

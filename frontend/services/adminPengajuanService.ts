@@ -867,6 +867,7 @@ export async function submitPengajuanApi(
     // Field transien buat backend sinkron ke master_mitra (lihat PengajuanController) —
     // tidak tersimpan di pengajuan_v2, cukup dikirim di request ini.
     mitra_alamat: data.mitraAlamat || null,
+    mitra_email: data.mitraEmail || null,
     mitra_nama_kontak_utama: data.mitraPicNama || null,
     mitra_jabatan_kontak_utama: data.mitraPicJabatan || null,
     mitra_email_kontak_utama: data.mitraPicEmail || null,

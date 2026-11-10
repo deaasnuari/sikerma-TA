@@ -1,5 +1,6 @@
 'use client';
 
+import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { CalendarDays, CheckCircle, ChevronDown, Download, MessageCircle, Paperclip, Pencil, Plus, Upload, X } from 'lucide-react';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
@@ -300,6 +301,9 @@ export default function InternalAjukanKerjasamaForm({
   onSubmitOverride,
 }: InternalAjukanKerjasamaFormProps) {
   const router = useRouter();
+  const { user: akunLogin } = useAuth();
+  // Draf disimpan PER AKUN: hanya dipulihkan untuk akun (id) yang sama, tidak pernah untuk akun lain.
+  const draftKey = akunLogin?.id ? `${INTERNAL_PENGAJUAN_DRAFT_KEY}:u${akunLogin.id}` : null;
   const [asal, setAsal] = useState<'Jurusan' | 'Unit'>('Jurusan');
   const [dokumen, setDokumen] = useState<{ file: File; dataUrl?: string }[]>([]);
   const [dokumenPendukung, setDokumenPendukung] = useState<{ file: File; dataUrl?: string }[]>([]);
@@ -555,12 +559,15 @@ export default function InternalAjukanKerjasamaForm({
       return;
     }
 
-    if (disableDraftPersistence || typeof window === 'undefined') {
+    if (disableDraftPersistence || typeof window === 'undefined' || !draftKey) {
       return;
     }
 
     try {
-      const storedRaw = window.localStorage.getItem(INTERNAL_PENGAJUAN_DRAFT_KEY);
+      // Draf lama tanpa id akun (format sebelumnya) bisa milik siapa saja: dibuang.
+      window.localStorage.removeItem(INTERNAL_PENGAJUAN_DRAFT_KEY);
+
+      const storedRaw = window.localStorage.getItem(draftKey);
       if (!storedRaw) {
         return;
       }
@@ -581,7 +588,7 @@ export default function InternalAjukanKerjasamaForm({
     } catch {
       // Abaikan draft rusak agar form tetap bisa dipakai normal.
     }
-  }, [initialData, initialFileAttachments, disableDraftPersistence]);
+  }, [initialData, initialFileAttachments, disableDraftPersistence, draftKey]);
 
   useEffect(() => {
     if (!enableAppearanceEdit || typeof window === 'undefined') {
@@ -614,7 +621,7 @@ export default function InternalAjukanKerjasamaForm({
   }, [appearanceStorageKey, enableAppearanceEdit]);
 
   useEffect(() => {
-    if (disableDraftPersistence || initialData) {
+    if (disableDraftPersistence || initialData || !draftKey) {
       return;
     }
 
@@ -638,7 +645,7 @@ export default function InternalAjukanKerjasamaForm({
 
     let idleId: number | null = null;
     const timer = window.setTimeout(() => {
-      const writeDraft = () => window.localStorage.setItem(INTERNAL_PENGAJUAN_DRAFT_KEY, JSON.stringify(draft));
+      const writeDraft = () => window.localStorage.setItem(draftKey, JSON.stringify(draft));
 
       if (typeof window.requestIdleCallback === 'function') {
         idleId = window.requestIdleCallback(writeDraft, { timeout: 1200 });
@@ -654,7 +661,7 @@ export default function InternalAjukanKerjasamaForm({
         window.cancelIdleCallback(idleId);
       }
     };
-  }, [asal, formData, selectedRuangLingkup, customJurusanOpts, customUnitOpts, customNegaraOpts, disableDraftPersistence, initialData]);
+  }, [asal, formData, selectedRuangLingkup, customJurusanOpts, customUnitOpts, customNegaraOpts, disableDraftPersistence, initialData, draftKey]);
 
   useEffect(() => {
     if (!enableAppearanceEdit || typeof window === 'undefined') {
@@ -1001,6 +1008,7 @@ export default function InternalAjukanKerjasamaForm({
           emailPengusul: formData.emailKontak,
           whatsappPengusul: formData.teleponKontak,
           mitraTelepon: formData.teleponMitra,
+          mitraEmail: formData.emailMitra.trim() || undefined,
           mitraNoTelepon: formData.noTeleponMitra,
           ruangLingkupIds: (selectedRuangLingkup || []).map((name) => masterRuangLingkupRows.find((r) => r.nama_ruang_lingkup === name)?.id).filter(Boolean) as number[],
           ruangLingkup: selectedRuangLingkup,
@@ -1009,7 +1017,7 @@ export default function InternalAjukanKerjasamaForm({
         });
       }
       if (typeof window !== 'undefined') {
-        window.localStorage.removeItem(INTERNAL_PENGAJUAN_DRAFT_KEY);
+        if (draftKey) window.localStorage.removeItem(draftKey);
       }
 
       setSubmitError(null);

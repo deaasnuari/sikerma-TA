@@ -507,32 +507,35 @@ export default function AdminDashboard() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="card flex items-center gap-2 px-3 py-1.5">
+          <div className="card flex h-12 items-center gap-3 px-3">
             <div className="leading-tight">
-              <p className="text-[10px] font-bold text-gray-900">Kerjasama Baru {currentYear}</p>
-              <p className="text-[8px] text-gray-500">Yang disetujui, per bulan</p>
+              <p className="text-[11px] font-bold text-gray-900">Kerjasama Baru {currentYear}</p>
+              <p className="text-[9px] text-gray-500">Yang disetujui, per bulan</p>
             </div>
             <select
               value={filterBulanBaru}
               onChange={(e) => setFilterBulanBaru(e.target.value)}
-              className="input-field px-2 py-1 text-[10px] text-gray-700"
+              aria-label="Filter bulan kerjasama baru"
+              className="input-field !h-8 !w-auto !px-2 !py-0 !text-[11px] !font-medium text-gray-700"
             >
               <option>{semuaBulanLabel}</option>
               {bulanOptions.map((bulan) => (
                 <option key={bulan}>{bulan}</option>
               ))}
             </select>
-            <span className="text-lg font-bold text-[#173B82]">{kerjasamaBaruCount}</span>
+            <span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-[#173B82]/10 px-2 text-sm font-bold leading-none text-[#173B82]">
+              {kerjasamaBaruCount}
+            </span>
           </div>
 
           <button
             type="button"
             onClick={() => setShowCarouselModal(true)}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            className="inline-flex h-12 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
           >
             <Upload size={14} />
             Kelola Carousel
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-600">{carouselImages.length}/7</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">{carouselImages.length}/7</span>
           </button>
         </div>
       </div>
@@ -549,12 +552,12 @@ export default function AdminDashboard() {
               type="button"
               onClick={() => href && router.push(href)}
               disabled={!isClickable}
-              className={`${stat.color} flex items-center justify-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all duration-200 ${isClickable ? 'cursor-pointer hover:shadow-lg hover:scale-[1.02]' : 'cursor-default opacity-90'}`}
+              className={`${stat.color} flex items-center justify-start gap-3 rounded-lg px-4 py-2 text-left transition-all duration-200 ${isClickable ? 'cursor-pointer hover:shadow-lg hover:scale-[1.02]' : 'cursor-default opacity-90'}`}
             >
               <IconComponent size={20} className={`${stat.textColor} shrink-0`} />
               <div className="min-w-0">
-                <p className={`truncate text-[9px] font-medium ${stat.textColor}`}>{stat.label}</p>
-                <p className="text-sm md:text-base font-bold leading-tight text-gray-900">{stat.value}</p>
+                <p className={`truncate text-[10px] font-semibold ${stat.textColor}`}>{stat.label}</p>
+                <p className="text-base md:text-lg font-bold leading-tight tabular-nums text-gray-900">{stat.value}</p>
               </div>
             </button>
           );

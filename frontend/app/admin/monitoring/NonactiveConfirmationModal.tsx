@@ -73,6 +73,12 @@ export default function NonactiveConfirmationModal({
       return;
     }
 
+    // Bukti wajib: file baru, atau bukti lama yang sudah tersimpan dari keputusan sebelumnya.
+    if (!selectedFile && !existingDecision?.buktiUrl) {
+      setError('Bukti/dokumen pendukung wajib diunggah. Unggah bukti bahwa kerjasama ini tidak diperpanjang terlebih dahulu.');
+      return;
+    }
+
     setError(null);
     setIsConfirming(true);
     try {
@@ -178,7 +184,7 @@ export default function NonactiveConfirmationModal({
           {/* File Upload */}
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-gray-700">
-              Bukti/Dokumen Pendukung <span className="text-xs font-normal text-gray-500">(Opsional)</span>
+              Bukti/Dokumen Pendukung <span className="text-red-500">*</span> <span className="text-xs font-normal text-gray-500">(Wajib)</span>
             </label>
             <input
               ref={fileInputRef}

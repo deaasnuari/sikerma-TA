@@ -110,6 +110,10 @@ export default function RenewalFullForm({ initialData, onSubmit }: RenewalFullFo
       setError('Tanggal berakhir perpanjangan wajib diisi.');
       return;
     }
+    if (new Date(form.tanggalBerakhirBaru) < new Date(form.tanggalMulaiBaru)) {
+      setError('Tanggal berakhir tidak boleh lebih kecil dari tanggal mulai.');
+      return;
+    }
     if (!form.catatanPerpanjangan || form.catatanPerpanjangan.trim() === '') {
       setError('Alasan/catatan perpanjangan wajib diisi.');
       return;

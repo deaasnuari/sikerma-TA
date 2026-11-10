@@ -3,13 +3,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AdminNotification } from '@/types/admin';
 import {
-  deleteAllNotifications,
-  deleteNotification,
-  getAdminNotifications,
-  markAllNotificationsAsRead,
-  markNotificationAsRead,
-} from '@/services/adminService';
-import {
   bacaNotifikasi,
   bacaSemuaNotifikasi,
   fetchNotifikasi,
@@ -32,6 +25,13 @@ function waktuRelatif(iso: string | null): string {
   return new Date(iso).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+/** Tambahkan ?detail=ID agar klik notifikasi langsung membuka detail pengajuan terkait. */
+function hrefDenganDetail(href: string | null, pengajuanId?: number | null): string | undefined {
+  if (!href) return undefined;
+  if (!pengajuanId || href.includes('detail=')) return href;
+  return href + (href.includes('?') ? '&' : '?') + 'detail=' + pengajuanId;
+}
+
 function dariServer(n: NotifikasiServer): AdminNotification {
   return {
     id: n.id,
@@ -40,25 +40,18 @@ function dariServer(n: NotifikasiServer): AdminNotification {
     from: n.dari,
     read: n.dibaca,
     createdAt: waktuRelatif(n.dibuat_pada),
-    href: n.href ?? undefined,
+    href: hrefDenganDetail(n.href, n.pengajuan_id),
     category: (['approval', 'comment', 'reminder', 'info'].includes(n.kategori) ? n.kategori : 'info') as AdminNotification['category'],
     source: 'server',
   };
 }
 
 /**
- * Notifikasi lonceng = notifikasi dari SERVER (sampai ke perangkat mana pun, dibuat otomatis saat pengajuan,
- * keputusan, tahapan, atau perpanjangan berubah) + notifikasi lokal admin (konfirmasi aksi sendiri di browser ini).
+ * Notifikasi lonceng = SEMUA dari server (tabel notifikasi, per akun). Admin: broadcast ke semua admin dengan
+ * status baca masing-masing; Internal/External/Pimpinan: personal berdasarkan user_id. Tidak ada data lokal/dummy.
  */
 export function useNotifikasi(role?: string | null) {
-  const [server, setServer] = useState<AdminNotification[]>([]);
-  const [local, setLocal] = useState<AdminNotification[]>([]);
-
-  const muatLokal = useCallback(() => {
-    const semua = getAdminNotifications();
-    // Notifikasi lokal hanya konfirmasi aksi admin sendiri; tidak ada lagi yang ditujukan ke peran lain.
-    setLocal(semua.filter((n) => (role === 'admin' ? (n.targetRole ?? 'admin') === 'admin' : false)));
-  }, [role]);
+  const [notifications, setServer] = useState<AdminNotification[]>([]);
 
   const muatServer = useCallback(async () => {
     if (!role) {
@@ -74,65 +67,47 @@ export function useNotifikasi(role?: string | null) {
   }, [role]);
 
   useEffect(() => {
-    muatLokal();
     void muatServer();
 
-    const onLokal = () => muatLokal();
     const onVisible = () => {
       if (document.visibilityState === 'visible') void muatServer();
     };
     const timer = setInterval(onVisible, POLL_INTERVAL_MS);
 
-    const onServer = () => void muatServer();
-    window.addEventListener('admin-notifications-updated', onLokal);
+    // Beberapa aksi beruntun hanya memicu satu pengambilan (jeda singkat).
+    let tunda: ReturnType<typeof setTimeout> | undefined;
+    const onServer = () => {
+      clearTimeout(tunda);
+      tunda = setTimeout(() => void muatServer(), 400);
+    };
     window.addEventListener('notifikasi-server-updated', onServer);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(timer);
-      window.removeEventListener('admin-notifications-updated', onLokal);
+      clearTimeout(tunda);
       window.removeEventListener('notifikasi-server-updated', onServer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [muatLokal, muatServer]);
-
-  const notifications = [...server, ...local];
+  }, [muatServer]);
 
   const tandaiDibaca = (n: AdminNotification) => {
-    if (n.source === 'server') {
-      setServer((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
-      void bacaNotifikasi(n.id).catch(() => void muatServer());
-    } else {
-      markNotificationAsRead(n.id);
-      muatLokal();
-    }
+    setServer((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+    void bacaNotifikasi(n.id).catch(() => void muatServer());
   };
 
   const tandaiSemuaDibaca = () => {
     setServer((prev) => prev.map((x) => ({ ...x, read: true })));
     void bacaSemuaNotifikasi().catch(() => void muatServer());
-    if (role === 'admin') {
-      markAllNotificationsAsRead();
-      muatLokal();
-    }
   };
 
   const hapus = (n: AdminNotification) => {
-    if (n.source === 'server') {
-      setServer((prev) => prev.filter((x) => x.id !== n.id));
-      void hapusNotifikasi(n.id).catch(() => void muatServer());
-    } else {
-      deleteNotification(n.id);
-      muatLokal();
-    }
+    setServer((prev) => prev.filter((x) => x.id !== n.id));
+    void hapusNotifikasi(n.id).catch(() => void muatServer());
   };
 
   const hapusSemua = () => {
     setServer([]);
     void hapusSemuaNotifikasi().catch(() => void muatServer());
-    if (role === 'admin') {
-      deleteAllNotifications();
-      muatLokal();
-    }
   };
 
   return { notifications, tandaiDibaca, tandaiSemuaDibaca, hapus, hapusSemua };

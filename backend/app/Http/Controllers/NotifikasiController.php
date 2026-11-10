@@ -14,8 +14,16 @@ class NotifikasiController extends Controller
         $query = Notifikasi::query()->where('user_id', $request->user()->id);
 
         return response()->json([
-            'data' => (clone $query)->latest('id')->limit(100)->get()->map(fn (Notifikasi $n) => $this->map($n)),
+            'data' => (clone $query)->with('actor:id,name')->latest('id')->limit(100)->get()->map(fn (Notifikasi $n) => $this->map($n)),
             'belum_dibaca' => (clone $query)->whereNull('dibaca_pada')->count(),
+        ]);
+    }
+
+    /** Jumlah notifikasi belum dibaca milik pengguna yang login (untuk badge lonceng). */
+    public function jumlahBelumDibaca(Request $request): JsonResponse
+    {
+        return response()->json([
+            'belum_dibaca' => Notifikasi::query()->where('user_id', $request->user()->id)->whereNull('dibaca_pada')->count(),
         ]);
     }
 
@@ -74,7 +82,11 @@ class NotifikasiController extends Controller
             'dari' => $n->dari,
             'href' => $n->href,
             'kategori' => $n->kategori,
+            'jenis_aktivitas' => $n->jenis_aktivitas,
+            'pengajuan_id' => $n->pengajuan_id,
+            'nama_pelaku' => $n->actor?->name,
             'dibaca' => $n->dibaca_pada !== null,
+            'dibaca_pada' => $n->dibaca_pada?->toISOString(),
             'dibuat_pada' => $n->created_at?->toISOString(),
         ];
     }

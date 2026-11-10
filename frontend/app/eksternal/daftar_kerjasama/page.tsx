@@ -2,7 +2,7 @@
 
 import JenisBadges from '@/components/JenisBadges';
 
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Building2,
@@ -315,6 +315,18 @@ export default function DaftarKerjasamaEksternalPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
+
+  // Buka detail pengajuan saat diarahkan dari notifikasi lonceng (?detail=ID); hanya sekali per ID.
+  const detailDibukaRef = useRef<number | null>(null);
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get('detail')) || null;
+    if (!id || detailDibukaRef.current === id) return;
+    const target = data.find((item) => item.id === id);
+    if (target) {
+      detailDibukaRef.current = id;
+      setDetailItem(target);
+    }
+  }, [data]);
 
   // Modal detail yang sedang terbuka ikut diperbarui saat data baru masuk.
   useEffect(() => {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DokumenKerjasama;
 use App\Models\Pengajuan;
 use App\Models\PengajuanAktivitas;
+use App\Services\NotifikasiService;
 use App\Services\StructuralAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -213,6 +214,8 @@ class PengajuanAktivitasController extends Controller
 
         $aktivitas = PengajuanAktivitas::create($validated);
 
+        NotifikasiService::catatAksiInternal($request->user(), 'Aktivitas Ditambahkan', 'Anda menambahkan aktivitas "'.($aktivitas->judul ?? '-').'".', '/internal/story_aktivitas');
+
         return response([
             'success' => true,
             'data' => $aktivitas,
@@ -241,6 +244,8 @@ class PengajuanAktivitasController extends Controller
 
         $pengajuan_aktivitas->update($validated);
 
+        NotifikasiService::catatAksiInternal($request->user(), 'Aktivitas Diperbarui', 'Anda memperbarui aktivitas "'.($pengajuan_aktivitas->judul ?? '-').'".', '/internal/story_aktivitas');
+
         return response([
             'success' => true,
             'data' => $pengajuan_aktivitas,
@@ -254,7 +259,10 @@ class PengajuanAktivitasController extends Controller
             return $response;
         }
 
+        $judulAktivitas = $pengajuan_aktivitas->judul;
         $pengajuan_aktivitas->delete();
+
+        NotifikasiService::catatAksiInternal($request->user(), 'Aktivitas Dihapus', 'Anda menghapus aktivitas "'.($judulAktivitas ?? '-').'".', '/internal/story_aktivitas', 'reminder');
 
         return response([
             'success' => true,

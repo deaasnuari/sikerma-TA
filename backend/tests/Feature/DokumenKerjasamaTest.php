@@ -101,6 +101,18 @@ class DokumenKerjasamaTest extends TestCase
     // index (auth required)
     // ------------------------------------------------------------------
 
+    public function test_nomor_dokumen_sama_ditolak_dengan_pesan_bahasa_indonesia(): void
+    {
+        $admin = $this->admin();
+        $this->buatDokumen(['nomor_dokumen' => '016/MOU.PL29/XI/2026']);
+        $pengajuan = $this->buatPengajuanDenganNomor('PMH-DUP');
+
+        $this->actingAs($admin)
+            ->postJson('/api/dokumen-kerjasama/manual', $this->dataDokumen($pengajuan->nomor_pengajuan, ['nomor_dokumen' => '016/MOU.PL29/XI/2026']))
+            ->assertStatus(422)
+            ->assertJsonPath('errors.nomor_dokumen.0', 'Nomor dokumen sudah digunakan oleh dokumen lain. Gunakan nomor yang berbeda.');
+    }
+
     public function test_daftar_dokumen_berhasil(): void
     {
         $user = $this->admin();
@@ -315,6 +327,18 @@ class DokumenKerjasamaTest extends TestCase
         $admin   = $this->admin();
         $dokumen = $this->buatDokumen(['nomor_dokumen' => 'UPD-002', 'status_siklus' => 'active']);
 
+        // Tanpa bukti, keputusan tidak diperpanjang (arsip + alasan) ditolak.
+        $this->actingAs($admin)->putJson("/api/dokumen-kerjasama/{$dokumen->id}", [
+            'status_siklus' => 'archived',
+            'alasan_arsip'  => 'Masa berlaku habis',
+        ])->assertStatus(422)->assertJsonPath('message', 'Bukti/dokumen pendukung wajib diunggah untuk kerja sama yang tidak diperpanjang.');
+        $this->assertEquals('active', $dokumen->fresh()->status_siklus);
+
+        \App\Models\DokumenFile::create([
+            'dokumen_id' => $dokumen->id, 'peran_berkas' => 'bukti_tidak_diperpanjang',
+            'nama_file' => 'bukti.pdf', 'path_file' => 'bukti/bukti.pdf',
+        ]);
+
         $this->actingAs($admin)->putJson("/api/dokumen-kerjasama/{$dokumen->id}", [
             'status_siklus' => 'archived',
             'alasan_arsip'  => 'Masa berlaku habis',
@@ -525,6 +549,19 @@ class DokumenKerjasamaTest extends TestCase
             'bukti_perpanjangan' => 'data:application/pdf;base64,' . base64_encode('%PDF-1.4 test'),
             'bukti_perpanjangan_nama' => 'perpanjangan.pdf',
         ], $override);
+    }
+
+    public function test_perpanjangan_tanggal_terbalik_ditolak_dengan_pesan_bahasa_indonesia(): void
+    {
+        Storage::fake('public');
+        $pemilik = $this->internal();
+        $dokumen = $this->dokumenMilik($pemilik);
+
+        $this->actingAs($pemilik)->postJson(
+            "/api/dokumen-kerjasama/{$dokumen->id}/perpanjangan",
+            $this->payloadPerpanjangan(['tanggal_mulai_baru' => '2027-01-01', 'tanggal_berakhir_baru' => '2026-12-01'])
+        )->assertStatus(422)
+            ->assertJsonPath('errors.tanggal_berakhir_baru.0', 'Tanggal berakhir tidak boleh lebih kecil dari tanggal mulai.');
     }
 
     public function test_pemilik_dapat_ajukan_perpanjangan_dan_peran_ditentukan_server(): void

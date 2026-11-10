@@ -444,6 +444,12 @@ class PengajuanWorkflowTest extends TestCase
         ])->assertOk()->assertJsonPath('data.nama_dokumen', 'MOU Integrasi Updated');
 
         // Arsipkan dokumen
+        // Mengarsipkan dengan alasan (tidak diperpanjang) wajib disertai bukti yang sudah diunggah.
+        \App\Models\DokumenFile::create([
+            'dokumen_id' => $dokumenId, 'peran_berkas' => 'bukti_tidak_diperpanjang',
+            'nama_file' => 'bukti.pdf', 'path_file' => 'bukti/bukti.pdf',
+        ]);
+
         $this->actingAs($this->admin)->putJson("/api/dokumen-kerjasama/{$dokumenId}", [
             'status_siklus' => 'archived',
             'alasan_arsip'  => 'Masa berlaku telah habis',

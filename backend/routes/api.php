@@ -101,6 +101,7 @@ Route::middleware('auth:sanctum')->group(function () {
 	Route::delete('/admin/carousel-images/{carouselImage}', [CarouselImageController::class, 'destroy']);
 	// Notifikasi lonceng milik pengguna yang login (tersimpan di server).
 	Route::get('/notifikasi', [NotifikasiController::class, 'index']);
+	Route::get('/notifikasi/jumlah-belum-dibaca', [NotifikasiController::class, 'jumlahBelumDibaca']);
 	Route::post('/notifikasi/baca-semua', [NotifikasiController::class, 'bacaSemua']);
 	Route::post('/notifikasi/baca-href', [NotifikasiController::class, 'bacaHref']);
 	Route::delete('/notifikasi', [NotifikasiController::class, 'hapusSemua']);

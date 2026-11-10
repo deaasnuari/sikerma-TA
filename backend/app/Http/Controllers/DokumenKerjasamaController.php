@@ -178,7 +178,7 @@ class DokumenKerjasamaController extends Controller
     public function index(Request $request): Response
     {
         $query = DokumenKerjasama::query()->with([
-            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,pic_polibatam_nama,pic_polibatam_whatsapp,nama_mitra,email_pengusul,user_pengusul_id,final_approved_at',
+            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,whatsapp_mitra,no_telepon_mitra,email_mitra,pic_polibatam_nama,pic_polibatam_whatsapp,nama_mitra,email_pengusul,user_pengusul_id,final_approved_at',
             'pengajuan.userPengusul:id,role',
             // parent dimuat supaya Jurusan bisa diturunkan saat unitProdi-nya berupa Prodi (anak dari Jurusan).
             'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
@@ -349,7 +349,7 @@ class DokumenKerjasamaController extends Controller
         }
 
         $dokumen_kerjasama->load([
-            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,pic_polibatam_nama,pic_polibatam_whatsapp,nama_mitra,email_pengusul',
+            'pengajuan:id,nomor_pengajuan,nama_pengusul,whatsapp_pengusul,whatsapp_mitra,no_telepon_mitra,email_mitra,pic_polibatam_nama,pic_polibatam_whatsapp,nama_mitra,email_pengusul',
             'unitProdi:id,nama,jenis_node,kategori_unit,parent_id',
             'unitProdi.parent:id,nama,jenis_node,kategori_unit',
             'unitProdiItems:id,nama,jenis_node,kategori_unit,parent_id',
@@ -942,6 +942,10 @@ class DokumenKerjasamaController extends Controller
             'file' => ['required', 'string', 'max:255'],
             'keterangan' => ['nullable', 'string'],
             'follow_up' => ['nullable', 'string'],
+        ], [
+            'nomor_dokumen.unique' => 'Nomor dokumen sudah digunakan oleh dokumen lain. Gunakan nomor yang berbeda.',
+            'nomor_dokumen.required' => 'Nomor dokumen wajib diisi.',
+            'nomor_dokumen.max' => 'Nomor dokumen maksimal 100 karakter.',
         ]);
 
         $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
@@ -993,6 +997,10 @@ class DokumenKerjasamaController extends Controller
             'keterangan' => ['nullable', 'string'],
             'follow_up' => ['nullable', 'string'],
             'file' => ['nullable', 'string', 'max:255'],
+        ], [
+            'nomor_dokumen.unique' => 'Nomor dokumen sudah digunakan oleh dokumen lain. Gunakan nomor yang berbeda.',
+            'nomor_dokumen.required' => 'Nomor dokumen wajib diisi.',
+            'nomor_dokumen.max' => 'Nomor dokumen maksimal 100 karakter.',
         ]);
 
         $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
@@ -1053,10 +1061,29 @@ class DokumenKerjasamaController extends Controller
             'file' => ['sometimes', 'required', 'string', 'max:255'],
             'keterangan' => ['nullable', 'string'],
             'follow_up' => ['nullable', 'string'],
+        ], [
+            'nomor_dokumen.unique' => 'Nomor dokumen sudah digunakan oleh dokumen lain. Gunakan nomor yang berbeda.',
+            'nomor_dokumen.required' => 'Nomor dokumen wajib diisi.',
+            'nomor_dokumen.max' => 'Nomor dokumen maksimal 100 karakter.',
         ]);
 
         if (array_key_exists('jenis_dokumen', $validated)) {
             $validated['jenis_dokumen'] = strtoupper((string) $validated['jenis_dokumen']);
+        }
+
+        // Keputusan "tidak diperpanjang" (diarsipkan beserta alasan) WAJIB disertai bukti. Bukti diunggah lebih dulu
+        // lewat upload-file (peran bukti_tidak_diperpanjang), baru status diarsipkan.
+        if (($validated['status_siklus'] ?? null) === 'archived' && trim((string) ($validated['alasan_arsip'] ?? '')) !== '') {
+            $adaBukti = DokumenFile::query()
+                ->where('dokumen_id', $dokumen_kerjasama->id)
+                ->where('peran_berkas', 'bukti_tidak_diperpanjang')
+                ->exists();
+            if (! $adaBukti) {
+                return response([
+                    'success' => false,
+                    'message' => 'Bukti/dokumen pendukung wajib diunggah untuk kerja sama yang tidak diperpanjang.',
+                ], 422);
+            }
         }
 
         $unitProdiIds = UnitProdiSelection::extract($validated, $dokumen_kerjasama->unit_prodi_id);
@@ -1226,7 +1253,29 @@ class DokumenKerjasamaController extends Controller
         }
 
         $pathDihapus = (string) $dokumen_file->path_file;
+        $idBerkas = (int) $dokumen_file->id;
+        $namaBerkas = (string) ($dokumen_file->nama_file ?: basename($pathDihapus));
         $dokumen_file->delete();
+
+        // Admin menghapus berkas -> SEMUA akun admin (termasuk pelakunya) diberi tahu lengkap dengan nama admin,
+        // nama berkas, dan nomor pengajuan. Penghapusan oleh Internal/External tidak pernah sampai sini
+        // (endpoint ini khusus admin) sehingga tidak membuat notifikasi apa pun.
+        $namaAdmin = (string) ($request->user()?->name ?: 'Admin');
+        $nomorPengajuan = (string) ($dokumen_kerjasama->pengajuan?->nomor_pengajuan ?: $dokumen_kerjasama->no_permohonan ?: '-');
+        NotifikasiService::kirimKeAdmin(
+            'Berkas Dihapus',
+            'Admin '.$namaAdmin.' telah menghapus berkas '.$namaBerkas.' pada pengajuan '.$nomorPengajuan.'.',
+            '/admin/rekap_data',
+            'reminder',
+            null,
+            $namaAdmin,
+            [
+                'jenis' => 'berkas_dihapus',
+                'actor' => $request->user()?->id,
+                'pengajuan' => $dokumen_kerjasama->sumber_pengajuan_id ? (int) $dokumen_kerjasama->sumber_pengajuan_id : null,
+                'kunci' => 'berkas_dihapus:'.$idBerkas,
+            ]
+        );
 
         // Kolom 'file' menunjuk berkas utama; kalau yang dihapus justru berkas itu, arahkan ke berkas
         // yang tersisa (dokumen final lebih dulu) supaya tautan utama di Rekap Data tidak patah.
@@ -1279,6 +1328,16 @@ class DokumenKerjasamaController extends Controller
             $dokumen_kerjasama->dihapus_user_pada = now();
         }
         $dokumen_kerjasama->save();
+
+        if (! $isAdmin) {
+            NotifikasiService::catatAksiInternal(
+                $user,
+                'Dokumen Dihapus dari Daftar',
+                'Anda menghapus dokumen kerja sama '.($dokumen_kerjasama->nomor_dokumen ?? '').' dari daftar Anda.',
+                '/internal/rekap_data',
+                'reminder'
+            );
+        }
 
         return response([
             'success' => true,
@@ -1473,6 +1532,8 @@ class DokumenKerjasamaController extends Controller
             'ruang_lingkup.*' => ['string', 'max:150'],
             'requester_role' => ['nullable', 'in:admin,internal,eksternal,pimpinan'],
             'notification_href' => ['nullable', 'string', 'max:255'],
+        ], [
+            'tanggal_berakhir_baru.after_or_equal' => 'Tanggal berakhir tidak boleh lebih kecil dari tanggal mulai.',
         ]);
 
         $dokumen_kerjasama->loadMissing(['mitra:id,nama_mitra', 'unitProdi:id,nama', 'unitProdiItems:id,nama', 'pengajuan:id,whatsapp_pengusul']);
@@ -1548,9 +1609,15 @@ class DokumenKerjasamaController extends Controller
         $log->load(['dokumen:id,nomor_dokumen,mitra_id', 'dokumen.mitra:id,nama_mitra']);
 
         if (! $isAdmin) {
+            NotifikasiService::catatAksiInternal(
+                $request->user(),
+                'Permintaan Perpanjangan Dikirim',
+                'Anda mengajukan perpanjangan untuk kerja sama '.($log->dokumen?->mitra?->nama_mitra ?? ($log->dokumen?->nomor_dokumen ?? '-')).'. Menunggu keputusan admin.',
+                '/internal/rekap_data'
+            );
             NotifikasiService::kirimKeAdmin(
                 'Permintaan Perpanjangan Baru',
-                'Ada permintaan perpanjangan untuk kerja sama '.($log->dokumen?->mitra?->nama_mitra ?? ($log->dokumen?->nomor_dokumen ?? '-')).' yang menunggu keputusan.',
+                'Ada permintaan perpanjangan dari '.NotifikasiService::sebutPelaku($request->user()).' untuk kerja sama '.($log->dokumen?->mitra?->nama_mitra ?? ($log->dokumen?->nomor_dokumen ?? '-')).' yang menunggu keputusan.',
                 '/admin/monitoring/perpanjangan',
                 'reminder',
                 $request->user()?->id
@@ -1596,7 +1663,7 @@ class DokumenKerjasamaController extends Controller
             $pemilikId ? (int) $pemilikId : null,
             $request->user()?->id,
             $disetujui ? 'Perpanjangan Disetujui' : 'Perpanjangan Ditolak',
-            'Permintaan perpanjangan kerja sama '.($dokumenKeputusan?->nomor_dokumen ?? '').($disetujui ? ' disetujui admin.' : ' ditolak admin.'),
+            'Permintaan perpanjangan kerja sama '.($dokumenKeputusan?->nomor_dokumen ?? '').($disetujui ? ' disetujui oleh ' : ' ditolak oleh ').NotifikasiService::sebutPelaku($request->user()).'.',
             NotifikasiService::hrefUntuk($pemilikId ? (int) $pemilikId : null, 'rekap'),
             'approval'
         );

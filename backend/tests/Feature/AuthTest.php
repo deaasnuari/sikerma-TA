@@ -286,6 +286,18 @@ class AuthTest extends TestCase
             ->assertJsonPath('user.role', 'internal');
     }
 
+    public function test_login_ldap_server_kampus_tidak_aktif_menampilkan_pesan_bukan_error_500(): void
+    {
+        \Illuminate\Support\Facades\Http::fake(function () {
+            throw new \Illuminate\Http\Client\ConnectionException('Connection refused');
+        });
+
+        $this->postJson('/api/login-kampus', ['username' => 'dosen', 'password' => 'rahasia'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('password')
+            ->assertJsonPath('errors.password.0', 'Gagal terhubung ke layanan akun kampus. Silakan coba lagi nanti atau gunakan login dengan akun lain.');
+    }
+
     public function test_login_ldap_berhasil_untuk_akun_role_unit(): void
     {
         // Bug nyata: role 'unit' sempat tidak masuk ldapOnlyRoles(), jadi akun civitas

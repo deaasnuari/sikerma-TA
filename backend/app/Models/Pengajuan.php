@@ -68,6 +68,7 @@ class Pengajuan extends Model
         'bidang_usaha',
         'tingkat_perusahaan',
         'whatsapp_mitra',
+        'email_mitra',
         'no_telepon_mitra',
         'catatan',
         'keputusan',

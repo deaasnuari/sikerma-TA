@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -197,6 +197,18 @@ export default function InternalDataPengajuanPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
+
+  // Buka detail pengajuan saat diarahkan dari notifikasi lonceng (?detail=ID); hanya sekali per ID.
+  const detailTargetId = Number(searchParams.get('detail')) || null;
+  const detailDibukaRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!detailTargetId || detailDibukaRef.current === detailTargetId) return;
+    const target = pengajuanData.find((item) => item.id === detailTargetId);
+    if (target) {
+      detailDibukaRef.current = detailTargetId;
+      setDetailItem(target);
+    }
+  }, [detailTargetId, pengajuanData]);
 
   // Modal detail yang sedang terbuka ikut diperbarui saat data hasil polling masuk.
   useEffect(() => {

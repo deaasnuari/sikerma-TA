@@ -9,6 +9,8 @@ export type NotifikasiServer = {
   href: string | null;
   kategori: 'approval' | 'comment' | 'reminder' | 'info' | string;
   dibaca: boolean;
+  pengajuan_id?: number | null;
+  nama_pelaku?: string | null;
   dibuat_pada: string | null;
 };
 

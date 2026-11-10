@@ -57,6 +57,8 @@ export interface RekapDokumen {
   picPolibatamNama?: string;
   picPolibatamJabatan?: string;
   picPolibatamEmail?: string;
+  emailMitraUmum?: string;
+  emailPengusul?: string;
   picPolibatamTelepon?: string;
   emailMitra?: string;
   // No. Telepon mitra — terpisah dari WhatsApp di atas (master_mitra.no_telepon_mitra).

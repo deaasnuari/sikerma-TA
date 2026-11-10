@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\LaporanPelaksanaan;
 use App\Models\Pengajuan;
+use App\Services\NotifikasiService;
 use App\Support\Triwulan;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -196,6 +197,13 @@ class LaporanPelaksanaanController extends Controller
 
         $laporan = LaporanPelaksanaan::create($validated);
         $laporan->load(['dikirimOleh:id,name,role']);
+
+        NotifikasiService::catatAksiInternal(
+            $request->user(),
+            'Laporan Pelaksanaan Terkirim',
+            'Anda mengirim laporan pelaksanaan kerja sama '.($laporan->nomor_dokumen ?: ($laporan->judul_kerjasama ?: ($laporan->nama_mitra ?: ''))).'.',
+            '/internal/story_aktivitas'
+        );
 
         return response([
             'success' => true,

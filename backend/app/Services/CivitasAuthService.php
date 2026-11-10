@@ -30,9 +30,14 @@ class CivitasAuthService
         $path = '/api/auth/login-staff';
         $body = ['username' => $username, 'password' => $password];
 
-        $response = Http::withoutVerifying()->withHeaders($this->signedHeaders('POST', $path, $body))
-            ->timeout(15)
-            ->post($this->baseUrl.$path, $body);
+        try {
+            $response = Http::withoutVerifying()->withHeaders($this->signedHeaders('POST', $path, $body))
+                ->timeout(15)
+                ->post($this->baseUrl.$path, $body);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            // Server kampus mati / timeout / tidak terjangkau: tampilkan pesan biasa, jangan error 500.
+            throw new RuntimeException('Gagal terhubung ke layanan akun kampus. Silakan coba lagi nanti atau gunakan login dengan akun lain.');
+        }
 
         $payload = $response->json();
 

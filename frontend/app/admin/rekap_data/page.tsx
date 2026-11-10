@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Activity, CalendarDays, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2, Upload, Eye, Building2, FileText, Hash, Phone, User, CheckCircle2, Clock, XCircle, Download, Paperclip, RefreshCw, CheckSquare, Square, Tag, MapPin, Globe2, Target, Timer, ListChecks } from 'lucide-react';
+import { Activity, CalendarDays, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2, Upload, Eye, Building2, FileText, Hash, Phone, Mail, User, CheckCircle2, Clock, XCircle, Download, Paperclip, RefreshCw, CheckSquare, Square, Tag, MapPin, Globe2, Target, Timer, ListChecks } from 'lucide-react';
 import TambahDokumenModal from './TambahDokumenModal';
 import MonevTriwulanSection from './MonevTriwulanSection';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
@@ -32,7 +32,6 @@ import { createDokumenKerjasama, dataUrlToBlob, deleteDokumenFileById, deleteDok
 import { exportToExcel } from '@/lib/exportExcel';
 import { getMasterUnitProdi } from '@/services/masterUnitProdiService';
 import { updateMasterMitra, upsertMasterMitraByName } from '@/services/masterMitraService';
-import { generateNoDokumen } from '@/services/adminMonitoringService';
 import { getRenewalRequests, type RenewalRequestItem } from '@/services/adminRenewalRequestService';
 import { getPageNumbers } from '@/lib/pagination';
 import JenisBerkasBadge from '@/components/JenisBerkasBadge';
@@ -1204,7 +1203,7 @@ export default function RekapDataPage() {
               <div className="rounded-xl border border-green-100 bg-green-50 px-4 py-3">
                 <div className="mb-3 flex items-center gap-2">
                   <Phone size={15} className="shrink-0 text-green-600" />
-                  <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Kontak WhatsApp</p>
+                  <p className="text-[10.5px] font-medium text-gray-500 uppercase tracking-wide">Kontak WhatsApp &amp; Email</p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
                   {[
@@ -1214,6 +1213,7 @@ export default function RekapDataPage() {
                       jabatan: undefined as string | undefined,
                       tampil: detailItem.whatsappMitraUmum,
                       url: (pesan: string) => buatUrlWhatsApp(detailItem.whatsappMitraUmum, pesan),
+                      email: detailItem.emailMitraUmum,
                       kepada: detailItem.picMitra,
                     },
                     {
@@ -1222,6 +1222,7 @@ export default function RekapDataPage() {
                       jabatan: detailItem.jabatanPicMitra,
                       tampil: detailItem.whatsappPicMitra,
                       url: (pesan: string) => buatUrlWhatsApp(detailItem.whatsappPicMitra, pesan),
+                      email: detailItem.emailPicMitra || detailItem.emailPengusul,
                       kepada: detailItem.picMitra,
                     },
                     {
@@ -1230,6 +1231,7 @@ export default function RekapDataPage() {
                       jabatan: detailItem.picPolibatamJabatan,
                       tampil: detailItem.picPolibatamTelepon ? `+62 ${detailItem.picPolibatamTelepon}` : undefined,
                       url: (pesan: string) => buatUrlWhatsAppPolibatam(detailItem.picPolibatamTelepon, pesan),
+                      email: detailItem.picPolibatamEmail,
                       kepada: detailItem.picPolibatamNama,
                     },
                   ].map((kontak) => {
@@ -1254,6 +1256,19 @@ export default function RekapDataPage() {
                             </a>
                           ) : (
                             <p className="text-[12px] font-medium text-gray-400">Nomor belum diisi</p>
+                          )}
+                          {kontak.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kontak.email.trim()) ? (
+                            <a
+                              href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(kontak.email.trim())}&su=${encodeURIComponent(`Kerja Sama ${detailItem.judulKegiatan || detailItem.namaMitra || ''}`.trim())}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-1.5 flex items-center gap-1.5 break-all text-[12px] font-semibold text-[#1E376C] hover:underline"
+                            >
+                              <Mail size={12} className="shrink-0" />
+                              {kontak.email}
+                            </a>
+                          ) : (
+                            <p className="mt-1.5 text-[12px] font-medium text-gray-400">Email belum diisi</p>
                           )}
                         </div>
                       </div>
@@ -1591,14 +1606,12 @@ export default function RekapDataPage() {
             // Kode Perusahaan mengikuti Data Kemitraan lewat mitra_id — tidak dikirim manual.
             const mitraId = await resolveMitraId(data);
 
-            // Nomor dokumen dari modal dihitung dari localStorage (tidak lagi terisi sejak
-            // create langsung ke backend), jadi generate ulang dari data rekap asli agar unik.
-            const nomorDokumen = generateNoDokumen({
-              urutan: rekapData.length + 1,
-              jenis: data.jenisDokumen as 'MoU' | 'MoA' | 'IA',
-              tanggal: data.tanggalMulai,
-              unitName: data.unitKerja,
-            });
+            // Nomor dokumen diketik manual di form; server menolak bila sudah dipakai dokumen lain.
+            const nomorDokumen = String(data.nomorDokumen || '').trim();
+            if (!nomorDokumen) {
+              setFeedbackModal({ title: 'Gagal Menambahkan Dokumen', message: 'Nomor dokumen wajib diisi.' });
+              return;
+            }
 
             const created = await createDokumenKerjasama({
               nomor_dokumen: nomorDokumen,

@@ -1,5 +1,6 @@
 'use client';
 
+import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { CalendarDays, CheckCircle, ChevronDown, Download, MessageCircle, Paperclip, Pencil, Plus, Upload, X } from 'lucide-react';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
@@ -296,6 +297,9 @@ export default function AdminAjukanKerjasamaForm({
   onSubmitOverride,
 }: InternalAjukanKerjasamaFormProps) {
   const router = useRouter();
+  const { user: akunLogin } = useAuth();
+  // Draf disimpan PER AKUN: hanya dipulihkan untuk akun (id) yang sama, tidak pernah untuk akun lain.
+  const draftKey = akunLogin?.id ? `${INTERNAL_PENGAJUAN_DRAFT_KEY}:u${akunLogin.id}` : null;
   const [asal, setAsal] = useState<'Jurusan' | 'Unit'>('Jurusan');
   const [dokumen, setDokumen] = useState<{ file: File; dataUrl?: string }[]>([]);
   const [dokumenPendukung, setDokumenPendukung] = useState<{ file: File; dataUrl?: string }[]>([]);
@@ -555,8 +559,15 @@ export default function AdminAjukanKerjasamaForm({
       return;
     }
 
+    if (!draftKey) {
+      return;
+    }
+
     try {
-      const storedRaw = window.localStorage.getItem(INTERNAL_PENGAJUAN_DRAFT_KEY);
+      // Draf lama tanpa id akun (format sebelumnya) bisa milik siapa saja: dibuang.
+      window.localStorage.removeItem(INTERNAL_PENGAJUAN_DRAFT_KEY);
+
+      const storedRaw = window.localStorage.getItem(draftKey);
       if (!storedRaw) {
         return;
       }
@@ -577,7 +588,7 @@ export default function AdminAjukanKerjasamaForm({
     } catch {
       // Abaikan draft rusak agar form tetap bisa dipakai normal.
     }
-  }, [initialData, initialFileAttachments]);
+  }, [initialData, initialFileAttachments, draftKey]);
 
   useEffect(() => {
     if (!enableAppearanceEdit || typeof window === 'undefined') {
@@ -610,7 +621,7 @@ export default function AdminAjukanKerjasamaForm({
   }, [appearanceStorageKey, enableAppearanceEdit]);
 
   useEffect(() => {
-    if (disableDraftPersistence || initialData) {
+    if (disableDraftPersistence || initialData || !draftKey) {
       return;
     }
 
@@ -634,7 +645,7 @@ export default function AdminAjukanKerjasamaForm({
 
     let idleId: number | null = null;
     const timer = window.setTimeout(() => {
-      const writeDraft = () => window.localStorage.setItem(INTERNAL_PENGAJUAN_DRAFT_KEY, JSON.stringify(draft));
+      const writeDraft = () => window.localStorage.setItem(draftKey, JSON.stringify(draft));
 
       if (typeof window.requestIdleCallback === 'function') {
         idleId = window.requestIdleCallback(writeDraft, { timeout: 1200 });
@@ -650,7 +661,7 @@ export default function AdminAjukanKerjasamaForm({
         window.cancelIdleCallback(idleId);
       }
     };
-  }, [asal, formData, selectedRuangLingkup, customJurusanOpts, customUnitOpts, customNegaraOpts, disableDraftPersistence, initialData]);
+  }, [asal, formData, selectedRuangLingkup, customJurusanOpts, customUnitOpts, customNegaraOpts, disableDraftPersistence, initialData, draftKey]);
 
   useEffect(() => {
     if (!enableAppearanceEdit || typeof window === 'undefined') {
@@ -1011,6 +1022,7 @@ export default function AdminAjukanKerjasamaForm({
         emailPengusul: formData.emailKontak,
         whatsappPengusul: formData.teleponKontak,
         mitraTelepon: formData.teleponMitra,
+        mitraEmail: formData.emailMitra.trim() || undefined,
         mitraNoTelepon: formData.noTeleponMitra,
         ruangLingkup: selectedRuangLingkup,
         ruangLingkupIds: (selectedRuangLingkup || []).map((name) => masterRuangLingkupRows.find((r) => r.nama_ruang_lingkup === name)?.id).filter(Boolean) as number[],
@@ -1022,7 +1034,7 @@ export default function AdminAjukanKerjasamaForm({
     }
 
     if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(INTERNAL_PENGAJUAN_DRAFT_KEY);
+      if (draftKey) window.localStorage.removeItem(draftKey);
     }
 
     setSubmittedInfo({

@@ -3,6 +3,7 @@
 import JenisBadges from '@/components/JenisBadges';
 
 import { useState } from 'react';
+import { buatUrlWhatsApp } from '@/lib/whatsappPesan';
 import { ArrowLeft, Calendar, CheckCircle2, Clock, Download, FileText, Mail, Pencil, Phone, User } from 'lucide-react';
 import { generateNoDokumen } from '@/services/adminMonitoringService';
 import type { PengajuanItem } from '@/services/adminPengajuanService';
@@ -558,7 +559,18 @@ function TabKontak({ kontak }: { kontak: KontakMitra | null }) {
           </div>
           <div>
             <p className="text-[10px] text-gray-500">Email</p>
-            <p className="text-[12px] font-medium text-gray-900">{kontak.email}</p>
+            {/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kontak.email.trim()) ? (
+              <a
+                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(kontak.email.trim())}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="break-all text-[12px] font-medium text-[#1E376C] hover:underline"
+              >
+                {kontak.email}
+              </a>
+            ) : (
+              <p className="text-[12px] font-medium text-gray-900">{kontak.email}</p>
+            )}
           </div>
         </div>
 
@@ -569,7 +581,18 @@ function TabKontak({ kontak }: { kontak: KontakMitra | null }) {
           </div>
           <div>
             <p className="text-[10px] text-gray-500">Telepon</p>
-            <p className="text-[12px] font-medium text-gray-900">{kontak.telepon}</p>
+            {buatUrlWhatsApp(kontak.telepon === '-' ? '' : kontak.telepon) ? (
+              <a
+                href={buatUrlWhatsApp(kontak.telepon) ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[12px] font-medium text-green-700 hover:underline"
+              >
+                {kontak.telepon}
+              </a>
+            ) : (
+              <p className="text-[12px] font-medium text-gray-900">{kontak.telepon}</p>
+            )}
           </div>
         </div>
       </div>

@@ -165,26 +165,24 @@ export default function PimpinanPage() {
   }, []);
 
   const statCards = [
-    { label: 'Total Kerjasama Aktif', value: kerjasamaAktif, icon: FileCheck, bg: 'bg-[#0F2A44]' },
-    { label: 'Kerjasama Tidak Aktif', value: kerjasamaTidakAktif, icon: FileText, bg: 'bg-[#0F2A44]' },
-    { label: 'Dalam Negeri', value: dalamNegeri, icon: Globe, bg: 'bg-[#0F2A44]' },
-    { label: 'Luar Negeri', value: luarNegeri, icon: Landmark, bg: 'bg-[#0F2A44]' },
-    { label: 'Total Mitra', value: totalMitra, icon: Users, bg: 'bg-[#0F2A44]' },
+    { label: 'Total Kerjasama Aktif', value: kerjasamaAktif, icon: FileCheck, bg: 'bg-green-50 border-green-100', text: 'text-green-700', iconBg: 'bg-green-100' },
+    { label: 'Kerjasama Tidak Aktif', value: kerjasamaTidakAktif, icon: FileText, bg: 'bg-red-50 border-red-100', text: 'text-red-700', iconBg: 'bg-red-100' },
+    { label: 'Dalam Negeri', value: dalamNegeri, icon: Globe, bg: 'bg-blue-50 border-blue-100', text: 'text-blue-700', iconBg: 'bg-blue-100' },
+    { label: 'Luar Negeri', value: luarNegeri, icon: Landmark, bg: 'bg-purple-50 border-purple-100', text: 'text-purple-700', iconBg: 'bg-purple-100' },
+    { label: 'Total Mitra', value: totalMitra, icon: Users, bg: 'bg-orange-50 border-orange-100', text: 'text-orange-700', iconBg: 'bg-orange-100' },
   ];
 
   return (
     <div className="space-y-5">
       {/* ── Welcome Banner ── */}
       <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[#0B1D34] to-[#163B6E] px-5 py-5 text-white">
-        <div className="relative z-10">
-          <h1 className="text-xl font-bold">Dashboard Eksekutif</h1>
-          <p className="mt-1 text-sm text-blue-200">
-            Selamat datang, {user?.name || 'Pimpinan'}
-          </p>
-          <p className="text-xs text-blue-300">Direktur — Politeknik Negeri Batam</p>
-        </div>
-        <div className="absolute top-4 right-6 text-right text-xs text-blue-300">
-          <p className="font-semibold text-white text-sm">{formatDate()}</p>
+        <div className="relative z-10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-bold">Dashboard Eksekutif</h1>
+            <p className="mt-1 text-sm text-blue-200">Selamat datang, {user?.name || 'Pimpinan'}</p>
+            <p className="text-xs text-blue-300">Direktur — Politeknik Negeri Batam</p>
+          </div>
+          <p className="text-sm font-semibold text-white sm:text-right">{formatDate()}</p>
         </div>
         <div className="pointer-events-none absolute -right-10 -bottom-10 h-40 w-40 rounded-full bg-white/5" />
         <div className="pointer-events-none absolute -right-4 -top-8 h-28 w-28 rounded-full bg-white/5" />
@@ -241,16 +239,13 @@ export default function PimpinanPage() {
         {statCards.map((c) => {
           const Icon = c.icon;
           return (
-            <div
-              key={c.label}
-              className={`${c.bg} flex items-center gap-3 rounded-xl px-3.5 py-3.5 text-white`}
-            >
-              <div>
-                <p className="text-xl font-bold">{c.value}</p>
-                <p className="text-[11px] leading-tight text-blue-200">{c.label}</p>
+            <div key={c.label} className={`${c.bg} flex items-center gap-3 rounded-xl border px-4 py-3`}>
+              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${c.iconBg} ${c.text}`}>
+                <Icon size={18} />
               </div>
-              <div className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
-                <Icon size={16} />
+              <div className="min-w-0">
+                <p className={`truncate text-[11px] font-semibold ${c.text}`}>{c.label}</p>
+                <p className="text-xl font-bold leading-tight tabular-nums text-gray-900">{c.value}</p>
               </div>
             </div>
           );
@@ -258,10 +253,10 @@ export default function PimpinanPage() {
       </div>
 
       {/* ── Statistik Kerjasama (sama persis dengan landing page) ── */}
-      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-8">
-        <div className="mb-6">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
+        <div className="mb-4">
           <p className="text-[11.5px] font-semibold text-[#173B82]">Statistik Kerjasama</p>
-          <h2 className="text-[20px] font-bold text-slate-900">Gambaran umum kolaborasi Polibatam</h2>
+          <h2 className="text-[18px] font-bold text-slate-900">Gambaran umum kolaborasi Polibatam</h2>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">

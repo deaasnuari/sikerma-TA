@@ -127,6 +127,10 @@ type ApiDokumenRow = {
     nomor_pengajuan: string;
     nama_pengusul: string;
     whatsapp_pengusul?: string;
+    whatsapp_mitra?: string | null;
+    no_telepon_mitra?: string | null;
+    email_mitra?: string | null;
+    email_pengusul?: string;
     pic_polibatam_nama?: string | null;
     pic_polibatam_whatsapp?: string | null;
     nama_mitra?: string | null;
@@ -444,10 +448,10 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
 
       bidangUsaha: row.mitra?.bidang_usaha || row.snap_bidang_usaha || undefined,
       alamatMitra: row.mitra?.alamat || undefined,
-      noTeleponMitra: row.mitra?.no_telepon_mitra || undefined,
-      picMitra: row.mitra?.nama_kontak_utama || undefined,
+      noTeleponMitra: row.mitra?.no_telepon_mitra || row.pengajuan?.no_telepon_mitra || undefined,
+      picMitra: row.mitra?.nama_kontak_utama || row.pengajuan?.nama_pengusul || undefined,
       // Tiga nomor WhatsApp berbeda untuk detail Rekap: kantor/umum mitra, PIC mitra, dan PIC Polibatam.
-      whatsappMitraUmum: row.mitra?.whatsapp_mitra || undefined,
+      whatsappMitraUmum: row.mitra?.whatsapp_mitra || row.pengajuan?.whatsapp_mitra || undefined,
       whatsappPicMitra: row.pengajuan?.whatsapp_pengusul || row.snap_whatsapp_pengusul || undefined,
       picPolibatamNama: row.snap_pic_polibatam_nama || row.pengajuan?.pic_polibatam_nama || undefined,
       picPolibatamJabatan: row.snap_pic_polibatam_jabatan || undefined,
@@ -455,6 +459,8 @@ export async function fetchRekapDokumenFromApi(options?: { forceRefresh?: boolea
       picPolibatamTelepon: row.snap_pic_polibatam_whatsapp || row.pengajuan?.pic_polibatam_whatsapp || undefined,
       jabatanPicMitra: row.mitra?.jabatan_kontak_utama || undefined,
       emailPicMitra: row.mitra?.email_kontak_utama || undefined,
+      emailMitraUmum: row.mitra?.email_mitra || row.pengajuan?.email_mitra || undefined,
+      emailPengusul: row.pengajuan?.email_pengusul || row.snap_email_pengusul || undefined,
       picJurusanUnit: row.pengajuan?.nama_pengusul || row.snap_nama_pengusul || undefined,
       tingkatInternasional,
       tingkatNasional,

@@ -226,7 +226,7 @@ export default function SampahDokumenPage() {
           </div>
 
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            <label className="relative w-full">
+            <label className="relative w-full min-w-0 md:flex-1">
               <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
@@ -237,24 +237,26 @@ export default function SampahDokumenPage() {
               />
             </label>
 
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center gap-2 md:justify-end">
               {selectedVisibleIds.length > 0 && (
                 <>
                   <button
                     type="button"
                     onClick={() => setBulkAction('restore')}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-green-300 bg-green-50 px-4 text-[12px] font-semibold text-green-700 hover:bg-green-100"
+                    className="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-emerald-300 bg-emerald-50 px-4 text-[12px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
                   >
                     <RotateCcw size={14} />
-                    Pulihkan ({selectedVisibleIds.length})
+                    Pulihkan
+                    <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold leading-none text-white">{selectedVisibleIds.length}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setBulkAction('delete')}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 text-[12px] font-semibold text-white hover:bg-red-700"
+                    className="inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-red-600 px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-red-700"
                   >
                     <Trash2 size={14} />
-                    Hapus Permanen ({selectedVisibleIds.length})
+                    Hapus Permanen
+                    <span className="rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-bold leading-none text-white">{selectedVisibleIds.length}</span>
                   </button>
                 </>
               )}
