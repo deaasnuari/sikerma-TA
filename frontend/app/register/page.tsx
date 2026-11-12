@@ -67,7 +67,7 @@ export default function RegisterPage() {
   const [form, setForm] = useState({
     name: '',
     institution_name: '',
-    negara: 'Indonesia',
+    negara: '',
     username: '',
     email: '',
     phone: '',
@@ -78,7 +78,7 @@ export default function RegisterPage() {
     password: '',
     password_confirmation: '',
   });
-  const [phoneCode, setPhoneCode] = useState('+62');
+  const [phoneCode, setPhoneCode] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
