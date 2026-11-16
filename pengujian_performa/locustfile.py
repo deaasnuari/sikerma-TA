@@ -93,25 +93,26 @@ class _PenggunaLogin(HttpUser):
         self.client.headers.update({"Accept": "application/json", "Authorization": f"Bearer {token or ''}"})
 
     def _get(self, path: str, nama: str | None = None):
-        self.client.get(path, name=nama or path)
+        self.client.get(path, name=nama or path, timeout=30)
 
 
 class Publik(HttpUser):
-    """Pengunjung landing page (tanpa login)."""
+    """Pengunjung landing page (tanpa login). Jeda lebih lama: permintaan tanpa login dibatasi 120/menit per IP,
+    dan semua pengguna virtual berasal dari satu IP (komputer ini)."""
     weight = 2
-    wait_time = between(1, 3)
+    wait_time = between(5, 10)
 
     @task(3)
     def statistik(self):
-        self.client.get("/api/public/stats", name="/api/public/stats")
+        self.client.get("/api/public/stats", name="/api/public/stats", timeout=30)
 
     @task(2)
     def kerjasama_publik(self):
-        self.client.get("/api/public/kerjasama", name="/api/public/kerjasama")
+        self.client.get("/api/public/kerjasama", name="/api/public/kerjasama", timeout=30)
 
     @task(1)
     def carousel(self):
-        self.client.get("/api/carousel-images", name="/api/carousel-images")
+        self.client.get("/api/carousel-images", name="/api/carousel-images", timeout=30)
 
 
 class Admin(_PenggunaLogin):
@@ -179,6 +180,64 @@ class Internal(_PenggunaLogin):
     @task(5)
     def lonceng_notifikasi(self):
         self._get("/api/notifikasi/jumlah-belum-dibaca")
+
+
+def _muat_token_logout() -> list[str]:
+    berkas = os.path.join(os.path.dirname(os.path.abspath(__file__)), "token_logout.txt")
+    try:
+        with open(berkas, encoding="utf-8") as f:
+            return [baris.strip() for baris in f if baris.strip()]
+    except OSError:
+        return []
+
+
+_TOKEN_LOGOUT = _muat_token_logout()
+_antrean_logout = iter(_TOKEN_LOGOUT)  # tiap token dipakai SEKALI (logout menghapusnya)
+
+
+def _token_logout_berikutnya():
+    with _lock:
+        return next(_antrean_logout, None)
+
+
+class Logout(HttpUser):
+    """Skenario logout: tiap pengguna memakai token sendiri (sekali pakai), membuka beberapa halaman,
+    lalu POST /api/logout. Sesudahnya token harus DITOLAK (401) -> itu hasil yang benar, bukan kegagalan.
+    Token disiapkan segarkan_token.php (token_logout.txt). Bila token habis, pengguna ini berhenti."""
+    weight = 1 if _TOKEN_LOGOUT else 0
+    wait_time = between(8, 15)
+
+    def on_start(self):
+        self.token = _token_logout_berikutnya()
+        if not self.token:
+            self.stop(True)
+            return
+        self.client.headers.update({"Accept": "application/json", "Authorization": f"Bearer {self.token}"})
+
+    @task
+    def sesi_lalu_logout(self):
+        # 1. Aktivitas singkat saat masih login
+        self.client.get("/api/notifikasi/jumlah-belum-dibaca", name="/api/notifikasi/jumlah-belum-dibaca (logout)", timeout=30)
+        self.client.get("/api/dokumen-kerjasama", name="/api/dokumen-kerjasama (logout)", timeout=30)
+
+        # 2. Logout: harus 200
+        self.client.post("/api/logout", name="POST /api/logout", timeout=30)
+
+        # 3. Token sudah dihapus: akses ulang HARUS 401 (200 = logout tidak benar-benar mencabut token)
+        with self.client.get(
+            "/api/notifikasi/jumlah-belum-dibaca", name="GET setelah logout (harus 401)", timeout=30, catch_response=True
+        ) as r:
+            if r.status_code == 401:
+                r.success()
+            else:
+                r.failure(f"Setelah logout harusnya 401, dapat {r.status_code}")
+
+        # 4. Ambil token baru untuk sesi berikutnya (mensimulasikan login ulang)
+        self.token = _token_logout_berikutnya()
+        if not self.token:
+            self.stop(True)
+            return
+        self.client.headers.update({"Authorization": f"Bearer {self.token}"})
 
 
 class Eksternal(_PenggunaLogin):

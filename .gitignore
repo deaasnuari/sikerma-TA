@@ -79,3 +79,6 @@ Thumbs.db
 # Mengabaikan script ad-hoc/testing lokal di folder backend
 /backend/fix_*.php
 /backend/test_*.php
+# token uji performa (rahasia)
+pengujian_performa/env_uji.ps1
+pengujian_performa/token_logout.txt
