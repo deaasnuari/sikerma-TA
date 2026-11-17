@@ -1,0 +1,4 @@
+Method,Name,Error,Occurrences
+GET,/api/notifikasi/jumlah-belum-dibaca (logout),HTTPError('401 Client Error: Unauthorized for url: /api/notifikasi/jumlah-belum-dibaca (logout)'),34
+GET,/api/dokumen-kerjasama (logout),HTTPError('401 Client Error: Unauthorized for url: /api/dokumen-kerjasama (logout)'),34
+POST,POST /api/logout,HTTPError('401 Client Error: Unauthorized for url: POST /api/logout'),34
