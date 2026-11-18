@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\AksesKerjaSama;
 use App\Models\DokumenKerjasama;
 use App\Models\Pengajuan;
 use App\Models\PengajuanAktivitas;
@@ -13,6 +14,8 @@ use Illuminate\Validation\Rule;
 
 class PengajuanAktivitasController extends Controller
 {
+    use AksesKerjaSama;
+
     private function baseValidationRules(): array
     {
         return [
@@ -42,124 +45,12 @@ class PengajuanAktivitasController extends Controller
     }
 
     /**
-     * ID pengajuan yang boleh DILIHAT — pemilik, yang di-CC admin lewat distribusi_user_ids,
-     * ATAU (khusus internal/unit yang terdeteksi Ketua Jurusan/Ketua Prodi/Kepala Unit lewat
-     * StructuralAccessService) pengajuan dalam cakupan jurusan/prodi/unit yang dia pimpin.
-     * Null berarti tidak ada batasan (admin/admin-humas) — cerminan dari
-     * PengajuanController::index() supaya "Story & Aktivitas" konsisten dengan Data Pengajuan.
-     */
-    private function viewablePengajuanIds(Request $request): ?array
-    {
-        if ($this->isAdminRole($request)) {
-            return null;
-        }
-
-        $user = $request->user();
-        if (!$user) {
-            return [];
-        }
-
-        $query = Pengajuan::query()->where(function ($builder) use ($user) {
-            $builder->where('user_pengusul_id', $user->id)
-                ->orWhereJsonContains('distribusi_user_ids', $user->id);
-        });
-
-        if (in_array($this->normalizedRole($request), ['internal', 'unit', 'jurusan', 'prodi'], true)) {
-            $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
-            $scopedUnitProdiIds = app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access);
-
-            if ($scopedUnitProdiIds) {
-                $query->orWhere(fn ($q) => $q->dalamUnitProdi($scopedUnitProdiIds));
-            }
-        }
-
-        return $query->pluck('id')->all();
-    }
-
-    /**
-     * unit_prodi_id yang berada dalam cakupan struktural user (Ketua Jurusan/Prodi/Kepala Unit).
-     * Kosong untuk role/akun tanpa jabatan struktural.
-     *
-     * @return array<int, int>
-     */
-    private function scopedUnitProdiIds(Request $request): array
-    {
-        $user = $request->user();
-        if (!$user || !in_array($this->normalizedRole($request), ['internal', 'unit', 'jurusan', 'prodi'], true)) {
-            return [];
-        }
-
-        $access = app(StructuralAccessService::class)->getUserStructuralAccess($user);
-
-        return app(StructuralAccessService::class)->resolveScopedUnitProdiIds($access) ?? [];
-    }
-
-    /**
-     * ID dokumen_kerjasama yang boleh dilihat non-admin: berasal dari pengajuan yang boleh
-     * dilihat, dibuat sendiri oleh user, ATAU berada dalam cakupan jurusan/prodi/unit yang
-     * dipimpin user (LDAP Ketua Jurusan/Prodi/Kepala Unit). Null untuk admin.
-     *
-     * @param  array<int, int>|null  $viewablePengajuanIds
-     */
-    private function viewableDokumenIds(Request $request, ?array $viewablePengajuanIds): ?array
-    {
-        if ($viewablePengajuanIds === null) {
-            return null;
-        }
-
-        $user = $request->user();
-        $scopedUnitProdiIds = $this->scopedUnitProdiIds($request);
-
-        return DokumenKerjasama::query()
-            ->where(function ($builder) use ($viewablePengajuanIds, $user, $scopedUnitProdiIds) {
-                $builder->whereIn('sumber_pengajuan_id', $viewablePengajuanIds);
-                if ($user) {
-                    $builder->orWhere('dibuat_oleh_user_id', $user->id);
-                }
-                if ($scopedUnitProdiIds) {
-                    $builder->orWhere(fn ($q) => $q->dalamUnitProdi($scopedUnitProdiIds));
-                }
-            })
-            ->pluck('id')->all();
-    }
-
-    /**
      * Hanya admin, PEMILIK pengajuan sumbernya, ATAU pembuat dokumen kerja samanya yang
      * boleh menambah/mengubah/menghapus aktivitas. User yang cuma di-CC hanya bisa melihat.
      */
     private function ensureCanManage(Request $request, ?int $pengajuanId, ?int $dokumenId): ?Response
     {
-        if ($this->isAdminRole($request)) {
-            return null;
-        }
-
-        $user = $request->user();
-        if (!$user) {
-            return $this->tolakKelola();
-        }
-
-        if ($pengajuanId && Pengajuan::query()->whereKey($pengajuanId)->where('user_pengusul_id', $user->id)->exists()) {
-            return null;
-        }
-
-        if ($dokumenId) {
-            $dokumen = DokumenKerjasama::query()->find($dokumenId);
-            if ($dokumen) {
-                if ((int) $dokumen->dibuat_oleh_user_id === (int) $user->id) {
-                    return null;
-                }
-                if ($dokumen->sumber_pengajuan_id
-                    && Pengajuan::query()->whereKey($dokumen->sumber_pengajuan_id)->where('user_pengusul_id', $user->id)->exists()) {
-                    return null;
-                }
-                $scopedUnitProdiIds = $this->scopedUnitProdiIds($request);
-                if ($scopedUnitProdiIds && $dokumen->termasukUnitProdi($scopedUnitProdiIds)) {
-                    return null;
-                }
-            }
-        }
-
-        return $this->tolakKelola();
+        return $this->bolehKelolaKerjaSama($request, $pengajuanId, $dokumenId) ? null : $this->tolakKelola();
     }
 
     private function tolakKelola(): Response
@@ -209,6 +100,10 @@ class PengajuanAktivitasController extends Controller
             return $response;
         }
 
+        if ($pesan = $this->tolakJikaDokumenDiSampah($dokumenId)) {
+            return response(['success' => false, 'message' => $pesan], 422);
+        }
+
         $validated['jumlah_peserta'] = (int) ($validated['jumlah_peserta'] ?? 0);
         $validated['dibuat_oleh_user_id'] = $request->user()?->id;
 
@@ -236,6 +131,10 @@ class PengajuanAktivitasController extends Controller
 
         if ($response = $this->ensureCanManage($request, $pengajuanId, $dokumenId)) {
             return $response;
+        }
+
+        if ($pesan = $this->tolakJikaDokumenDiSampah($dokumenId)) {
+            return response(['success' => false, 'message' => $pesan], 422);
         }
 
         $validated['jumlah_peserta'] = (int) ($validated['jumlah_peserta'] ?? 0);

@@ -123,12 +123,74 @@ class LaporanPelaksanaanTest extends TestCase
         $this->assertContains('Laporan Siapapun', collect($response->json('data'))->pluck('judul_kerjasama'));
     }
 
-    public function test_filter_dokumen_kerjasama_ids_ditolak_untuk_bukan_admin(): void
+    private function buatDokumen(?int $dibuatOlehUserId = null): \App\Models\DokumenKerjasama
+    {
+        $unit = \App\Models\MasterUnitProdi::create([
+            'jenis_node' => 'unit', 'kategori_unit' => 'jurusan', 'nama' => 'TI ' . fake()->unique()->numerify('##'), 'aktif' => true,
+        ]);
+
+        return \App\Models\DokumenKerjasama::create([
+            'no_permohonan'       => 'PMH-' . fake()->unique()->numerify('#####'),
+            'nomor_dokumen'       => 'DOK-' . fake()->unique()->numerify('###'),
+            'nama_dokumen'        => 'Dok',
+            'file'                => 'x.pdf',
+            'status_siklus'       => 'active',
+            'unit_prodi_id'       => $unit->id,
+            'dibuat_oleh_user_id' => $dibuatOlehUserId,
+        ]);
+    }
+
+    public function test_filter_dokumen_kerjasama_ids_bukan_admin_hanya_dokumen_yang_boleh_dilihat(): void
     {
         $user = $this->user();
+        $dokumenOrangLain = $this->buatDokumen(dibuatOlehUserId: $this->user()->id);
+        LaporanPelaksanaan::create(['dokumen_kerjasama_id' => $dokumenOrangLain->id, 'judul_kerjasama' => 'Rahasia', 'status' => 'terkirim']);
 
-        $this->actingAs($user)->getJson('/api/laporan-pelaksanaan?dokumen_kerjasama_ids=1,2')
-            ->assertForbidden();
+        $this->actingAs($user)->getJson('/api/laporan-pelaksanaan?dokumen_kerjasama_ids=' . $dokumenOrangLain->id)
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    public function test_pembuat_dokumen_bisa_kirim_dan_lihat_laporan_lewat_dokumen_kerjasama_id(): void
+    {
+        // Story & Aktivitas internal mengirim laporan dengan dokumen_kerjasama_id saja (tanpa pengajuan_id).
+        $user = $this->user();
+        $dokumen = $this->buatDokumen(dibuatOlehUserId: $user->id);
+
+        $this->actingAs($user)->postJson('/api/laporan-pelaksanaan', [
+            'dokumen_kerjasama_id' => $dokumen->id,
+            'judul_kerjasama' => 'Laporan Dokumen',
+            'kegiatan' => 'Kegiatan berjalan',
+        ])->assertCreated();
+
+        $this->actingAs($user)->getJson('/api/laporan-pelaksanaan?dokumen_kerjasama_ids=' . $dokumen->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.judul_kerjasama', 'Laporan Dokumen');
+    }
+
+    public function test_kirim_laporan_ditolak_untuk_dokumen_di_sampah_admin(): void
+    {
+        $user = $this->user();
+        $dokumen = $this->buatDokumen(dibuatOlehUserId: $user->id);
+        $dokumen->forceFill(['dihapus_admin_pada' => now()])->save();
+
+        $this->actingAs($user)->postJson('/api/laporan-pelaksanaan', [
+            'dokumen_kerjasama_id' => $dokumen->id,
+            'kegiatan' => 'Tidak akan terlihat admin',
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'Kerja sama ini sudah dihapus oleh admin, sehingga tidak bisa menerima data baru. Silakan hubungi admin kampus.');
+
+        $this->assertDatabaseMissing('laporan_pelaksanaan', ['dokumen_kerjasama_id' => $dokumen->id]);
+    }
+
+    public function test_kirim_laporan_lewat_dokumen_kerjasama_id_ditolak_untuk_bukan_pemilik(): void
+    {
+        $dokumen = $this->buatDokumen(dibuatOlehUserId: $this->user()->id);
+
+        $this->actingAs($this->user())->postJson('/api/laporan-pelaksanaan', [
+            'dokumen_kerjasama_id' => $dokumen->id,
+            'kegiatan' => 'Bukan punyaku',
+        ])->assertForbidden();
     }
 
     // ------------------------------------------------------------------

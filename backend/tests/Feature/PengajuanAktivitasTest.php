@@ -461,6 +461,20 @@ class PengajuanAktivitasTest extends TestCase
         ])->assertCreated();
     }
 
+    public function test_tambah_aktivitas_ditolak_untuk_dokumen_di_sampah_admin(): void
+    {
+        $pemilik = $this->user('internal');
+        $dokumen = $this->buatDokumen(dibuatOlehUserId: $pemilik->id);
+        $dokumen->forceFill(['dihapus_admin_pada' => now()])->save();
+
+        $this->actingAs($pemilik)->postJson('/api/pengajuan-aktivitas', [
+            'dokumen_kerjasama_id' => $dokumen->id,
+            'judul' => 'Rapat', 'jenis_aktivitas' => 'Rapat', 'tanggal' => '2026-08-01', 'status' => 'direncanakan',
+        ])->assertUnprocessable();
+
+        $this->assertDatabaseMissing('pengajuan_aktivitas', ['dokumen_kerjasama_id' => $dokumen->id]);
+    }
+
     public function test_non_admin_bukan_pembuat_dokumen_ditolak(): void
     {
         $orangLain = $this->user('internal');

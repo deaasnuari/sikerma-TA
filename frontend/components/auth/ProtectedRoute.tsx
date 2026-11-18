@@ -28,6 +28,9 @@ export default function ProtectedRoute({ children, requiredRole = 'admin' }: Pro
   const router = useRouter();
   const { user, isLoading, isAuthenticated } = useAuth();
 
+  const allowedRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+  const roleDiizinkan = !!user && (allowedRoles.length === 0 || allowedRoles.includes(user.role));
+
   useEffect(() => {
     if (isLoading) return;
 
@@ -36,14 +39,14 @@ export default function ProtectedRoute({ children, requiredRole = 'admin' }: Pro
       return;
     }
 
-    const allowedRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
-
-    if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+    if (!roleDiizinkan) {
       router.replace(roleRouteMap[user.role] || '/login');
     }
-  }, [isLoading, isAuthenticated, user, requiredRole, router]);
+  }, [isLoading, isAuthenticated, user, roleDiizinkan, router]);
 
-  if (isLoading) {
+  // Jangan render isi halaman (mis. sidebar/navbar admin) sebelum role dipastikan cocok —
+  // selama dialihkan, tampilkan layar loading saja supaya tidak "berkedip" sekilas.
+  if (isLoading || (isAuthenticated && !roleDiizinkan)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
