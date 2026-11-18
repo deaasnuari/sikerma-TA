@@ -32,7 +32,7 @@ class OtpController extends Controller
             'phone'                 => ['required', 'string', 'max:30'],
             'position'              => ['required', 'string', 'max:100'],
             'account_type'          => ['required', 'string', 'max:150'],
-            'tingkat_perusahaan'    => ['nullable', 'string', 'in:Lokal,Nasional,Internasional,Multinasional'],
+            'tingkat_perusahaan'    => ['required','string', 'in:Lokal,Nasional,Internasional,Multinasional'],
             'mitra_id'              => ['nullable', 'integer', 'exists:master_mitra,id'],
             'password'              => ['required', 'string', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()->symbols()],
             'password_confirmation' => ['required', 'string'],

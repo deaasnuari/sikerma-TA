@@ -1,4 +1,4 @@
-import { apiRequest } from '@/lib/api';
+import { ApiError, apiRequest, loginReasonFromBody } from '@/lib/api';
 import type { AuthUser, LoginPayload, RegisterPayload, UserRole } from '@/types/auth';
 
 const STORAGE_KEY = 'user';
@@ -216,6 +216,13 @@ export async function requestPasswordReset(email: string): Promise<{ message: st
   });
 }
 
+export async function verifyPasswordResetOtp(email: string, otp: string): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>('/forgot-password/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp }),
+  });
+}
+
 export async function resetPassword(payload: {
   email: string;
   otp: string;
@@ -228,7 +235,7 @@ export async function resetPassword(payload: {
   });
 }
 
-export async function verifyCurrentUser(): Promise<'valid' | 'invalid' | 'offline'> {
+export async function verifyCurrentUser(): Promise<'valid' | 'invalid' | 'rejected' | 'pending' | 'offline'> {
   // Tidak ada profil tersimpan = belum login, tidak ada yang perlu diverifikasi. Token ada di cookie
   // HttpOnly (tidak terbaca di sini); /me akan menjawab 401 kalau sesinya sudah habis.
   if (!getStoredUser()) return 'valid';
@@ -239,6 +246,11 @@ export async function verifyCurrentUser(): Promise<'valid' | 'invalid' | 'offlin
     await apiRequest<{ user: unknown }>('/me', { skipAuthRedirect: true });
     return 'valid';
   } catch (error) {
+    // Akun mitra ditolak/di-pending admin saat masih login (middleware PastikanAkunMitraAktif).
+    if (error instanceof ApiError && error.status === 401) {
+      const reason = loginReasonFromBody(error.body);
+      if (reason !== 'expired') return reason;
+    }
     const message = error instanceof Error ? error.message : '';
     const isNetwork = /gagal terhubung|failed to fetch|network|load failed|fetch/i.test(message);
     if (isNetwork) return 'offline';

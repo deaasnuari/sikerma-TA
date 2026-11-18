@@ -165,6 +165,11 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!form.tingkat_perusahaan) {
+      setError('Mohon pilih tingkat perusahaan ini.');
+      return;
+    }
+
     if (form.password !== form.password_confirmation) {
       setError('Konfirmasi password tidak sama.');
       return;
@@ -204,7 +209,17 @@ export default function RegisterPage() {
             <div className="mb-1.5 flex items-center justify-between gap-3">
               <button
                 type="button"
-                onClick={() => router.push('/login')}
+                onClick={() => {
+                  // Dari langkah OTP, kembali ke form registrasi (isian form tetap tersimpan
+                  // di state halaman ini); dari form, baru kembali ke halaman login.
+                  if (step === 2) {
+                    setStep(1);
+                    setError('');
+                    setSuccess('');
+                    return;
+                  }
+                  router.push('/login');
+                }}
                 className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white/15"
               >
                 <ArrowLeft size={14} />
@@ -545,9 +560,10 @@ export default function RegisterPage() {
                         name="tingkat_perusahaan"
                         value={form.tingkat_perusahaan}
                         onChange={handleChange}
+                        required
                         className="input-field h-9 w-full appearance-none rounded-xl px-4 pr-10 text-sm text-slate-600"
                       >
-                        <option value="">Pilih tingkat perusahaan</option>
+                        <option value="" disabled>Pilih tingkat perusahaan</option>
                         {TINGKAT_PERUSAHAAN_OPTIONS.map((opt) => (
                           <option key={opt} value={opt}>{opt}</option>
                         ))}

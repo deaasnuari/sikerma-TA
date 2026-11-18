@@ -15,7 +15,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { requestPasswordReset, resetPassword } from '@/services/authService';
+import { requestPasswordReset, resetPassword, verifyPasswordResetOtp } from '@/services/authService';
 
 function LoginPageContent() {
   const [loginMode, setLoginMode] = useState<'local' | 'campus'>('local');
@@ -30,6 +30,8 @@ function LoginPageContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [accountDeleted, setAccountDeleted] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  // Dikeluarkan paksa karena admin mengubah status akun mitra (lihat lib/api.ts loginReasonFromBody).
+  const [accountBlocked, setAccountBlocked] = useState<'rejected' | 'pending' | null>(null);
   const [fpSuccessDone, setFpSuccessDone] = useState(false);
 
   // Forgot password modal state
@@ -53,6 +55,8 @@ function LoginPageContent() {
     const reason = searchParams.get('reason');
     if (reason === 'deleted') {
       setAccountDeleted(true);
+    } else if (reason === 'rejected' || reason === 'pending') {
+      setAccountBlocked(reason);
     } else if (reason === 'expired') {
       setSessionExpired(true);
     }
@@ -62,6 +66,7 @@ function LoginPageContent() {
     setLoginMode(mode);
     setError('');
     setAccountDeleted(false);
+    setAccountBlocked(null);
     setSessionExpired(false);
   };
 
@@ -69,6 +74,7 @@ function LoginPageContent() {
     e.preventDefault();
     setError('');
     setAccountDeleted(false);
+    setAccountBlocked(null);
     setSessionExpired(false);
     setIsLoading(true);
 
@@ -168,11 +174,21 @@ function LoginPageContent() {
     }
   };
 
-  const handleVerifyOtp = () => {
+  const handleVerifyOtp = async () => {
     const code = fpOtp.join('');
     if (code.length < 6) { setFpError('Masukkan 6 digit kode OTP.'); return; }
+    setFpLoading(true);
     setFpError('');
-    setFpStep(3);
+    try {
+      await verifyPasswordResetOtp(fpEmail.trim(), code);
+      setFpStep(3);
+    } catch (err) {
+      setFpError(err instanceof Error ? err.message : 'Kode OTP salah. Coba lagi.');
+      setFpOtp(['', '', '', '', '', '']);
+      setTimeout(() => otpRefs.current[0]?.focus(), 50);
+    } finally {
+      setFpLoading(false);
+    }
   };
 
   const handleResetPassword = async () => {
@@ -252,6 +268,24 @@ function LoginPageContent() {
                       <p className="text-sm font-semibold text-red-700">Akun tidak ditemukan</p>
                       <p className="mt-0.5 text-xs text-red-600">
                         Email/username tidak terdaftar atau akun mitra ini telah dihapus oleh admin. Silakan hubungi administrator jika ini merupakan kesalahan.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {accountBlocked && (
+                <div className={`mb-3 rounded-xl border p-4 ${accountBlocked === 'rejected' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={17} className={`mt-0.5 shrink-0 ${accountBlocked === 'rejected' ? 'text-red-600' : 'text-amber-600'}`} />
+                    <div>
+                      <p className={`text-sm font-semibold ${accountBlocked === 'rejected' ? 'text-red-700' : 'text-amber-700'}`}>
+                        {accountBlocked === 'rejected' ? 'Akun mitra Anda ditolak' : 'Akun mitra Anda menunggu persetujuan'}
+                      </p>
+                      <p className={`mt-0.5 text-xs ${accountBlocked === 'rejected' ? 'text-red-600' : 'text-amber-600'}`}>
+                        {accountBlocked === 'rejected'
+                          ? 'Anda telah dikeluarkan karena admin menolak akun ini. Silakan hubungi admin kampus.'
+                          : 'Anda telah dikeluarkan karena akun ini sedang ditinjau ulang oleh admin. Silakan coba lagi setelah akun disetujui.'}
                       </p>
                     </div>
                   </div>
@@ -553,11 +587,11 @@ function LoginPageContent() {
                   </div>
                   <button
                     type="button"
-                    onClick={handleVerifyOtp}
-                    disabled={fpOtp.join('').length < 6}
+                    onClick={() => void handleVerifyOtp()}
+                    disabled={fpLoading || fpOtp.join('').length < 6}
                     className="btn-primary h-10 w-full rounded-xl text-sm font-semibold disabled:opacity-60"
                   >
-                    Verifikasi Kode
+                    {fpLoading ? 'Memverifikasi...' : 'Verifikasi Kode'}
                   </button>
                 </div>
               )}

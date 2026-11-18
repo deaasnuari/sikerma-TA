@@ -22,9 +22,10 @@ Route::post('/register', [AuthController::class, 'register'])->middleware('throt
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/login-kampus', [AuthController::class, 'loginLdap'])->middleware('throttle:login');
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:otp-kirim');
-Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:otp-verifikasi');
+Route::post('/forgot-password/verify-otp', [AuthController::class, 'verifyResetOtp'])->middleware('throttle:otp-verifikasi');
+Route::post('/reset-password',[AuthController::class, 'resetPassword'])->middleware('throttle:otp-verifikasi');
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', \App\Http\Middleware\PastikanAkunMitraAktif::class])->group(function () {
 	Route::post('/logout', [AuthController::class, 'logout']);
 	Route::get('/me', [AuthController::class, 'me']);
 

@@ -51,13 +51,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     verifyCurrentUser().then((status) => {
-      if (status === 'invalid') {
+      if (status === 'invalid' || status === 'rejected' || status === 'pending') {
         clearStoredUser();
         setUser(null);
         // Sesi habis hanya perlu dikabarkan kalau pengunjung sedang di area yang butuh login.
         // Di beranda/login/registrasi (publik) cukup bersihkan profil basi, jangan dilempar ke login.
         if (PROTECTED_PREFIXES.some((prefix) => window.location.pathname.startsWith(prefix))) {
-          router.replace('/login?reason=expired');
+          router.replace(`/login?reason=${status === 'invalid' ? 'expired' : status}`);
         }
       } else {
         setUser(storedUser);

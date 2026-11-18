@@ -53,7 +53,7 @@ class AuthController extends Controller
             'phone' => ['required', 'string', 'max:30'],
             'position' => ['required', 'string', 'max:100'],
             'account_type' => ['required', 'string', 'max:150'],
-            'tingkat_perusahaan' => ['nullable', 'string', 'in:Lokal,Nasional,Internasional,Multinasional'],
+            'tingkat_perusahaan' => ['required','string', 'in:Lokal,Nasional,Internasional,Multinasional'],
             'mitra_id' => ['nullable', 'integer', 'exists:master_mitra,id'],
             'role' => ['nullable', 'string', Rule::in(['external'])],
             'password' => ['required', 'string', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()->symbols()],
@@ -182,6 +182,12 @@ class AuthController extends Controller
         if ($user->role === 'external' && $user->approval_status === 'rejected') {
             throw ValidationException::withMessages([
                 'email' => ['Akun mitra Anda ditolak. Silakan hubungi admin kampus.'],
+            ]);
+        }
+
+        if ($user->role === 'external' && $user->approval_status === 'pending') {
+            throw ValidationException::withMessages([
+                'email' => ['Akun mitra Anda masih menunggu persetujuan admin.'],
             ]);
         }
 
@@ -388,26 +394,36 @@ class AuthController extends Controller
         ]);
     }
 
-    public function resetPassword(Request $request): JsonResponse
+    /**
+     * Langkah 2 lupa password: cek OTP ke server sebelum user diizinkan ke form
+     * password baru. OTP TIDAK ditandai terpakai di sini — resetPassword()
+     * tetap memverifikasi ulang OTP yang sama saat password benar-benar diganti.
+     */
+    public function verifyResetOtp(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email'                 => ['required', 'string', 'email'],
-            'otp'                   => ['required', 'string', 'size:6'],
-            'password'              => ['required', 'string', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()->symbols()],
-            'password_confirmation' => ['required', 'string'],
+            'email' => ['required', 'string', 'email'],
+            'otp'   => ['required', 'string', 'size:6'],
         ]);
 
-        $emailLower = Str::lower(trim($validated['email']));
+        $this->findValidResetOtp(Str::lower(trim($validated['email'])), $validated['otp']);
 
+        return response()->json([
+            'message' => 'Kode OTP valid. Silakan buat password baru.',
+        ]);
+    }
+
+    private function findValidResetOtp(string $emailLower, string $otp): OtpCode
+    {
         $otpRecord = OtpCode::query()
             ->where('email', $emailLower)
-            ->where('otp', $validated['otp'])
+            ->where('otp', $otp)
             ->where('is_used', false)
             ->first();
 
         if (! $otpRecord) {
             throw ValidationException::withMessages([
-                'otp' => ['Kode OTP tidak valid atau sudah digunakan.'],
+                'otp' => ['Kode OTP salah atau sudah digunakan.'],
             ]);
         }
 
@@ -423,6 +439,22 @@ class AuthController extends Controller
                 'otp' => ['Kode OTP tidak valid untuk reset password.'],
             ]);
         }
+
+        return $otpRecord;
+    }
+
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email'                 => ['required', 'string', 'email'],
+            'otp'                   => ['required', 'string', 'size:6'],
+            'password'              => ['required', 'string', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()->symbols()],
+            'password_confirmation' => ['required', 'string'],
+        ]);
+
+        $emailLower = Str::lower(trim($validated['email']));
+
+        $otpRecord = $this->findValidResetOtp($emailLower, $validated['otp']);
 
         $user = User::query()->whereRaw('LOWER(email) = ?', [$emailLower])->first();
 

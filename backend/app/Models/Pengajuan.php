@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use App\Casts\PgArrayCast;
 
 class Pengajuan extends Model
 {
@@ -98,8 +97,10 @@ class Pengajuan extends Model
 
         // New schema casts
         'jenis_dokumen_list' => 'array',
-        'ruang_lingkup_ids' => PgArrayCast::class,
-        // 'ruang_lingkup_ids' => 'array',
+        // Kolom pengajuan_v2.ruang_lingkup_ids bertipe JSON (lihat migration
+        // 2026_11_11_000001_ubah_ruang_lingkup_ids_pengajuan_v2_ke_json). PgArrayCast menulis
+        // literal Postgres "{1,2}" yang ditolak kolom JSON, jadi pakai cast 'array'.
+        'ruang_lingkup_ids' => 'array',
         'tanggal_mulai' => 'date',
         'tanggal_berakhir' => 'date',
         'diajukan_pada' => 'datetime',

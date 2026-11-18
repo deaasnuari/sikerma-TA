@@ -276,6 +276,10 @@ class AdminUserController extends Controller
             'approval_status' => $validated['approval_status'],
         ]);
 
+        // Mitra yang sedang login lalu ditolak/di-pending tidak perlu dicabut tokennya di sini:
+        // middleware PastikanAkunMitraAktif menolak permintaan berikutnya, mencabut token itu, dan
+        // memberi tahu alasannya ke frontend.
+
         return response()->json([
             'message' => 'Status user berhasil diperbarui.',
             'user' => $this->toUserPayload($user),

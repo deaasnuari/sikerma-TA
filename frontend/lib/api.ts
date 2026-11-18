@@ -24,6 +24,38 @@ async function fetchWithFallback(endpoint: string, options: RequestInit, buildHe
   }
 }
 
+// Alasan 401 dari backend (middleware PastikanAkunMitraAktif) → nilai ?reason= di halaman login.
+// Tanpa alasan khusus berarti sesi biasa yang habis/dicabut.
+export function loginReasonFromBody(body: unknown): 'rejected' | 'pending' | 'expired' {
+  const reason = typeof body === 'object' && body !== null && 'reason' in body ? (body as { reason?: unknown }).reason : null;
+  if (reason === 'account_rejected') return 'rejected';
+  if (reason === 'account_pending') return 'pending';
+  return 'expired';
+}
+
+async function loginReasonFromResponse(response: Response): Promise<'rejected' | 'pending' | 'expired'> {
+  try {
+    return loginReasonFromBody(await response.json());
+  } catch {
+    return 'expired';
+  }
+}
+
+function redirectToLogin(reason: string): never {
+  localStorage.removeItem('user');
+  window.location.replace(`/login?reason=${reason}`);
+  throw new Error('Unauthenticated.');
+}
+
+// Error dari apiRequest yang membawa status HTTP dan body mentah, untuk pemanggil yang perlu
+// memeriksa lebih dari sekadar pesan (mis. alasan 401 saat pengecekan sesi).
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public body: unknown) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export interface ApiRequestOptions extends RequestInit {
   // Jangan pindahkan halaman ke /login saat dijawab 401 — pemanggil yang memutuskan sendiri
   // (mis. pengecekan sesi saat aplikasi pertama dibuka, yang tidak boleh menendang pengunjung
@@ -46,9 +78,7 @@ export async function apiRequest<T>(endpoint: string, { skipAuthRedirect, ...opt
 
   if (!response.ok) {
     if (response.status === 401 && typeof window !== 'undefined' && !skipAuthRedirect) {
-      localStorage.removeItem('user');
-      window.location.replace('/login?reason=expired');
-      throw new Error('Unauthenticated.');
+      redirectToLogin(loginReasonFromBody(body));
     }
 
     // Dibatasi backend (throttle login/OTP/API): pesan bawaan Laravel berbahasa Inggris.
@@ -74,7 +104,7 @@ export async function apiRequest<T>(endpoint: string, { skipAuthRedirect, ...opt
         ? String(body.message)
         : 'Request gagal diproses');
 
-    throw new Error(String(message));
+    throw new ApiError(String(message), response.status, body);
   }
 
   // Setelah aksi yang mengubah data (simpan, hapus, dsb.) berhasil, lonceng notifikasi disegarkan
@@ -98,9 +128,7 @@ export async function downloadFileWithAuth(endpoint: string, fileName: string): 
 
   if (!response.ok) {
     if (response.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('user');
-      window.location.replace('/login?reason=expired');
-      throw new Error('Unauthenticated.');
+      redirectToLogin(await loginReasonFromResponse(response));
     }
 
     throw new Error('Gagal mengunduh file.');
@@ -161,9 +189,7 @@ export async function openProtectedFile(path: string): Promise<void> {
 
     if (!response.ok) {
       if (response.status === 401) {
-        localStorage.removeItem('user');
-        window.location.replace('/login?reason=expired');
-        throw new Error('Unauthenticated.');
+        redirectToLogin(await loginReasonFromResponse(response));
       }
       throw new Error(response.status === 404 ? 'File tidak ditemukan atau Anda tidak punya akses.' : 'Gagal membuka file.');
     }

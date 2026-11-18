@@ -68,6 +68,22 @@ function isCrossSiteWrite(request: NextRequest): boolean {
   }
 }
 
+// ── IP asli pengunjung ───────────────────────────────────────────────────────────────────────
+// Semua permintaan ke Laravel datang dari proxy ini, jadi tanpa header X-Forwarded-For backend
+// melihat IP server Next untuk SEMUA pengguna — pembatas per-IP (login, kirim OTP) jadi berlaku
+// bersama untuk semua orang. Ambil entri PALING KANAN X-Forwarded-For: itu yang ditulis hop
+// terdekat yang kita percaya (reverse proxy seperti Nginx, atau Next sendiri dari socket). Entri
+// di kirinya bisa dikarang klien. Backend hanya mempercayai header ini bila datang dari proxy
+// lokal (TRUSTED_PROXIES di backend/.env).
+function clientIp(request: NextRequest): string | null {
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    const parts = forwarded.split(',').map((part) => part.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
+  }
+  return request.headers.get('x-real-ip')?.trim() || null;
+}
+
 async function proxyRequest(request: NextRequest, pathSegments: string[]): Promise<Response> {
   const path = pathSegments.join('/');
   const targetUrl = buildTargetUrl(pathSegments, request);
@@ -86,6 +102,12 @@ async function proxyRequest(request: NextRequest, pathSegments: string[]): Promi
   headers.delete('authorization');
   headers.delete('cookie');
   headers.set('accept', 'application/json');
+  // Kirim tepat satu IP klien ke backend; buang header IP lain yang bisa dikarang klien.
+  const ip = clientIp(request);
+  headers.delete('x-forwarded-for');
+  headers.delete('x-real-ip');
+  headers.delete('forwarded');
+  if (ip) headers.set('x-forwarded-for', ip);
   const sessionToken = request.cookies.get(SESSION_COOKIE)?.value;
   if (sessionToken) {
     headers.set('authorization', `Bearer ${sessionToken}`);

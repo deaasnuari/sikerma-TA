@@ -21,6 +21,12 @@
     end_date: 'Tanggal Selesai',
     subject: 'Subjek',
     message: 'Pesan',
+    tingkat_perusahaan: 'Tingkat Perusahaan',
+  };
+
+  // Pesan khusus saat kolom wajib dibiarkan kosong (menggantikan "Mohon pilih/isi ...").
+  var PESAN_KOSONG = {
+    tingkat_perusahaan: 'Mohon pilih tingkat perusahaan ini.',
   };
 
   function getLabel(el) {
@@ -37,6 +43,7 @@
     var v = el.validity;
     var lbl = getLabel(el);
     if (v.valueMissing) {
+      if (el.name && PESAN_KOSONG[el.name]) return PESAN_KOSONG[el.name];
       return el.tagName === 'SELECT'
         ? 'Mohon pilih ' + lbl + '.'
         : 'Mohon isi ' + lbl + '.';
