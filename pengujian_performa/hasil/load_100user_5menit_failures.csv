@@ -1,17 +1,1 @@
 Method,Name,Error,Occurrences
-GET,/api/carousel-images,"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",2
-GET,/api/notifikasi,"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",1
-GET,/api/dokumen-kerjasama/stats/mitra,"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",5
-GET,/api/notifikasi/jumlah-belum-dibaca,"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",20
-GET,/api/dokumen-kerjasama,"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",17
-GET,/api/pengajuan,"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",12
-POST,POST /api/logout,"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",2
-GET,/api/notifikasi/jumlah-belum-dibaca (logout),HTTPError('401 Client Error: Unauthorized for url: /api/notifikasi/jumlah-belum-dibaca (logout)'),36
-GET,/api/dokumen-kerjasama (logout),HTTPError('401 Client Error: Unauthorized for url: /api/dokumen-kerjasama (logout)'),33
-GET,GET setelah logout (harus 401),"CatchResponseError('Setelah logout harusnya 401, dapat 0')",3
-GET,/api/dokumen-kerjasama/perpanjangan/requests,"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",5
-GET,/api/public/stats,"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",10
-GET,/api/public/kerjasama,"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",5
-POST,POST /api/logout,HTTPError('401 Client Error: Unauthorized for url: POST /api/logout'),30
-GET,/api/dokumen-kerjasama (logout),"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",2
-GET,/api/master/mitra,"ReadTimeout(ReadTimeoutError(""HTTPConnectionPool(host='127.0.0.1', port=8000): Read timed out. (read timeout=30)""))",1
