@@ -362,6 +362,37 @@ class MasterMitraTest extends TestCase
         $this->assertSame(1, MasterMitra::count());
     }
 
+    public function test_tambah_mitra_ditolak_kalau_kode_mitra_sudah_dipakai(): void
+    {
+        $admin = $this->admin();
+        $this->buatMitra(['nama_mitra' => 'PT Pemilik Kode', 'kode_mitra' => 'KD01']);
+
+        // Nama berbeda, tetapi kode sama -> ditolak di kolom kode_mitra, tidak ada baris baru.
+        $this->actingAs($admin)
+            ->postJson('/api/master/mitra', $this->dataMitra(['nama_mitra' => 'PT Nama Lain Sekali', 'kode_mitra' => 'KD01']))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('kode_mitra');
+
+        $this->assertSame(1, MasterMitra::count());
+    }
+
+    public function test_ubah_kode_mitra_jadi_kode_milik_mitra_lain_ditolak_tapi_kode_sendiri_boleh(): void
+    {
+        $admin = $this->admin();
+        $a = $this->buatMitra(['nama_mitra' => 'PT Alpha Kode', 'kode_mitra' => 'AA01']);
+        $b = $this->buatMitra(['nama_mitra' => 'PT Beta Kode', 'kode_mitra' => 'BB01']);
+
+        $this->actingAs($admin)->putJson("/api/master/mitra/{$b->id}", ['kode_mitra' => 'AA01'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('kode_mitra');
+        $this->assertSame('BB01', $b->fresh()->kode_mitra);
+
+        // Menyimpan ulang dengan kode miliknya sendiri tidak dianggap bentrok.
+        $this->actingAs($admin)->putJson("/api/master/mitra/{$b->id}", ['kode_mitra' => 'BB01', 'negara' => 'Malaysia'])
+            ->assertOk();
+        $this->assertSame('AA01', $a->fresh()->kode_mitra);
+    }
+
     public function test_tambah_mitra_dengan_nama_berbeda_tetap_boleh(): void
     {
         $admin = $this->admin();

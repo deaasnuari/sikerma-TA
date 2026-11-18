@@ -36,7 +36,7 @@ class AppServiceProvider extends ServiceProvider
         // belum login. Longgar untuk pemakaian normal (polling dashboard) tapi menahan scraping/banjir.
         RateLimiter::for('api', fn (Request $r) => $r->user()
             ? Limit::perMinute(600)->by('api-user|'.$r->user()->id)
-            : Limit::perMinute(120)->by('api-ip|'.$r->ip()));
+            : Limit::perMinute((int) env('API_IP_LIMIT', 120))->by('api-ip|'.$r->ip()));
 
         RateLimiter::for('login', fn (Request $r) => [
             Limit::perMinute(10)->by('login-ip|'.$r->ip()),
