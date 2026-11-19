@@ -176,7 +176,7 @@ export default function InternalDataPengajuanPage() {
     // Polling supaya perubahan dari admin (revisi / ACC / tahapan) langsung kelihatan tanpa
     // refresh halaman. Hasil fetch disimpan ke store lalu memicu 'pengajuan-data-updated'
     // -> syncPengajuan. Di-skip saat tab tidak aktif; begitu tab dibuka lagi langsung fetch.
-    const POLL_INTERVAL_MS = 10000;
+    const POLL_INTERVAL_MS = 30000;
     const intervalId = setInterval(() => {
       if (document.visibilityState === 'visible') {
         void refreshPengajuanDataFromApi(true);
@@ -428,17 +428,17 @@ export default function InternalDataPengajuanPage() {
 
                     <div className="grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
                       <div>
-                        <p className="text-xs text-slate-400">Mitra Tujuan</p>
+                        <p className="text-xs text-slate-500">Mitra Tujuan</p>
                         <p className="font-semibold">{item.namaMitra}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-slate-400">Jenis Dokumen</p>
+                        <p className="text-xs text-slate-500">Jenis Dokumen</p>
                         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${pengajuanDokumenBadge[item.jenisDokumen] || 'bg-slate-100 text-slate-700'}`}>
                           {item.jenisDokumen}
                         </span>
                       </div>
                       <div>
-                        <p className="text-xs text-slate-400">Jurusan / Prodi / Unit</p>
+                        <p className="text-xs text-slate-500">Jurusan / Prodi / Unit</p>
                         <p className="font-semibold">{item.namaUnitProdi}</p>
                       </div>
                     </div>
@@ -582,7 +582,7 @@ export default function InternalDataPengajuanPage() {
 
             {pageNumbers.map((page, idx) =>
               page === '...' ? (
-                <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-500">
                   …
                 </span>
               ) : (

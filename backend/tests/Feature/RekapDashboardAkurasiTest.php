@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\DokumenKerjasama;
 use App\Models\MasterMitra;
+use App\Models\User;
 use App\Support\KerjasamaStatus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -198,6 +199,43 @@ class RekapDashboardAkurasiTest extends TestCase
 
         $this->assertSame($sebelum, $sesudah);
         $this->assertSame(2, MasterMitra::count());
+    }
+
+    // ------------------------------------------------------------------
+    // 3b. Ringkasan status untuk Dashboard Admin (menggantikan unduhan 2.000 dokumen)
+    // ------------------------------------------------------------------
+
+    public function test_stats_status_sama_persis_dengan_hitungan_status_efektif_dari_daftar_dokumen(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-15 10:00:00'));
+        $admin = User::factory()->admin()->create();
+        $m = $this->mitra('PT Status', 'Industri', 'Indonesia');
+
+        $this->dokumen($m, 'S1', ['tanggal_berakhir' => '2030-01-01', 'status_siklus' => 'active']);     // aktif
+        $this->dokumen($m, 'S2', ['tanggal_berakhir' => '2026-07-01', 'status_siklus' => 'active']);     // akan berakhir
+        $this->dokumen($m, 'S3', ['tanggal_berakhir' => '2026-01-01', 'status_siklus' => 'active']);     // lewat tanggal -> kadaluarsa
+        $this->dokumen($m, 'S4', ['tanggal_berakhir' => '2030-01-01', 'status_siklus' => 'archived']);   // arsip manual -> kadaluarsa
+        $this->dokumen($m, 'S5', ['tanggal_berakhir' => null, 'status_siklus' => 'active']);             // tanpa tanggal -> aktif
+        $this->dokumen($m, 'S6', ['tanggal_berakhir' => '2026-01-01', 'dihapus_admin_pada' => now()]);   // disembunyikan admin -> tidak dihitung
+
+        $ringkas = $this->actingAs($admin)->getJson('/api/dokumen-kerjasama/stats/status')->assertOk()->json('data');
+
+        $this->assertSame(['total' => 5, 'aktif' => 2, 'akan_berakhir' => 1, 'kadaluarsa' => 2], $ringkas);
+
+        // Angka harus identik dengan yang dihitung dari daftar dokumen (sumber Rekap Data).
+        $daftar = collect($this->actingAs($admin)->getJson('/api/dokumen-kerjasama?per_page=2000')->assertOk()->json('data.data'));
+        $this->assertSame($daftar->count(), $ringkas['total']);
+        $this->assertSame($daftar->where('status_efektif', 'active')->count(), $ringkas['aktif']);
+        $this->assertSame($daftar->where('status_efektif', 'expiring')->count(), $ringkas['akan_berakhir']);
+        $this->assertSame($daftar->where('status_efektif', 'archived')->count(), $ringkas['kadaluarsa']);
+    }
+
+    public function test_stats_status_hanya_untuk_admin_dan_pimpinan_serta_butuh_login(): void
+    {
+        $this->getJson('/api/dokumen-kerjasama/stats/status')->assertUnauthorized();
+
+        $this->actingAs(User::factory()->create(['role' => 'external']))
+            ->getJson('/api/dokumen-kerjasama/stats/status')->assertForbidden();
     }
 
     // ------------------------------------------------------------------

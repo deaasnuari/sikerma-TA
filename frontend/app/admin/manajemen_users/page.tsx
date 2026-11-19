@@ -532,7 +532,7 @@ export default function ManajemenUserPage() {
         </div>
 
         <div className="relative">
-          <select
+          <select aria-label="Filter role"
             value={filterRole}
             onChange={(e) => setFilterRole(e.target.value)}
             className="input-field appearance-none pl-4 pr-9 py-2.5 text-[12px] font-medium"
@@ -583,7 +583,7 @@ export default function ManajemenUserPage() {
                 <tr>
                   <td
                     colSpan={6}
-                    className="py-10 text-center text-gray-500"
+                    className="h-[100svh] py-10 text-center align-top text-gray-500"
                   >
                     Memuat data user...
                   </td>
@@ -799,7 +799,7 @@ export default function ManajemenUserPage() {
                     Role <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <select
+                    <select aria-label="Role"
                       value={form.role}
                       onChange={(e) => { setForm({ ...form, role: e.target.value }); setFormErrors((p) => ({ ...p, role: '' })); }}
                       className={`appearance-none w-full border ${formErrors.role ? 'border-red-400' : 'border-gray-300'} rounded-lg px-4 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-blue-500 bg-white`}
@@ -825,7 +825,7 @@ export default function ManajemenUserPage() {
                   </label>
                   {form.role === 'Unit' ? (
                     <div className="relative">
-                      <select
+                      <select aria-label="Unit atau program studi"
                         value={form.unitProdiId ?? ''}
                         onChange={(e) => {
                           const selected = unitOptions.find((u) => u.id === Number(e.target.value));
@@ -922,7 +922,7 @@ export default function ManajemenUserPage() {
                 <div>
                   <label className="block text-[12px] font-semibold text-gray-700 mb-1.5">Role</label>
                   <div className="relative">
-                    <select value={form.role} onChange={(e) => { setForm({ ...form, role: e.target.value }); setFormErrors((p) => ({ ...p, role: '' })); }} className={`appearance-none w-full border ${formErrors.role ? 'border-red-400' : 'border-gray-300'} rounded-lg px-4 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-blue-500 bg-white`}>
+                    <select aria-label="Role" value={form.role} onChange={(e) => { setForm({ ...form, role: e.target.value }); setFormErrors((p) => ({ ...p, role: '' })); }} className={`appearance-none w-full border ${formErrors.role ? 'border-red-400' : 'border-gray-300'} rounded-lg px-4 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-blue-500 bg-white`}>
                       <option value="Admin">Admin</option>
                       <option value="Jurusan">Jurusan</option>
                       <option value="Prodi">Prodi</option>
@@ -938,7 +938,7 @@ export default function ManajemenUserPage() {
                   <label className="block text-[12px] font-semibold text-gray-700 mb-1.5">{form.role === 'Unit' ? 'Unit' : 'Unit/Instansi'}</label>
                   {form.role === 'Unit' ? (
                     <div className="relative">
-                      <select
+                      <select aria-label="Unit atau program studi"
                         value={form.unitProdiId ?? ''}
                         onChange={(e) => {
                           const selected = unitOptions.find((u) => u.id === Number(e.target.value));
@@ -965,7 +965,7 @@ export default function ManajemenUserPage() {
               <div>
                 <label className="block text-[12px] font-semibold text-gray-700 mb-1.5">Status</label>
                 <div className="relative">
-                  <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="appearance-none w-full border border-gray-300 rounded-lg px-4 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                  <select aria-label="Status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="appearance-none w-full border border-gray-300 rounded-lg px-4 py-2.5 text-[12px] outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                     <option value="Aktif">Aktif</option>
                     <option value="NonAktif">NonAktif</option>
                     <option value="Ditolak">Ditolak</option>

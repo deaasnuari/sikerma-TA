@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { StickyNote, Plus, Pencil, Trash2, Check, X, Loader2, AlertCircle } from 'lucide-react';
+import { StickyNote, Plus, Pencil, Trash2, Check, X, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import {
   fetchCatatanAdmin,
   createCatatanAdmin,
   updateCatatanAdmin,
   deleteCatatanAdmin,
+  setCatatanAdminUntukPengusul,
   type CatatanAdminItem,
 } from '@/services/catatanAdminService';
 
@@ -27,9 +28,11 @@ function formatDateTime(iso: string): string {
 
 interface Props {
   pengajuanId: number;
+  /** Mode baca untuk Internal/External: hanya melihat catatan pada pengajuannya, tanpa tambah/ubah/hapus. */
+  readOnly?: boolean;
 }
 
-export default function CatatanAdminPanel({ pengajuanId }: Props) {
+export default function CatatanAdminPanel({ pengajuanId, readOnly = false }: Props) {
   const [items, setItems] = useState<CatatanAdminItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +41,8 @@ export default function CatatanAdminPanel({ pengajuanId }: Props) {
   const [addText, setAddText] = useState('');
   const [adding, setAdding] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [addUntukPengusul, setAddUntukPengusul] = useState(false);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
 
   // Form edit
   const [editId, setEditId] = useState<number | null>(null);
@@ -70,9 +75,10 @@ export default function CatatanAdminPanel({ pengajuanId }: Props) {
     if (!teks) return;
     setAdding(true);
     try {
-      const created = await createCatatanAdmin(pengajuanId, teks);
+      const created = await createCatatanAdmin(pengajuanId, teks, addUntukPengusul);
       setItems((prev) => [created, ...prev]);
       setAddText('');
+      setAddUntukPengusul(false);
       setShowAddForm(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal menambahkan catatan');
@@ -96,6 +102,20 @@ export default function CatatanAdminPanel({ pengajuanId }: Props) {
     }
   };
 
+  const handleToggleVisibilitas = async (catatan: CatatanAdminItem) => {
+    const jadiTerlihat = !catatan.untuk_pengusul;
+    if (jadiTerlihat && !window.confirm('Tampilkan catatan ini ke pengusul? Pengusul akan mendapat notifikasi.')) return;
+    setTogglingId(catatan.id);
+    try {
+      const updated = await setCatatanAdminUntukPengusul(catatan.id, jadiTerlihat);
+      setItems((prev) => prev.map((c) => (c.id === catatan.id ? updated : c)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal mengubah visibilitas catatan');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const handleDelete = async (id: number) => {
     setDeletingId(id);
     try {
@@ -107,6 +127,9 @@ export default function CatatanAdminPanel({ pengajuanId }: Props) {
       setDeletingId(null);
     }
   };
+
+  // Mode baca: kalau backend menolak (mis. role tanpa akses), jangan tampilkan kotak error apa pun.
+  if (readOnly && error && !loading) return null;
 
   return (
     <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/60">
@@ -121,7 +144,7 @@ export default function CatatanAdminPanel({ pengajuanId }: Props) {
             </span>
           )}
         </div>
-        {!showAddForm && (
+        {!readOnly && !showAddForm && (
           <button
             type="button"
             onClick={() => { setShowAddForm(true); setError(null); }}
@@ -140,15 +163,31 @@ export default function CatatanAdminPanel({ pengajuanId }: Props) {
             <textarea
               value={addText}
               onChange={(e) => setAddText(e.target.value)}
-              placeholder="Tulis catatan internal admin di sini..."
+              placeholder="Tulis catatan di sini..."
               rows={3}
               className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
               autoFocus
             />
+            <label className="mt-2 flex cursor-pointer items-start gap-2 text-[11px] text-gray-700">
+              <input
+                type="checkbox"
+                checked={addUntukPengusul}
+                onChange={(e) => setAddUntukPengusul(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 accent-amber-600"
+              />
+              <span>
+                <span className="font-semibold">Tampilkan ke pengusul</span>
+                <span className="block text-[10px] text-gray-500">
+                  {addUntukPengusul
+                    ? 'Pengusul pengajuan ini dapat membaca catatan dan akan mendapat notifikasi.'
+                    : 'Tidak dicentang = catatan privat, hanya terlihat oleh admin.'}
+                </span>
+              </span>
+            </label>
             <div className="mt-2 flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => { setShowAddForm(false); setAddText(''); setError(null); }}
+                onClick={() => { setShowAddForm(false); setAddText(''); setAddUntukPengusul(false); setError(null); }}
                 className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] text-gray-500 hover:bg-gray-100"
               >
                 <X size={11} /> Batal
@@ -183,7 +222,7 @@ export default function CatatanAdminPanel({ pengajuanId }: Props) {
         {/* Empty */}
         {!loading && items.length === 0 && !showAddForm && (
           <p className="text-center text-[11px] text-amber-600/70 py-4">
-            Belum ada catatan admin untuk pengajuan ini.
+            {readOnly ? 'Belum ada catatan dari admin untuk pengajuan ini.' : 'Belum ada catatan admin untuk pengajuan ini.'}
           </p>
         )}
 
@@ -229,11 +268,31 @@ export default function CatatanAdminPanel({ pengajuanId }: Props) {
                   {catatan.teks}
                 </p>
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-[10px] text-gray-400">
+                  <span className="text-[10px] text-gray-500">
                     {catatan.dibuat_oleh} · {formatDateTime(catatan.created_at)}
                     {catatan.updated_at !== catatan.created_at && ' (diedit)'}
+                    {!readOnly && (
+                      <span
+                        className={`ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${catatan.untuk_pengusul ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}
+                      >
+                        {catatan.untuk_pengusul ? 'Terlihat pengusul' : 'Privat'}
+                      </span>
+                    )}
                   </span>
+                  {!readOnly && (
                   <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleVisibilitas(catatan)}
+                      disabled={togglingId === catatan.id}
+                      className="rounded-md p-1 text-gray-400 hover:bg-amber-100 hover:text-amber-700 transition-colors disabled:opacity-50"
+                      title={catatan.untuk_pengusul ? 'Jadikan privat (sembunyikan dari pengusul)' : 'Tampilkan ke pengusul'}
+                      aria-label={catatan.untuk_pengusul ? 'Jadikan catatan privat' : 'Tampilkan catatan ke pengusul'}
+                    >
+                      {togglingId === catatan.id
+                        ? <Loader2 size={12} className="animate-spin" />
+                        : catatan.untuk_pengusul ? <EyeOff size={12} /> : <Eye size={12} />}
+                    </button>
                     <button
                       type="button"
                       onClick={() => { setEditId(catatan.id); setEditText(catatan.teks); setError(null); }}
@@ -254,6 +313,7 @@ export default function CatatanAdminPanel({ pengajuanId }: Props) {
                         : <Trash2 size={12} />}
                     </button>
                   </div>
+                  )}
                 </div>
               </>
             )}

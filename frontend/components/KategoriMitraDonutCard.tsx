@@ -44,7 +44,8 @@ export default function KategoriMitraDonutCard({
           segments={items.map((item) => ({ value: item.value, color: item.color }))}
         />
       </div>
-      <div className={compact ? 'mt-2 space-y-1' : 'mt-4 space-y-2'}>
+      {/* min-h: daftar mulai kosong lalu terisi saat data tiba; tanpa ini kartu memanjang dan menggeser isi halaman (CLS). */}
+      <div className={`${compact ? 'mt-2 space-y-1' : 'mt-4 space-y-2'} min-h-[170px]`}>
         {items.map((item) => (
           <div key={item.label} className="flex items-center justify-between gap-3 text-[11px]">
             <span className="flex min-w-0 items-center gap-1.5 text-slate-600">

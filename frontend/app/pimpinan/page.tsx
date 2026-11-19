@@ -293,7 +293,7 @@ export default function PimpinanPage() {
                         {item.label}
                       </span>
                       <span className="font-semibold text-slate-800">
-                        {item.value} <span className="font-normal text-slate-400">({pct}%)</span>
+                        {item.value} <span className="font-normal text-slate-500">({pct}%)</span>
                       </span>
                     </div>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">

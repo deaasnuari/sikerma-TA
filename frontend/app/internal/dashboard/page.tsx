@@ -252,7 +252,7 @@ export default function InternalDashboardPage() {
                   ) : (
                     <p className="mt-1 text-[24px] font-bold leading-tight text-slate-900 lg:text-[20px]">{item.value}</p>
                   )}
-                  <p className="mt-0.5 text-[10.5px] text-slate-400">{item.note}</p>
+                  <p className="mt-0.5 text-[10.5px] text-slate-500">{item.note}</p>
                 </div>
                 <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${item.iconBox}`}>
                   <Icon size={17} />
@@ -286,7 +286,7 @@ export default function InternalDashboardPage() {
             ) : kerjasamaItems.length === 0 ? (
               <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-8 text-center">
                 <FileText size={22} className="text-slate-300" />
-                <p className="text-[12px] text-slate-400">Belum ada kerjasama yang disetujui.</p>
+                <p className="text-[12px] text-slate-500">Belum ada kerjasama yang disetujui.</p>
               </div>
             ) : (
               kerjasamaItems.map((item) => (
@@ -335,10 +335,10 @@ export default function InternalDashboardPage() {
             {/* Status masa berlaku: donat */}
             <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-emerald-50 to-slate-50 p-3">
               <h3 className="text-[12px] font-bold text-slate-800">Status Kerjasama</h3>
-              <p className="mt-0.5 text-[10px] text-slate-400">Berdasarkan masa berlaku dokumen</p>
+              <p className="mt-0.5 text-[10px] text-slate-500">Berdasarkan masa berlaku dokumen</p>
 
               {total === 0 ? (
-                <p className="py-8 text-center text-[12px] text-slate-400">{loading ? 'Memuat data…' : 'Belum ada data.'}</p>
+                <p className="py-8 text-center text-[12px] text-slate-500">{loading ? 'Memuat data…' : 'Belum ada data.'}</p>
               ) : (
                 <>
                   <div className="relative mx-auto mt-1 h-[130px] w-full max-w-[170px]">
@@ -379,7 +379,7 @@ export default function InternalDashboardPage() {
                             {seg.label}
                           </span>
                           <span className="font-semibold text-slate-800">
-                            {seg.count} <span className="font-normal text-slate-400">({pct(seg.count)}%)</span>
+                            {seg.count} <span className="font-normal text-slate-500">({pct(seg.count)}%)</span>
                           </span>
                         </div>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
@@ -395,10 +395,10 @@ export default function InternalDashboardPage() {
             {/* Jenis dokumen: lingkaran */}
             <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-slate-50 p-3">
               <h3 className="text-[12px] font-bold text-slate-800">Komposisi Dokumen</h3>
-              <p className="mt-0.5 text-[10px] text-slate-400">Berdasarkan jenis dokumen</p>
+              <p className="mt-0.5 text-[10px] text-slate-500">Berdasarkan jenis dokumen</p>
 
               {ringkasJenis.total === 0 ? (
-                <p className="py-8 text-center text-[12px] text-slate-400">{loading ? 'Memuat data…' : 'Belum ada data.'}</p>
+                <p className="py-8 text-center text-[12px] text-slate-500">{loading ? 'Memuat data…' : 'Belum ada data.'}</p>
               ) : (
                 <>
                   <div className="relative mx-auto mt-1 h-[130px] w-full max-w-[170px]">
@@ -442,7 +442,7 @@ export default function InternalDashboardPage() {
                               {item.label}
                             </span>
                             <span className="font-semibold text-slate-800">
-                              {item.total} <span className="font-normal text-slate-400">({pctJenis(item.total)}%)</span>
+                              {item.total} <span className="font-normal text-slate-500">({pctJenis(item.total)}%)</span>
                             </span>
                           </div>
                           <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">

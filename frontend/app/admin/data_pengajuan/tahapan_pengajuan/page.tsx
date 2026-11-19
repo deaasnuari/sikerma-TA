@@ -144,7 +144,7 @@ function StageDropdown({ pengajuanId, currentStage, onSelect, onClose }: Dropdow
           const cfg = GROUP_CONFIG[group];
           return (
             <div key={group}>
-              <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+              <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
                 {cfg.label}
               </p>
               {items.map((stage) => {
@@ -274,7 +274,7 @@ function RiwayatModal({
             <span className="text-xs font-bold text-[#1E376C] uppercase tracking-wide">Riwayat Perubahan Tahapan</span>
           </div>
           {riwayat.length === 0 ? (
-            <p className="text-center text-[12px] text-gray-400 py-6">Belum ada riwayat perubahan.</p>
+            <p className="text-center text-[12px] text-gray-500 py-6">Belum ada riwayat perubahan.</p>
           ) : (
             <ol className="relative border-l border-gray-200 space-y-4 ml-2">
               {[...riwayat].reverse().map((r, idx) => {
@@ -286,7 +286,7 @@ function RiwayatModal({
                     <p className={`text-[12px] font-semibold ${isDibatalkan ? 'text-red-600' : 'text-gray-800'}`}>
                       {r.stage}
                     </p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
+                    <p className="text-[10px] text-gray-500 mt-0.5">
                       {formatDateTime(r.changed_at)}
                       {r.changed_by ? ` · ${r.changed_by}` : ''}
                     </p>
@@ -462,7 +462,7 @@ export default function TahapanPengajuanPage() {
           <Loader2 size={24} className="animate-spin text-gray-300" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-16 text-gray-400">
+        <div className="flex flex-col items-center gap-2 py-16 text-gray-500">
           <AlertCircle size={28} />
           <p className="text-sm">Tidak ada data pengajuan</p>
         </div>
@@ -496,7 +496,7 @@ export default function TahapanPengajuanPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       <p className="min-w-[240px] max-w-[420px] whitespace-normal break-words font-medium leading-snug text-gray-800">{item.judulPengajuan}</p>
-                      <p className="mt-0.5 max-w-[420px] whitespace-normal break-words text-[10px] leading-snug text-gray-400">{item.namaMitra}</p>
+                      <p className="mt-0.5 max-w-[420px] whitespace-normal break-words text-[10px] leading-snug text-gray-500">{item.namaMitra}</p>
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <JenisBadges
@@ -558,7 +558,7 @@ export default function TahapanPengajuanPage() {
                 }, [])
                 .map((p, idx) =>
                   p === '...' ? (
-                    <span key={`ellipsis-${idx}`} className="px-2 text-gray-400 text-[11px]">...</span>
+                    <span key={`ellipsis-${idx}`} className="px-2 text-gray-500 text-[11px]">...</span>
                   ) : (
                     <button
                       key={p}

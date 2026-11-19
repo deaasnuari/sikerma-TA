@@ -410,7 +410,7 @@ export default function LaporanPelaksanaanModal({ isOpen, onClose, data }: Props
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Triwulan</label>
-                <select
+                <select aria-label="Triwulan"
                   value={triwulan} disabled={!isDraftEditable}
                   onChange={(e) => setTriwulan(Number(e.target.value))}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1E376C] disabled:bg-slate-50 disabled:text-slate-500"

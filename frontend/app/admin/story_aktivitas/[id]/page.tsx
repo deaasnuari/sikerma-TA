@@ -642,7 +642,7 @@ export default function DetailStoryAktivitasPage() {
           </h2>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
-              <select
+              <select aria-label="Filter jurusan atau prodi"
                 value={filterJurusanProdi}
                 onChange={(e) => setFilterJurusanProdi(e.target.value)}
                 className="appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-3 pr-8 text-[12px] font-medium text-slate-700 outline-none focus:border-slate-400"
@@ -862,7 +862,7 @@ export default function DetailStoryAktivitasPage() {
               <div>
                 <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Jenis Aktivitas</label>
                 <div className="relative">
-                  <select
+                  <select aria-label="Jenis Aktivitas"
                     value={formState.jenisAktivitas}
                     onChange={(event) => setFormState((prev) => ({ ...prev, jenisAktivitas: event.target.value }))}
                     className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-8 text-[12px] text-slate-800 outline-none focus:border-slate-500"
@@ -902,7 +902,7 @@ export default function DetailStoryAktivitasPage() {
               <div>
                 <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Status</label>
                 <div className="relative">
-                  <select
+                  <select aria-label="Status"
                     value={formState.status}
                     onChange={(event) =>
                       setFormState((prev) => ({
@@ -923,7 +923,7 @@ export default function DetailStoryAktivitasPage() {
               <div>
                 <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Sumber Pengajuan</label>
                 <div className="relative">
-                  <select
+                  <select aria-label="Sumber Pengajuan"
                     value={formState.sourcePengajuanId}
                     onChange={(event) =>
                       setFormState((prev) => ({
@@ -1035,7 +1035,7 @@ export default function DetailStoryAktivitasPage() {
                       <p className="mt-1 text-[10px] text-slate-500">
                         {formatDate(item.tanggal)} • {item.jenisAktivitas} • {item.peserta} peserta
                       </p>
-                      <p className="mt-1 text-[10.5px] text-slate-400">
+                      <p className="mt-1 text-[10.5px] text-slate-500">
                         Sumber: {item.sourceNomorPengajuan} • {item.sourceJudulPengajuan}
                       </p>
                     </div>

@@ -340,7 +340,7 @@ export default function ArsipDokumenPage() {
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-10 text-center text-gray-400">
+                  <td colSpan={10} className="py-10 text-center text-gray-500">
                     Tidak ada data ditemukan
                   </td>
                 </tr>
@@ -393,7 +393,7 @@ export default function ArsipDokumenPage() {
                           Lihat Bukti
                         </FileDownloadLink>
                       ) : (
-                        <span className="text-[10px] text-gray-400 italic">-</span>
+                        <span className="text-[10px] text-gray-500 italic">-</span>
                       )}
                     </td>
                     <td className="py-3 px-4 text-center">
@@ -408,7 +408,7 @@ export default function ArsipDokumenPage() {
                           Lihat PDF
                         </FileDownloadLink>
                       ) : (
-                        <span className="text-[10px] text-gray-400 italic">-</span>
+                        <span className="text-[10px] text-gray-500 italic">-</span>
                       )}
                     </td>
                     <td className="py-3 px-4">

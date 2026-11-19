@@ -166,7 +166,7 @@ export default function RenewalUploadForm({ onSubmit, singleFile = false, submit
             onClick={() => setRuangLingkupOpen((o) => !o)}
             className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition-colors hover:border-blue-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
           >
-            <span className={selectedRuangLingkup.length === 0 ? 'text-gray-400' : 'font-medium'}>
+            <span className={selectedRuangLingkup.length === 0 ? 'text-gray-500' : 'font-medium'}>
               {selectedRuangLingkup.length === 0
                 ? 'Pilih ruang lingkup...'
                 : selectedRuangLingkup.length === 1
@@ -233,7 +233,7 @@ export default function RenewalUploadForm({ onSubmit, singleFile = false, submit
                 <div className="flex items-center gap-2">
                   <Upload size={14} className="text-gray-400" />
                   <span className="text-sm text-gray-700">{file.name}</span>
-                  <span className="text-xs text-gray-400">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
+                  <span className="text-xs text-gray-500">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
                 </div>
                 <button
                   type="button"

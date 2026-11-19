@@ -203,7 +203,7 @@ export default function NotificationHistoryModal({
             </div>
             <p className="mt-3 text-xs text-gray-600">
               Email akan dikirim ke:{' '}
-              <span className={`font-semibold ${isEmailValid ? 'text-gray-800' : 'text-gray-400 italic'}`}>
+              <span className={`font-semibold ${isEmailValid ? 'text-gray-800' : 'text-gray-500 italic'}`}>
                 {isEmailValid ? emailMitra : 'Tidak tersedia'}
               </span>
             </p>

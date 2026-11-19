@@ -29,8 +29,7 @@ import {
 } from '@/services/adminService';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifikasi } from '@/hooks/useNotifikasi';
-import { fetchRekapDokumenFromApi } from '@/services/dokumenKerjasamaApiService';
-import { bulanOptions, getRekapStats, semuaBulanLabel } from '@/services/adminRekapDataService';
+import { bulanOptions, semuaBulanLabel } from '@/services/adminRekapDataService';
 import { countKerjasamaBaru, refreshPengajuanDataFromApi, type PengajuanItem } from '@/services/adminPengajuanService';
 import { apiRequest } from '@/lib/api';
 import type { AdminNotification } from '@/types/admin';
@@ -58,8 +57,9 @@ type ToastState = {
 
 const AdminDashboardCharts = dynamic(() => import('./components/AdminDashboardCharts'), {
   ssr: false,
+  // min-h menyamai tinggi kartu grafik aslinya agar tidak ada lompatan tata letak (CLS) saat grafik muncul.
   loading: () => (
-    <div className="card p-6 text-xs text-gray-500">Memuat statistik...</div>
+    <div className="card min-h-[430px] p-6 text-xs text-gray-500">Memuat statistik...</div>
   ),
 });
 
@@ -183,34 +183,35 @@ export default function AdminDashboard() {
 
     const loadKerjasamaStats = async () => {
       try {
-        // Pakai sumber & status yang sama dengan halaman Rekap Data (status_siklus
-        // dari database), BUKAN status_kerjasama.status milik halaman monitoring
-        // yang dihitung ulang dari tanggal_berakhir — supaya "Total Kerjasama
-        // Aktif/Tidak Aktif" di sini selalu sama dengan kartu "Aktif"/"Kadaluarsa"
-        // di Rekap Data. forceRefresh: true supaya tidak kena cache 60 detik
-        // milik fetchRekapDokumenFromApi — kalau baru saja ada dokumen dihapus
-        // di Rekap Data, dashboard harus langsung baca angka terbaru juga.
-        const [pengajuanData, rekapItems] = await Promise.all([
+        // Angka Aktif/Tidak Aktif dihitung di backend (/dokumen-kerjasama/stats/status) dengan aturan
+        // yang sama dengan Rekap Data (status_efektif, dokumen yang disembunyikan admin tidak dihitung),
+        // jadi tetap sama dengan kartu "Aktif"/"Kadaluarsa" di Rekap Data. Dulu dashboard mengunduh
+        // 2.000 dokumen lengkap hanya untuk dua angka ini, yang membebani jaringan dan thread utama.
+        const [pengajuanData, statusRes] = await Promise.all([
           refreshPengajuanDataFromApi(),
-          fetchRekapDokumenFromApi({ forceRefresh: true }),
+          apiRequest<{ success: boolean; data: { aktif: number; akan_berakhir: number; kadaluarsa: number } }>(
+            '/dokumen-kerjasama/stats/status',
+          ),
         ]);
 
         if (!mounted) return;
 
         setPengajuanItems(pengajuanData);
 
-        const rekapStats = getRekapStats(rekapItems);
-        setDashboardStats((prev) =>
-          prev.map((stat) => {
-            if (stat.label === 'Total Kerjasama Aktif') {
-              return { ...stat, value: String(rekapStats.totalAktif + rekapStats.totalAkanBerakhir) };
-            }
-            if (stat.label === 'Total Kerjasama Tidak Aktif') {
-              return { ...stat, value: String(rekapStats.totalKadaluarsa) };
-            }
-            return stat;
-          })
-        );
+        const ringkasan = statusRes.data;
+        if (ringkasan) {
+          setDashboardStats((prev) =>
+            prev.map((stat) => {
+              if (stat.label === 'Total Kerjasama Aktif') {
+                return { ...stat, value: String(ringkasan.aktif + ringkasan.akan_berakhir) };
+              }
+              if (stat.label === 'Total Kerjasama Tidak Aktif') {
+                return { ...stat, value: String(ringkasan.kadaluarsa) };
+              }
+              return stat;
+            })
+          );
+        }
 
       } catch {
         // Tetap tampilkan nilai default jika API belum tersedia.
@@ -598,7 +599,7 @@ export default function AdminDashboard() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <p className="line-clamp-1 text-[11px] font-semibold text-gray-900">{notification.title}</p>
-                      <span className="text-[8px] text-slate-400 whitespace-nowrap">{notification.createdAt}</span>
+                      <span className="text-[8px] text-slate-500 whitespace-nowrap">{notification.createdAt}</span>
                     </div>
                     <p className="mt-0.5 line-clamp-2 text-[10px] text-gray-600">{notification.message}</p>
                     <p className="mt-0.5 text-[8px] text-gray-500">📌 dari: {notification.from}</p>
@@ -657,7 +658,7 @@ export default function AdminDashboard() {
         <div className="mb-3 flex flex-col gap-2 pr-8 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-[9px] md:text-xs font-bold text-gray-900">Kelola Carousel Landing Page</h2>
-            <p className="text-[9px] text-gray-500 mt-0.5">Upload maksimal 7 gambar. Perubahan akan otomatis tampil di menu Aktivitas. <span className="text-slate-400">Drag kartu untuk mengatur urutan slide.</span></p>
+            <p className="text-[9px] text-gray-500 mt-0.5">Upload maksimal 7 gambar. Perubahan akan otomatis tampil di menu Aktivitas. <span className="text-slate-500">Drag kartu untuk mengatur urutan slide.</span></p>
           </div>
           <span className="inline-flex w-fit rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[9px] font-semibold text-slate-600">
             {carouselImages.length}/7 gambar aktif
@@ -711,7 +712,7 @@ export default function AdminDashboard() {
           />
           <span className="w-10 text-right text-[9px] tabular-nums text-slate-500">{carouselWidth}px</span>
         </div>
-        <p className="mt-1 text-right text-[9px] text-slate-400">Tarik pegangan di sudut kanan bawah gambar untuk memperbesar atau memperkecil.</p>
+        <p className="mt-1 text-right text-[9px] text-slate-500">Tarik pegangan di sudut kanan bawah gambar untuk memperbesar atau memperkecil.</p>
 
         <div
           className="mt-2 grid gap-3"

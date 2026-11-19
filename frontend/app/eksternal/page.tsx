@@ -153,7 +153,7 @@ export default function EksternalPage() {
         <p className="mt-0.5 text-[12px] text-slate-500">
           Selamat datang, <span className="font-semibold text-slate-700">{user?.name || 'Mitra'}</span>. Kelola kerjasama dengan Politeknik Negeri Batam.
         </p>
-        <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
+        <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
           <CalendarDays size={12} />
           {hariIni}
         </p>
@@ -197,7 +197,7 @@ export default function EksternalPage() {
                   ) : (
                     <p className="mt-1 text-[24px] font-bold leading-tight text-slate-900 lg:text-[20px]">{item.value}</p>
                   )}
-                  <p className="mt-0.5 text-[10.5px] text-slate-400">{item.note}</p>
+                  <p className="mt-0.5 text-[10.5px] text-slate-500">{item.note}</p>
                 </div>
                 <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${item.iconBox}`}>
                   <Icon size={17} />
@@ -230,7 +230,7 @@ export default function EksternalPage() {
                 <FileBadge2 size={24} className="text-slate-300" />
                 <div>
                   <p className="text-[12.5px] font-semibold text-slate-600">Belum ada pengajuan kerjasama</p>
-                  <p className="text-[11px] text-slate-400">Mulai dengan membuat pengajuan baru.</p>
+                  <p className="text-[11px] text-slate-500">Mulai dengan membuat pengajuan baru.</p>
                 </div>
                 <Link
                   href="/eksternal/pengajuan_baru"

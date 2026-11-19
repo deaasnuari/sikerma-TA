@@ -54,7 +54,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\PastikanAkunMitraAktif::
 	Route::put('/pengajuan-aktivitas/{pengajuan_aktivitas}', [PengajuanAktivitasController::class, 'update']);
 	Route::delete('/pengajuan-aktivitas/{pengajuan_aktivitas}', [PengajuanAktivitasController::class, 'destroy']);
 
-	// Catatan Admin (hanya dapat diakses oleh Admin, tidak ditampilkan ke Internal/Mitra)
+	// Catatan Admin: admin kelola penuh; Internal/External hanya baca catatan pada pengajuan miliknya (dicek di controller)
 	Route::get('/catatan-admin', [CatatanAdminController::class, 'index']);
 	Route::post('/catatan-admin', [CatatanAdminController::class, 'store']);
 	Route::put('/catatan-admin/{catatan_admin}', [CatatanAdminController::class, 'update']);
@@ -79,6 +79,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\PastikanAkunMitraAktif::
 	Route::get('/dokumen-kerjasama/{dokumen_kerjasama}/monev', [DokumenKerjasamaController::class, 'monev']);
 	Route::post('/dokumen-kerjasama/manual', [DokumenKerjasamaController::class, 'storeManual']);
 	Route::get('/dokumen-kerjasama/perpanjangan/requests', [DokumenKerjasamaController::class, 'renewalRequests']);
+	Route::get('/dokumen-kerjasama/stats/status', [DokumenKerjasamaController::class, 'statusStats']);
 	Route::get('/dokumen-kerjasama/trash/list', [DokumenKerjasamaController::class, 'trashed']);
 	Route::post('/dokumen-kerjasama/{dokumen_kerjasama}/restore', [DokumenKerjasamaController::class, 'restore'])
 		->whereNumber('dokumen_kerjasama');

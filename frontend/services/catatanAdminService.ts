@@ -4,8 +4,11 @@ export interface CatatanAdminItem {
   id: number;
   pengajuan_id: number;
   teks: string;
+  /** true = terlihat oleh pengusul (dan pengusul diberi notifikasi); false = catatan privat admin. */
+  untuk_pengusul: boolean;
   dibuat_oleh: string;
-  dibuat_oleh_user_id: number | null;
+  /** Hanya dikirim untuk admin; tidak ada untuk Internal/External. */
+  dibuat_oleh_user_id?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -23,10 +26,14 @@ export async function fetchCatatanAdmin(pengajuanId: number): Promise<CatatanAdm
   return res.data;
 }
 
-export async function createCatatanAdmin(pengajuanId: number, teks: string): Promise<CatatanAdminItem> {
+export async function createCatatanAdmin(
+  pengajuanId: number,
+  teks: string,
+  untukPengusul = false,
+): Promise<CatatanAdminItem> {
   const res = await apiRequest<ApiResponse<CatatanAdminItem>>('/catatan-admin', {
     method: 'POST',
-    body: JSON.stringify({ pengajuan_id: pengajuanId, teks }),
+    body: JSON.stringify({ pengajuan_id: pengajuanId, teks, untuk_pengusul: untukPengusul }),
   });
   return res.data;
 }
@@ -35,6 +42,15 @@ export async function updateCatatanAdmin(id: number, teks: string): Promise<Cata
   const res = await apiRequest<ApiResponse<CatatanAdminItem>>(`/catatan-admin/${id}`, {
     method: 'PUT',
     body: JSON.stringify({ teks }),
+  });
+  return res.data;
+}
+
+/** Bagikan ke pengusul (memicu notifikasi sekali) atau jadikan privat kembali. */
+export async function setCatatanAdminUntukPengusul(id: number, untukPengusul: boolean): Promise<CatatanAdminItem> {
+  const res = await apiRequest<ApiResponse<CatatanAdminItem>>(`/catatan-admin/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ untuk_pengusul: untukPengusul }),
   });
   return res.data;
 }

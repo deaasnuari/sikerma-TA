@@ -207,13 +207,13 @@ export default function MonevTriwulanSection({ dokumenKerjasamaId }: Props) {
                             <Activity size={11} className="mt-0.5 shrink-0 text-emerald-600" />
                             <span>
                               <span className="font-medium text-gray-800">{formatTanggal(a.tanggal)}</span> — {a.judul}
-                              <span className="ml-1 text-gray-400">({a.jenisAktivitas})</span>
+                              <span className="ml-1 text-gray-500">({a.jenisAktivitas})</span>
                             </span>
                           </li>
                         ))}
                       </ul>
                     ) : (
-                      <p className="mt-2 text-[10.5px] italic text-gray-400">Belum ada aktivitas dari Story pada triwulan ini.</p>
+                      <p className="mt-2 text-[10.5px] italic text-gray-500">Belum ada aktivitas dari Story pada triwulan ini.</p>
                     )}
 
                     {/* Laporan Pelaksanaan formal — dikirim dari Story & Aktivitas -> Buat
@@ -238,7 +238,7 @@ export default function MonevTriwulanSection({ dokumenKerjasamaId }: Props) {
                                 Lihat file{m.fileNama ? `: ${m.fileNama}` : ''}
                               </a>
                             )}
-                            <div className="mt-1 flex items-center justify-between text-[9.5px] text-gray-400">
+                            <div className="mt-1 flex items-center justify-between text-[9.5px] text-gray-500">
                               <span>{m.dikirimOlehNama ? `dikirim oleh ${m.dikirimOlehNama}` : ''}</span>
                               <button
                                 type="button"
@@ -275,7 +275,7 @@ export default function MonevTriwulanSection({ dokumenKerjasamaId }: Props) {
                                 </a>
                               </p>
                             )}
-                            <div className="mt-1 flex items-center justify-between text-[9.5px] text-gray-400">
+                            <div className="mt-1 flex items-center justify-between text-[9.5px] text-gray-500">
                               <span>{m.dikirimOlehNama ? `oleh ${m.dikirimOlehNama}` : ''}</span>
                               <button
                                 type="button"

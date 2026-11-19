@@ -296,14 +296,14 @@ export default function SampahDokumenPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={10} className="py-10 text-center text-gray-400">
+                  <td colSpan={10} className="py-10 text-center text-gray-500">
                     Memuat data...
                   </td>
                 </tr>
               )}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-10 text-center text-gray-400">
+                  <td colSpan={10} className="py-10 text-center text-gray-500">
                     {data.length > 0 ? 'Tidak ada data sesuai filter' : 'Sampah kosong'}
                   </td>
                 </tr>
@@ -359,7 +359,7 @@ export default function SampahDokumenPage() {
                           Lihat Dokumen
                         </FileDownloadLink>
                       ) : (
-                        <span className="text-[10px] text-gray-400 italic">-</span>
+                        <span className="text-[10px] text-gray-500 italic">-</span>
                       )}
                     </td>
                     <td className="py-3 px-4">
@@ -407,7 +407,7 @@ export default function SampahDokumenPage() {
 
               {pageNumbers.map((page, idx) =>
                 page === '...' ? (
-                  <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                  <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-500">
                     …
                   </span>
                 ) : (

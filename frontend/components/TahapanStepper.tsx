@@ -10,7 +10,7 @@ interface TahapanData {
 
 export default function TahapanStepper({ tahapan }: { tahapan: TahapanData }) {
   if (!tahapan.stage) {
-    return <p className="text-[12px] text-gray-400 italic py-3 text-center">Belum ada tahapan yang ditetapkan.</p>;
+    return <p className="text-[12px] text-gray-500 italic py-3 text-center">Belum ada tahapan yang ditetapkan.</p>;
   }
 
   const stageInfo   = ALL_STAGES.find((s) => s.name === tahapan.stage);
@@ -41,7 +41,7 @@ export default function TahapanStepper({ tahapan }: { tahapan: TahapanData }) {
           <span className={`h-2 w-2 rounded-full ${dotClass}`} />
           {tahapan.stage}
         </span>
-        <p className={`mt-0.5 text-[10px] ${isDibatalkan ? 'text-red-400' : 'text-gray-400'}`}>
+        <p className={`mt-0.5 text-[10px] ${isDibatalkan ? 'text-red-400' : 'text-gray-500'}`}>
           {isDibatalkan ? 'Dibatalkan / Dihentikan' : cfg.label}
         </p>
       </div>

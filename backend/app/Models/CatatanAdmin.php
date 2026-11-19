@@ -12,8 +12,14 @@ class CatatanAdmin extends Model
     protected $fillable = [
         'pengajuan_id',
         'teks',
+        'untuk_pengusul',
         'dibuat_oleh_user_id',
     ];
+
+    protected function casts(): array
+    {
+        return ['untuk_pengusul' => 'boolean'];
+    }
 
     public function pengajuan(): BelongsTo
     {

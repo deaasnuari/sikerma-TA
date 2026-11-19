@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
@@ -137,11 +138,11 @@ export default function AdminSidebar({
         {/* Logo */}
         <div className="flex items-center justify-between px-3 py-3 border-b border-slate-700/60">
           <div className="flex items-center gap-2 min-w-0">
-            <img src="/polibatam_logo.png" alt="Logo" className="w-8 h-8 object-contain flex-shrink-0" />
+            <Image src="/polibatam_logo.png" alt="Logo" width={64} height={64} quality={75} className="w-8 h-8 object-contain flex-shrink-0" />
             {isOpen && (
               <div className="font-bold truncate">
                 <p className="text-white text-[10px] leading-tight">{portalTitle}</p>
-                <p className="text-gray-400 text-[11px] leading-tight">{portalSubtitle}</p>
+                <p className="text-gray-500 text-[11px] leading-tight">{portalSubtitle}</p>
               </div>
             )}
           </div>

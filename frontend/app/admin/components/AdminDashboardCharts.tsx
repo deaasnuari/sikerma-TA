@@ -108,7 +108,7 @@ export default function AdminDashboardCharts({ stats, jenisDistribution, topRuan
                       {item.label}
                     </span>
                     <span className="font-semibold text-slate-800">
-                      {item.value} <span className="font-normal text-slate-400">({pct}%)</span>
+                      {item.value} <span className="font-normal text-slate-500">({pct}%)</span>
                     </span>
                   </div>
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
@@ -124,10 +124,10 @@ export default function AdminDashboardCharts({ stats, jenisDistribution, topRuan
         {/* Card 3: Top 5 Ruang Lingkup */}
         <div className={`rounded-2xl border border-slate-200 bg-gradient-to-br from-cyan-50 to-slate-50 ${compact ? 'overflow-y-auto p-3' : 'p-4 md:p-5'}`}>
           <h3 className="text-[12px] font-bold text-slate-800">Top 5 Ruang Lingkup</h3>
-          <p className="mt-0.5 text-[10px] text-slate-400">Bidang paling sering diajukan</p>
-          <div className={compact ? 'mt-3 space-y-2' : 'mt-5 space-y-3'}>
+          <p className="mt-0.5 text-[10px] text-slate-500">Bidang paling sering diajukan</p>
+          <div className={`${compact ? 'mt-3 space-y-2' : 'mt-5 space-y-3'} min-h-[170px]`}>
             {topRuangLingkup.length === 0 ? (
-              <p className="text-center text-[11px] text-slate-400">Memuat data...</p>
+              <p className="text-center text-[11px] text-slate-500">Memuat data...</p>
             ) : (
               topRuangLingkup.map(([nama, jumlah], idx) => {
                 const max = topRuangLingkup[0][1];

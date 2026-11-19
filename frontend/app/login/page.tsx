@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
@@ -221,11 +222,10 @@ function LoginPageContent() {
   };
 
   return (
-    <div
-      className="fixed inset-0 overflow-hidden bg-slate-900 bg-cover bg-center bg-no-repeat px-4 py-4"
-      style={{ backgroundImage: "url('/polibatam.jpg')" }}
-    >
-      <div className="flex h-full items-center justify-center overflow-y-auto scrollbar-none bg-slate-950/60">
+    <div className="fixed inset-0 overflow-hidden bg-slate-900 px-4 py-4">
+      {/* Latar lewat next/image (AVIF/WebP + ukuran sesuai layar + prioritas), bukan CSS background 565 KB. */}
+      <Image src="/polibatam.jpg" alt="" aria-hidden="true" fill priority sizes="100vw" quality={60} className="object-cover object-center" />
+      <div className="relative flex h-full items-center justify-center overflow-y-auto scrollbar-none bg-slate-950/60">
         <div className="w-full max-w-[400px] py-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 text-slate-800 shadow-xl sm:p-6">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -238,7 +238,7 @@ function LoginPageContent() {
                 Kembali ke beranda
               </button>
 
-              <img src="/polibatam_logo.png" alt="Logo Polibatam" className="h-8 w-auto object-contain" />
+              <Image src="/polibatam_logo.png" alt="Logo Polibatam" width={182} height={162} className="h-8 w-auto object-contain" />
             </div>
 
             <div className="text-center">
@@ -375,7 +375,7 @@ function LoginPageContent() {
                       onClick={() => setShowPassword((v) => !v)}
                       aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
                       title={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                      className="absolute right-2 top-1/2 flex h-[26px] w-[26px] -translate-y-1/2 items-center justify-center text-slate-400 transition hover:text-slate-600"
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -412,7 +412,7 @@ function LoginPageContent() {
                   <>
                     <div className="flex items-center gap-3 pt-1">
                       <div className="h-px flex-1 bg-slate-200" />
-                      <span className="text-[11px] font-medium text-slate-400">Atau masuk dengan</span>
+                      <span className="text-[11px] font-medium text-slate-500">Atau masuk dengan</span>
                       <div className="h-px flex-1 bg-slate-200" />
                     </div>
                     <button
@@ -616,7 +616,7 @@ function LoginPageContent() {
                         onClick={() => setShowFpPassword((v) => !v)}
                         aria-label={showFpPassword ? 'Sembunyikan password' : 'Tampilkan password'}
                         title={showFpPassword ? 'Sembunyikan password' : 'Tampilkan password'}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                        className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center text-slate-400 transition hover:text-slate-600"
                       >
                         {showFpPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>

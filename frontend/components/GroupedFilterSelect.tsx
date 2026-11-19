@@ -120,7 +120,7 @@ export default function GroupedFilterSelect({
               group.options.length > 0 ? (
                 <div key={group.label || `group-${groupIndex}`} className="mt-1">
                   {group.label && (
-                    <p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">{group.label}</p>
+                    <p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">{group.label}</p>
                   )}
                   {group.options.map((option) => (
                     <button

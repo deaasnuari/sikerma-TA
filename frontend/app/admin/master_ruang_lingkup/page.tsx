@@ -191,7 +191,7 @@ export default function MasterRuangLingkupPage() {
         </div>
 
         <div className="relative min-w-[160px]">
-          <select value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)} className="input-field appearance-none pl-4 pr-9 py-2.5 text-[12px] font-medium">
+          <select aria-label="Filter status" value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)} className="input-field appearance-none pl-4 pr-9 py-2.5 text-[12px] font-medium">
             <option>Semua Status</option>
             <option>Aktif</option>
             <option>NonAktif</option>
@@ -213,13 +213,13 @@ export default function MasterRuangLingkupPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={3} className="py-10 text-center text-gray-500">Memuat data master ruang lingkup...</td>
+                  <td colSpan={3} className="h-[100svh] py-10 text-center align-top text-gray-500">Memuat data master ruang lingkup...</td>
                 </tr>
               )}
 
               {!loading && filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="py-10 text-center text-gray-400">Tidak ada data ditemukan</td>
+                  <td colSpan={3} className="py-10 text-center text-gray-500">Tidak ada data ditemukan</td>
                 </tr>
               )}
 
@@ -270,7 +270,7 @@ export default function MasterRuangLingkupPage() {
                   />
                 ) : (
                   <>
-                    <select
+                    <select aria-label="Nama ruang lingkup"
                       value={form.nama_ruang_lingkup}
                       onChange={(event) => setForm((prev) => ({ ...prev, nama_ruang_lingkup: event.target.value }))}
                       className="input-field mt-1.5 w-full px-4 py-2.5 text-[12px]"

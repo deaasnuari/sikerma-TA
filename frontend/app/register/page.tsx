@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
@@ -196,11 +197,8 @@ export default function RegisterPage() {
     <div
       className="fixed inset-0 overflow-hidden px-4 py-4"
     >
-      {/* Background image */}
-      <div
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('/polibatam.jpg')" }}
-      />
+      {/* Background image (next/image: AVIF/WebP + ukuran sesuai layar + prioritas) */}
+      <Image src="/polibatam.jpg" alt="" aria-hidden="true" fill priority sizes="100vw" quality={60} className="object-cover object-center" />
       {/* Color overlay #0E1D34 50% */}
       <div className="absolute inset-0" style={{ backgroundColor: 'rgba(14,29,52,0.5)' }} />
       <div className="relative z-10 mx-auto flex h-full max-w-6xl items-center justify-center">
@@ -409,7 +407,7 @@ export default function RegisterPage() {
                     <label className="mb-1 block text-xs font-semibold text-[#173B82]">Negara Mitra</label>
                     <div className="relative">
                       <Globe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                      <select
+                      <select aria-label="Negara Mitra"
                         name="negara"
                         value={form.negara}
                         onChange={handleChange}
@@ -527,7 +525,7 @@ export default function RegisterPage() {
                   <div className="md:col-span-2">
                     <label className="mb-1 block text-xs font-semibold text-[#173B82]">Jenis Akun</label>
                     <div className="relative">
-                      <select
+                      <select aria-label="Jenis Akun"
                         name="account_type"
                         value={(JENIS_AKUN_OPTIONS.filter(o => o !== 'Lainnya') as string[]).includes(form.account_type) || form.account_type === '' ? form.account_type : 'Lainnya'}
                         onChange={handleChange}
@@ -556,7 +554,7 @@ export default function RegisterPage() {
                   <div className="md:col-span-2">
                     <label className="mb-1 block text-xs font-semibold text-[#173B82]">Tingkat Perusahaan</label>
                     <div className="relative">
-                      <select
+                      <select aria-label="Tingkat Perusahaan"
                         name="tingkat_perusahaan"
                         value={form.tingkat_perusahaan}
                         onChange={handleChange}

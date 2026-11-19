@@ -223,7 +223,7 @@ export default function PimpinanDaftarKerjasamaPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            <select
+            <select aria-label="Filter status"
               value={filterStatus}
               onChange={(event) => setFilterStatus(event.target.value)}
               className="input-field h-10 w-full px-3 text-sm text-slate-700"
@@ -234,7 +234,7 @@ export default function PimpinanDaftarKerjasamaPage() {
               <option>Kadaluarsa</option>
             </select>
 
-            <select
+            <select aria-label="Filter kategori"
               value={filterKategori}
               onChange={(event) => setFilterKategori(event.target.value)}
               className="input-field h-10 w-full px-3 text-sm text-slate-700"
@@ -331,7 +331,7 @@ export default function PimpinanDaftarKerjasamaPage() {
               )}
             </div>
 
-            <select
+            <select aria-label="Urutkan"
               value={sortOrder}
               onChange={(event) => setSortOrder(event.target.value as 'newest' | 'oldest')}
               className="input-field h-10 w-full px-3 text-sm text-slate-700"
@@ -360,13 +360,13 @@ export default function PimpinanDaftarKerjasamaPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                     Memuat data...
                   </td>
                 </tr>
               ) : filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                     Tidak ada data kerjasama.
                   </td>
                 </tr>
@@ -484,7 +484,7 @@ export default function PimpinanDaftarKerjasamaPage() {
                 {(() => {
                   const daftar = dokumenByDokumenId.get(detailItem.id) ?? [];
                   if (daftar.length === 0) {
-                    return <p className="rounded-xl border border-dashed border-slate-200 px-4 py-3 text-xs text-slate-400">Belum ada dokumen terlampir.</p>;
+                    return <p className="rounded-xl border border-dashed border-slate-200 px-4 py-3 text-xs text-slate-500">Belum ada dokumen terlampir.</p>;
                   }
                   return (
                     <div className="space-y-2">
@@ -499,7 +499,7 @@ export default function PimpinanDaftarKerjasamaPage() {
                                 <JenisBerkasBadge jenis={doc.jenisBerkas} jenisDokumen={doc.jenisDokumen} />
                               </div>
                               <p className="break-words text-sm font-semibold text-slate-800">{doc.nama}</p>
-                              <p className="text-[11px] text-slate-400">{doc.ukuran} &middot; {doc.tanggal}</p>
+                              <p className="text-[11px] text-slate-500">{doc.ukuran} &middot; {doc.tanggal}</p>
                             </div>
                           </div>
                           <div className="flex shrink-0 gap-2">

@@ -153,7 +153,8 @@ export default function Home() {
       }));
     }
 
-    return Array.from({ length: 7 }, (_, index) => ({
+    // Satu slide placeholder saja (bukan 7 salinan): dipakai selama data carousel dimuat atau bila admin belum mengunggah foto.
+    return Array.from({ length: 1 }, (_, index) => ({
       id: index + 1,
       title: `Aktivitas Kerjasama ${index + 1}`,
       imageUrl: '/polibatam.jpg',
@@ -329,6 +330,7 @@ export default function Home() {
           alt="Kampus Politeknik Negeri Batam"
           fill
           priority
+          fetchPriority="high"
           quality={65}
           sizes="100vw"
           className="object-cover"
@@ -423,15 +425,28 @@ export default function Home() {
               className="flex transition-transform duration-700 ease-in-out"
               style={{ transform: `translateX(-${activeSlide * 100}%)` }}
             >
-              {carouselSlides.map((slide) => (
+              {carouselSlides.map((slide, slideIndex) => (
                 <div key={slide.id} className="relative h-[260px] w-full flex-shrink-0 overflow-hidden sm:h-[340px] lg:h-[420px]">
-                  <img
-                    src={slide.imageUrl}
-                    alt={slide.title}
-                    className="h-full w-full object-cover"
-                    style={carouselImageStyle(slide.tampilan)}
-                    loading="lazy"
-                  />
+                  {/* Hanya slide aktif dan tetangganya yang memuat gambar, supaya foto besar di slide
+                      lain tidak diunduh/di-decode saat halaman pertama kali dibuka. */}
+                  {(() => {
+                    const total = carouselSlides.length;
+                    const jarak = Math.min((slideIndex - activeSlide + total) % total, (activeSlide - slideIndex + total) % total);
+                    if (jarak > 1) return null;
+                    if (slide.imageUrl === '/polibatam.jpg') {
+                      return <Image src={slide.imageUrl} alt={slide.title} fill sizes="100vw" quality={65} className="object-cover" />;
+                    }
+                    return (
+                      <img
+                        src={slide.imageUrl}
+                        alt={slide.title}
+                        className="h-full w-full object-cover"
+                        style={carouselImageStyle(slide.tampilan)}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    );
+                  })()}
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900/55 via-slate-900/10 to-transparent" />
                   <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
                     <p className="text-[11.5px] font-semibold text-white sm:text-[13.5px]">{slide.title}</p>
@@ -457,15 +472,18 @@ export default function Home() {
               ›
             </button>
 
-            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2">
+            <div className="absolute bottom-1 left-1/2 flex -translate-x-1/2 items-center">
               {carouselSlides.map((slide, index) => (
                 <button
                   key={slide.id}
                   type="button"
                   onClick={() => setActiveSlide(index)}
-                  className={`h-2.5 rounded-full transition-all ${activeSlide === index ? 'w-7 bg-white' : 'w-2.5 bg-white/60'}`}
+                  className="flex items-center justify-center"
+                  style={{ width: 24, height: 24, minWidth: 24, minHeight: 24, padding: 0 }}
                   aria-label={`Buka slide ${index + 1}`}
-                />
+                >
+                  <span className={`block h-2.5 rounded-full transition-all ${activeSlide === index ? 'w-5 bg-white' : 'w-2.5 bg-white/60'}`} />
+                </button>
               ))}
             </div>
           </div>
@@ -489,7 +507,7 @@ export default function Home() {
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-medium text-slate-500">{card.label}</p>
                   <p className="text-[22px] font-bold leading-tight" style={{ color: card.color }}>{card.value.toLocaleString('id-ID')}</p>
-                  <p className="text-[10px] text-slate-400">{card.sub}</p>
+                  <p className="text-[10px] text-slate-500">{card.sub}</p>
                 </div>
               </div>
             </div>
@@ -543,7 +561,7 @@ export default function Home() {
                           <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                           {item.label}
                         </span>
-                        <span className="font-semibold text-slate-800">{item.value} <span className="font-normal text-slate-400">({pct}%)</span></span>
+                        <span className="font-semibold text-slate-800">{item.value} <span className="font-normal text-slate-500">({pct}%)</span></span>
                       </div>
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
                         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: item.color }} />
@@ -557,10 +575,10 @@ export default function Home() {
             {/* Card 3: Top 5 Ruang Lingkup */}
             <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-cyan-50 to-slate-50 p-4 md:p-5">
               <h3 className="text-[12px] font-bold text-slate-800">Top 5 Ruang Lingkup</h3>
-              <p className="mt-0.5 text-[10px] text-slate-400">Bidang paling sering diajukan</p>
+              <p className="mt-0.5 text-[10px] text-slate-500">Bidang paling sering diajukan</p>
               <div className="mt-5 space-y-3">
                 {topRuangLingkup.length === 0 ? (
-                  <p className="text-center text-[11px] text-slate-400">Memuat data...</p>
+                  <p className="text-center text-[11px] text-slate-500">Memuat data...</p>
                 ) : topRuangLingkup.map(([nama, jumlah], idx) => {
                   const max = topRuangLingkup[0][1];
                   const pct = max > 0 ? Math.round((jumlah / max) * 100) : 0;
@@ -624,6 +642,7 @@ export default function Home() {
                 </svg>
                 <input
                   type="month"
+                  aria-label="Filter periode"
                   value={selectedPeriod}
                   onChange={(e) => setSelectedPeriod(e.target.value)}
                   className="bg-transparent outline-none"
@@ -632,6 +651,7 @@ export default function Home() {
 
               {/* Wilayah */}
               <select
+                aria-label="Filter wilayah"
                 value={selectedWilayah}
                 onChange={(e) => { setSelectedWilayah(e.target.value); setCurrentPage(1); }}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11.5px] text-slate-700 shadow-sm outline-none focus:border-blue-400"
@@ -643,6 +663,7 @@ export default function Home() {
 
               {/* Jenis */}
               <select
+                aria-label="Filter jenis dokumen"
                 value={selectedJenisDokumen}
                 onChange={(e) => { setSelectedJenisDokumen(e.target.value); setCurrentPage(1); }}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11.5px] text-slate-700 shadow-sm outline-none focus:border-blue-400"
@@ -655,6 +676,7 @@ export default function Home() {
 
               {/* Unit — dipisah per kategori: Jurusan / Program Studi / Unit Kerja */}
               <select
+                aria-label="Filter unit"
                 value={selectedUnit}
                 onChange={(e) => { setSelectedUnit(e.target.value); setCurrentPage(1); }}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11.5px] text-slate-700 shadow-sm outline-none focus:border-blue-400"
@@ -686,6 +708,7 @@ export default function Home() {
               <div className="ml-auto flex items-center gap-2 text-[11.5px] text-slate-500">
                 <span>Tampilkan</span>
                 <select
+                  aria-label="Jumlah data per halaman"
                   value={perPage}
                   onChange={(e) => { setPerPage(Number(e.target.value)); setCurrentPage(1); }}
                   className="rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[11.5px] shadow-sm outline-none"
@@ -700,7 +723,7 @@ export default function Home() {
 
             {(search || selectedWilayah !== 'Semua Wilayah' || selectedJenisDokumen !== 'Semua Jenis' || selectedUnit !== 'Semua Unit' || selectedPeriod) && (
               <div className="mt-2 flex items-center gap-2 text-[11px]">
-                <span className="text-slate-400">Hasil:</span>
+                <span className="text-slate-500">Hasil:</span>
                 <span className="font-semibold text-[#173B82]">{filtered.length} dokumen</span>
                 <button
                   onClick={() => { setSearch(''); setSelectedWilayah('Semua Wilayah'); setSelectedJenisDokumen('Semua Jenis'); setSelectedUnit('Semua Unit'); setSelectedPeriod(''); setCurrentPage(1); }}
@@ -727,7 +750,7 @@ export default function Home() {
               <tbody className="divide-y divide-slate-100">
                 {isLoadingTable ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-[11.5px] text-slate-400">
+                    <td colSpan={6} className="px-4 py-12 text-center text-[11.5px] text-slate-500">
                       <div className="flex flex-col items-center gap-2">
                         <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#173B82] border-t-transparent" />
                         Memuat data kerjasama...
@@ -736,7 +759,7 @@ export default function Home() {
                   </tr>
                 ) : pagedItems.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-[11.5px] text-slate-400">
+                    <td colSpan={6} className="px-4 py-12 text-center text-[11.5px] text-slate-500">
                       <div className="flex flex-col items-center gap-1">
                         <svg className="h-8 w-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         Tidak ada data yang sesuai
@@ -745,7 +768,7 @@ export default function Home() {
                   </tr>
                 ) : pagedItems.map((row, i) => (
                   <tr key={row.id} className="group cursor-default bg-white transition-colors hover:bg-blue-50/60">
-                    <td className="px-4 py-3 align-middle text-[11px] text-slate-400">{startIndex + i + 1}</td>
+                    <td className="px-4 py-3 align-middle text-[11px] text-slate-500">{startIndex + i + 1}</td>
                     <td className="px-4 py-3 align-middle font-medium text-slate-800">{row.nama}</td>
                     <td className="px-4 py-3 align-middle text-slate-500">{row.bidang}</td>
                     <td className="px-4 py-3 align-middle">
@@ -765,6 +788,7 @@ export default function Home() {
                     <td className="px-4 py-3 align-middle text-center">
                       <button
                         onClick={() => handleOpenDetail(row)}
+                        aria-label={`Lihat detail ${row.nama}`}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#173B82]/10 text-[#173B82] transition-colors hover:bg-[#173B82] hover:text-white group-hover:bg-[#173B82]/20"
                       >
                         <MenuIcon />
@@ -858,7 +882,7 @@ export default function Home() {
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-300">Dokumen Kerjasama</p>
                   <h2 className="mt-1 text-[15px] font-bold leading-snug text-white">{selectedRow.nama}</h2>
                 </div>
-                <button onClick={() => setSelectedRow(null)} className="ml-3 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20">
+                <button onClick={() => setSelectedRow(null)} aria-label="Tutup detail" className="ml-3 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20">
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
@@ -877,11 +901,11 @@ export default function Home() {
             {/* Body */}
             <div className="divide-y divide-slate-100 px-6">
               <div className="py-4">
-                <p className="text-[10.5px] font-medium uppercase tracking-wider text-slate-400">Bidang Kerja Sama</p>
+                <p className="text-[10.5px] font-medium uppercase tracking-wider text-slate-500">Bidang Kerja Sama</p>
                 <p className="mt-1 text-[13px] text-slate-700">{selectedRow.bidang}</p>
               </div>
               <div className="py-4">
-                <p className="text-[10.5px] font-medium uppercase tracking-wider text-slate-400">Unit Pengaju</p>
+                <p className="text-[10.5px] font-medium uppercase tracking-wider text-slate-500">Unit Pengaju</p>
                 <p className="mt-1 text-[13px] text-slate-700">{selectedRow.unit}</p>
               </div>
             </div>
@@ -1000,16 +1024,21 @@ export default function Home() {
             {/* Right — foto kampus & website */}
             <div className="relative flex flex-col justify-between gap-4 bg-black/10 p-4 md:p-6">
               <div className="relative h-40 w-full overflow-hidden rounded-xl border border-white/20 shadow-lg md:h-full">
-                <img
+                {/* Footer: di luar layar saat dibuka, jadi lazy + ukuran kecil agar tidak bersaing dengan LCP. */}
+                <Image
                   src="/polibatam.jpg"
                   alt="Kampus Politeknik Negeri Batam"
-                  className="h-full w-full object-cover"
+                  fill
+                  loading="lazy"
+                  quality={60}
+                  sizes="(min-width: 768px) 40vw, 100vw"
+                  className="object-cover"
                 />
               </div>
 
               <div className="flex items-center gap-3 rounded-xl bg-white/10 p-3 backdrop-blur-sm">
                 <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-white p-1.5 shadow-md">
-                  <img src="/polibatam_logo.png" alt="Logo Polibatam" className="h-full w-full object-contain" />
+                  <Image src="/polibatam_logo.png" alt="Logo Polibatam" width={182} height={162} className="h-full w-full object-contain" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold text-white">Visit Our Website</p>

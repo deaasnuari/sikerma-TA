@@ -392,7 +392,7 @@ function TabInformasi({ item, onNilaiSaved }: { item: KerjasamaItem; onNilaiSave
                 className="input-field h-10 w-full rounded-lg px-3 text-[12px]"
                 placeholder="Contoh: Rp 50.000.000 atau USD 5,000"
               />
-              <p className="text-[10px] text-gray-400">Tulis nominal beserta mata uangnya (Rp, USD, dll.). Boleh tambah keterangan, mis. &quot;Rp 20 juta per tahun&quot;.</p>
+              <p className="text-[10px] text-gray-500">Tulis nominal beserta mata uangnya (Rp, USD, dll.). Boleh tambah keterangan, mis. &quot;Rp 20 juta per tahun&quot;.</p>
               {nilaiError && <p className="text-[11px] text-red-500">{nilaiError}</p>}
               <div className="flex justify-end gap-2">
                 <button
@@ -639,7 +639,7 @@ function TabHistori({ histori }: { histori: HistoriItem[] }) {
             <div className="pt-1">
               <p className="text-[12px] font-semibold text-gray-900">{h.judul}</p>
               <p className="text-[10px] text-gray-500">{h.oleh}</p>
-              <p className="text-[10px] text-gray-400">{h.tanggal}</p>
+              <p className="text-[10px] text-gray-500">{h.tanggal}</p>
             </div>
           </div>
         ))}

@@ -203,7 +203,7 @@ export default function StoryAktivitasPage() {
             { value: filterJenis, set: setFilterJenis, opts: ['Semua Jenis', 'MoA', 'MoU', 'IA'] },
           ] as const).map((f, i) => (
             <div key={i} className="relative">
-              <select
+              <select aria-label={`Filter ${String(f.opts[0]).replace(/^Semua /, '').toLowerCase()}`}
                 value={f.value}
                 onChange={(e) => f.set(e.target.value)}
                 className="appearance-none rounded-xl border border-gray-200 bg-gray-50 py-2 pl-3.5 pr-9 text-sm font-medium text-gray-700 outline-none transition hover:bg-gray-100 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/30"
@@ -309,7 +309,7 @@ export default function StoryAktivitasPage() {
       {/* Kerjasama List */}
       <div className="space-y-3">
         {filtered.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center text-sm text-gray-400">
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center text-sm text-gray-500">
             Tidak ada data ditemukan
           </div>
         )}

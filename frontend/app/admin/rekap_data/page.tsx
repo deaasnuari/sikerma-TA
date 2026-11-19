@@ -734,7 +734,7 @@ export default function RekapDataPage() {
 
             <MonthPicker value={filterBulan} onChange={setFilterBulan} />
 
-            <select
+            <select aria-label="Urutkan"
               value={sortOrder}
               onChange={(event) => setSortOrder(event.target.value as 'newest' | 'oldest')}
               className="input-field px-3 py-2 text-[12px] text-gray-700"
@@ -786,7 +786,7 @@ export default function RekapDataPage() {
             <thead>
               <tr className="table-head border-b border-gray-200 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-700">
                 <th rowSpan={2} className="px-4 py-3 align-middle">
-                  <button type="button" onClick={toggleSelectAll} className="text-gray-500 hover:text-[#1E376C]">
+                  <button type="button" onClick={toggleSelectAll} aria-label="Pilih semua baris" className="text-gray-500 hover:text-[#1E376C]">
                     {selectedIds.size > 0 && selectedIds.size === filteredRows.filter((r) => typeof r.id === 'number').length
                       ? <CheckSquare size={16} className="text-[#1E376C]" />
                       : <Square size={16} />}
@@ -966,7 +966,7 @@ export default function RekapDataPage() {
 
               {pageNumbers.map((page, idx) =>
                 page === '...' ? (
-                  <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                  <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-500">
                     …
                   </span>
                 ) : (
@@ -1088,7 +1088,7 @@ export default function RekapDataPage() {
                       </span>
                     )}
                     {!detailLinkBukti && (
-                      <p className="mt-1 text-[10px] italic text-gray-400">Belum ada file bukti kerja sama yang diupload</p>
+                      <p className="mt-1 text-[10px] italic text-gray-500">Belum ada file bukti kerja sama yang diupload</p>
                     )}
                   </div>
                 </div>
@@ -1255,7 +1255,7 @@ export default function RekapDataPage() {
                               {kontak.tampil}
                             </a>
                           ) : (
-                            <p className="text-[12px] font-medium text-gray-400">Nomor belum diisi</p>
+                            <p className="text-[12px] font-medium text-gray-500">Nomor belum diisi</p>
                           )}
                           {kontak.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kontak.email.trim()) ? (
                             <a
@@ -1268,7 +1268,7 @@ export default function RekapDataPage() {
                               {kontak.email}
                             </a>
                           ) : (
-                            <p className="mt-1.5 text-[12px] font-medium text-gray-400">Email belum diisi</p>
+                            <p className="mt-1.5 text-[12px] font-medium text-gray-500">Email belum diisi</p>
                           )}
                         </div>
                       </div>
@@ -1302,7 +1302,7 @@ export default function RekapDataPage() {
                       className="input-field w-full rounded-lg px-3 py-2 text-[12px]"
                       placeholder="Jelaskan manfaat kerja sama"
                     />
-                    <p className={`text-right text-[10px] ${manfaatDraft.length >= 100 ? 'text-red-500' : 'text-gray-400'}`}>{manfaatDraft.length}/100</p>
+                    <p className={`text-right text-[10px] ${manfaatDraft.length >= 100 ? 'text-red-500' : 'text-gray-500'}`}>{manfaatDraft.length}/100</p>
                     <div className="flex gap-2 justify-end">
                       <button type="button" onClick={() => setIsEditingManfaat(false)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50">Batal</button>
                       <button type="button" onClick={handleSaveManfaat} disabled={savingManfaat} className="rounded-lg bg-[#1E376C] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#2B4A93] disabled:opacity-60">
@@ -1311,7 +1311,7 @@ export default function RekapDataPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[12px] text-gray-700">{detailItem.manfaatSebenarnya || detailItem.manfaatKerjasama || <span className="italic text-gray-400">Belum diisi</span>}</p>
+                  <p className="text-[12px] text-gray-700">{detailItem.manfaatSebenarnya || detailItem.manfaatKerjasama || <span className="italic text-gray-500">Belum diisi</span>}</p>
                 )}
               </div>
 
@@ -1341,7 +1341,7 @@ export default function RekapDataPage() {
                       className="input-field h-10 w-full rounded-lg px-3 text-[12px]"
                       placeholder="Contoh: Rp 50.000.000 atau USD 5,000"
                     />
-                    <p className="text-[10px] text-gray-400">Tulis nominal beserta mata uangnya (Rp, USD, dll.). Boleh tambah keterangan, mis. "Rp 20 juta per tahun".</p>
+                    <p className="text-[10px] text-gray-500">Tulis nominal beserta mata uangnya (Rp, USD, dll.). Boleh tambah keterangan, mis. "Rp 20 juta per tahun".</p>
                     <div className="flex gap-2 justify-end">
                       <button type="button" onClick={() => setIsEditingNilai(false)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50">Batal</button>
                       <button type="button" onClick={handleSaveNilai} disabled={savingNilai} className="rounded-lg bg-[#1E376C] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#2B4A93] disabled:opacity-60">
@@ -1350,7 +1350,7 @@ export default function RekapDataPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[12px] font-semibold text-gray-800">{detailItem.nilaiKerjasama || <span className="font-normal italic text-gray-400">Belum diisi</span>}</p>
+                  <p className="text-[12px] font-semibold text-gray-800">{detailItem.nilaiKerjasama || <span className="font-normal italic text-gray-500">Belum diisi</span>}</p>
                 )}
               </div>
 
@@ -1387,7 +1387,7 @@ export default function RekapDataPage() {
                       className="input-field w-full rounded-lg px-3 py-2 text-[12px]"
                       placeholder="Jelaskan luaran/output yang dihasilkan dari kerja sama ini"
                     />
-                    <p className={`text-right text-[10px] ${luaranDraft.length >= 2000 ? 'text-red-500' : 'text-gray-400'}`}>{luaranDraft.length}/2000</p>
+                    <p className={`text-right text-[10px] ${luaranDraft.length >= 2000 ? 'text-red-500' : 'text-gray-500'}`}>{luaranDraft.length}/2000</p>
                     <div className="flex gap-2 justify-end">
                       <button type="button" onClick={() => setIsEditingLuaran(false)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50">Batal</button>
                       <button type="button" onClick={handleSaveLuaran} disabled={savingLuaran} className="rounded-lg bg-[#1E376C] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#2B4A93] disabled:opacity-60">
@@ -1396,7 +1396,7 @@ export default function RekapDataPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[12px] text-gray-700">{detailItem.luaranKerjaSama || <span className="italic text-gray-400">Belum diisi</span>}</p>
+                  <p className="text-[12px] text-gray-700">{detailItem.luaranKerjaSama || <span className="italic text-gray-500">Belum diisi</span>}</p>
                 )}
               </div>
 
@@ -1448,7 +1448,7 @@ export default function RekapDataPage() {
                       className="input-field w-full rounded-lg px-3 py-2 text-[12px]"
                       placeholder="Catatan follow up kerja sama"
                     />
-                    <p className={`text-right text-[10px] ${followUpDraft.length >= 500 ? 'text-red-500' : 'text-gray-400'}`}>{followUpDraft.length}/500</p>
+                    <p className={`text-right text-[10px] ${followUpDraft.length >= 500 ? 'text-red-500' : 'text-gray-500'}`}>{followUpDraft.length}/500</p>
                     <div className="flex gap-2 justify-end">
                       <button type="button" onClick={() => setIsEditingFollowUp(false)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50">Batal</button>
                       <button type="button" onClick={handleSaveFollowUp} disabled={savingFollowUp} className="rounded-lg bg-[#1E376C] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#2B4A93] disabled:opacity-60">
@@ -1457,7 +1457,7 @@ export default function RekapDataPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[12px] text-gray-700">{detailItem.followUp || <span className="italic text-gray-400">Belum diisi</span>}</p>
+                  <p className="text-[12px] text-gray-700">{detailItem.followUp || <span className="italic text-gray-500">Belum diisi</span>}</p>
                 )}
               </div>
 
@@ -1480,7 +1480,7 @@ export default function RekapDataPage() {
                               <JenisBerkasBadge jenis={doc.jenisBerkas} jenisDokumen={doc.jenisDokumen} />
                             </div>
                             <p className="truncate text-[10px] font-semibold text-gray-800">{doc.nama}</p>
-                            <p className="text-[10.5px] text-gray-400">{doc.ukuran} · {doc.tanggal}</p>
+                            <p className="text-[10.5px] text-gray-500">{doc.ukuran} · {doc.tanggal}</p>
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
@@ -1550,7 +1550,7 @@ export default function RekapDataPage() {
                           </span>
                         </div>
                         {r.decidedAt && (
-                          <p className="mt-1 text-[9.5px] text-gray-400">Disetujui {r.decidedAt}{r.decidedBy ? ` oleh ${r.decidedBy}` : ''}</p>
+                          <p className="mt-1 text-[9.5px] text-gray-500">Disetujui {r.decidedAt}{r.decidedBy ? ` oleh ${r.decidedBy}` : ''}</p>
                         )}
                       </div>
                     ))}
@@ -1890,7 +1890,7 @@ function StatCard({
     <div className="stat-card p-3">
       <p className="text-[10px] text-gray-500">{title}</p>
       <p className={`mt-0.5 text-[17px] font-bold ${valueClassName}`}>{value}</p>
-      <p className="mt-0.5 text-[10px] text-gray-400">{caption}</p>
+      <p className="mt-0.5 text-[10px] text-gray-500">{caption}</p>
     </div>
   );
 }

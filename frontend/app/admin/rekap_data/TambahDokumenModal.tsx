@@ -598,7 +598,7 @@ export default function TambahDokumenModal({
                 onChange={(e) => handleInputChange('nomorDokumen', e.target.value)}
                 hasError={!!errors.nomorDokumen}
               />
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="mt-1 text-[11px] text-slate-500">
                 {isEditMode ? 'Ubah nomor dokumen jika diperlukan, lalu simpan perubahan.' : 'Ketik manual. Nomor tidak boleh sama dengan dokumen lain.'}
               </p>
             </Field>
@@ -715,7 +715,7 @@ export default function TambahDokumenModal({
                               </div>
                               <div className={`min-w-0 flex-1 ${removed ? 'opacity-60' : ''}`}>
                                 <p className={`truncate text-sm font-semibold text-gray-800 ${removed ? 'line-through' : ''}`}>{doc.nama}</p>
-                                <p className="text-xs text-gray-400">{removed ? 'Akan dihapus saat disimpan' : `${doc.ukuran} · ${doc.tanggal}`}</p>
+                                <p className="text-xs text-gray-500">{removed ? 'Akan dihapus saat disimpan' : `${doc.ukuran} · ${doc.tanggal}`}</p>
                               </div>
                               {doc.id != null && (
                                 <button
@@ -818,7 +818,7 @@ export default function TambahDokumenModal({
                       {selectedFile && (formData.jenisList?.length ?? 0) > 1 && (
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <label className="text-xs font-semibold text-slate-700">Jenis dokumen ini *</label>
-                          <select
+                          <select aria-label="Jenis dokumen ini"
                             value={jenisFileBaru}
                             onChange={(e) => setJenisFileBaru(e.target.value)}
                             className={`rounded-lg border bg-white px-2 py-1 text-xs ${jenisFileBaru ? 'border-slate-300 text-slate-700' : 'border-red-400 text-red-600 ring-1 ring-red-200'}`}
@@ -860,7 +860,7 @@ export default function TambahDokumenModal({
                               </div>
                               <div className={`min-w-0 flex-1 ${removed ? 'opacity-60' : ''}`}>
                                 <p className={`truncate text-sm font-semibold text-gray-800 ${removed ? 'line-through' : ''}`}>{doc.nama}</p>
-                                <p className="text-xs text-gray-400">{removed ? 'Akan dihapus saat disimpan' : `${doc.ukuran} · ${doc.tanggal}`}</p>
+                                <p className="text-xs text-gray-500">{removed ? 'Akan dihapus saat disimpan' : `${doc.ukuran} · ${doc.tanggal}`}</p>
                               </div>
                               {doc.id != null && (
                                 <button
@@ -897,7 +897,7 @@ export default function TambahDokumenModal({
                       <p className="mt-2 text-sm font-semibold text-slate-800">
                         {existingDokumenPendukung.length > 0 ? 'Tambah / Ganti Dokumen Pendukung' : 'Upload TOR / KAK / Proposal / Laporan Kegiatan'}
                       </p>
-                      <p className="mt-1 text-xs text-slate-400">PDF, DOC, atau DOCX — maks. 10 MB</p>
+                      <p className="mt-1 text-xs text-slate-500">PDF, DOC, atau DOCX — maks. 10 MB</p>
                       {selectedFilePendukung && (
                         <div className="mt-3 inline-flex items-center rounded-lg border border-green-200 bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700">
                           File dipilih: {selectedFilePendukung.name}
@@ -908,7 +908,7 @@ export default function TambahDokumenModal({
                     {selectedFilePendukung && (
                       <div className="flex flex-wrap items-center gap-2">
                         <label className="text-xs font-semibold text-amber-800">Jenis dokumen pendukung ini</label>
-                        <select
+                        <select aria-label="Jenis dokumen pendukung ini"
                           value={jenisPendukungBaru}
                           onChange={(e) => setJenisPendukungBaru(e.target.value)}
                           className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-xs text-slate-700"
@@ -1193,7 +1193,7 @@ export default function TambahDokumenModal({
                 >
                   <div className="flex flex-wrap gap-1.5">
                     {selectedRuangLingkup.length === 0 ? (
-                      <span className="text-slate-400">Pilih ruang lingkup kerjasama...</span>
+                      <span className="text-slate-500">Pilih ruang lingkup kerjasama...</span>
                     ) : (
                       selectedRuangLingkup.map((rl) => (
                         <span key={rl} className="inline-flex items-center gap-1 rounded-full bg-[#1E376C] px-2 py-0.5 text-xs font-semibold text-white">
@@ -1268,7 +1268,7 @@ export default function TambahDokumenModal({
                   placeholder="Jelaskan manfaat kerja sama"
                   className="input-field min-h-[80px] w-full px-4 py-2 text-sm text-gray-700"
                 />
-                <p className={`mt-1 text-right text-xs ${(formData.manfaatKerjasama || '').length >= 2000 ? 'text-red-500' : 'text-gray-400'}`}>{(formData.manfaatKerjasama || '').length}/2000</p>
+                <p className={`mt-1 text-right text-xs ${(formData.manfaatKerjasama || '').length >= 2000 ? 'text-red-500' : 'text-gray-500'}`}>{(formData.manfaatKerjasama || '').length}/2000</p>
               </label>
             </div>
 
@@ -1282,7 +1282,7 @@ export default function TambahDokumenModal({
                   placeholder="Jelaskan luaran/output yang dihasilkan dari kerja sama ini"
                   className="input-field min-h-[80px] w-full px-4 py-2 text-sm text-gray-700"
                 />
-                <p className={`mt-1 text-right text-xs ${(formData.luaranKerjaSama || '').length >= 2000 ? 'text-red-500' : 'text-gray-400'}`}>{(formData.luaranKerjaSama || '').length}/2000</p>
+                <p className={`mt-1 text-right text-xs ${(formData.luaranKerjaSama || '').length >= 2000 ? 'text-red-500' : 'text-gray-500'}`}>{(formData.luaranKerjaSama || '').length}/2000</p>
               </label>
             </div>
 
@@ -1359,7 +1359,7 @@ function TextInput({ placeholder, type = 'text', value, onChange, onFocus, onBlu
 
 function SelectInput({ options, value, onChange, hasError }: { options: string[]; value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; hasError?: boolean }) {
   return (
-    <select value={value} onChange={onChange} className={`input-field h-11 w-full bg-white px-4 text-sm text-gray-700 ${hasError ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}>
+    <select aria-label="Pilihan" value={value} onChange={onChange} className={`input-field h-11 w-full bg-white px-4 text-sm text-gray-700 ${hasError ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}>
       {options.map((option) => (
         <option key={option} value={option}>
           {option}

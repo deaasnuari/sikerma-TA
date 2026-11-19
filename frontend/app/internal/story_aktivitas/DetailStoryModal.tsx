@@ -679,7 +679,7 @@ function TambahAktivitasForm({
           <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">
             Jenis Aktivitas <span className="text-red-500">*</span>
           </label>
-          <select
+          <select aria-label="Jenis Aktivitas"
             value={jenisAktivitas}
             onChange={(e) => setJenisAktivitas(e.target.value)}
             className="input-field h-10 w-full px-3 text-[12px] text-gray-700"
@@ -717,7 +717,7 @@ function TambahAktivitasForm({
           <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">
             Status <span className="text-red-500">*</span>
           </label>
-          <select
+          <select aria-label="Status"
             value={status}
             onChange={(e) => setStatus(e.target.value as StatusAktivitas)}
             className="input-field h-10 w-full px-3 text-[12px] text-gray-700"
@@ -874,7 +874,7 @@ function InlineDatePicker({
             </button>
           </div>
 
-          <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-gray-400">
+          <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-gray-500">
             {dayLabels.map((label) => (
               <span key={label}>{label}</span>
             ))}

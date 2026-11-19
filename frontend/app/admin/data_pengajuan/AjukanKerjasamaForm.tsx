@@ -1169,7 +1169,7 @@ export default function AdminAjukanKerjasamaForm({
                   onClick={() => setMitraOpen((prev) => !prev)}
                   className="input-field flex h-10 w-full items-center justify-between rounded-lg px-3 text-sm text-left"
                 >
-                  <span className={formData.namaMitra ? 'text-slate-900' : 'text-slate-400'}>
+                  <span className={formData.namaMitra ? 'text-slate-900' : 'text-slate-500'}>
                     {formData.namaMitra || 'Pilih mitra dari daftar...'}
                   </span>
                   <ChevronDown size={14} className="shrink-0 text-slate-400" />
@@ -1187,7 +1187,7 @@ export default function AdminAjukanKerjasamaForm({
                     </div>
                     <ul className="max-h-52 overflow-y-auto py-1">
                       {filteredMitraOptions.length === 0 && !mitraSearch.trim() && (
-                        <li className="px-4 py-3 text-sm text-slate-400">Tidak ada mitra ditemukan</li>
+                        <li className="px-4 py-3 text-sm text-slate-500">Tidak ada mitra ditemukan</li>
                       )}
                       {filteredMitraOptions.map((m) => (
                         <li key={m.id}>
@@ -1236,7 +1236,7 @@ export default function AdminAjukanKerjasamaForm({
             </div>
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">{appearanceSettings.labelJenisMitra}<span className="ml-0.5 text-rose-500">*</span></label>
-              <select
+              <select aria-label="Jenis mitra"
                 value={(JENIS_MITRA_OPTIONS.filter(o => o !== 'Lainnya') as string[]).includes(formData.jenisMitra) || formData.jenisMitra === '' ? formData.jenisMitra : 'Lainnya'}
                 onChange={(e) => handleChange('jenisMitra', e.target.value)}
                 className="input-field h-10 w-full rounded-lg px-3 text-sm"
@@ -1257,7 +1257,7 @@ export default function AdminAjukanKerjasamaForm({
             </div>
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">Bidang Usaha</label>
-              <select
+              <select aria-label="Bidang Usaha"
                 value={(BIDANG_USAHA_OPTIONS.filter(o => o !== 'Lainnya') as string[]).includes(formData.bidangUsaha) || formData.bidangUsaha === '' ? formData.bidangUsaha : 'Lainnya'}
                 onChange={(e) => handleChange('bidangUsaha', e.target.value)}
                 className="input-field h-10 w-full rounded-lg px-3 text-sm"
@@ -1276,7 +1276,7 @@ export default function AdminAjukanKerjasamaForm({
             </div>
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">Tingkat Perusahaan</label>
-              <select value={formData.tingkatPerusahaan} onChange={(e) => handleChange('tingkatPerusahaan', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-sm">
+              <select aria-label="Tingkat Perusahaan" value={formData.tingkatPerusahaan} onChange={(e) => handleChange('tingkatPerusahaan', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-sm">
                 <option value="">Pilih tingkat perusahaan</option>
                 {TINGKAT_PERUSAHAAN_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
               </select>
@@ -1317,7 +1317,7 @@ export default function AdminAjukanKerjasamaForm({
             </div>
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">Negara Mitra<span className="ml-0.5 text-rose-500">*</span></label>
-              <select value={formData.negara} onChange={(e) => handleChange('negara', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-sm" required>
+              <select aria-label="Negara Mitra" value={formData.negara} onChange={(e) => handleChange('negara', e.target.value)} className="input-field h-10 w-full rounded-lg px-3 text-sm" required>
                 {allNegaraOptions.map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
@@ -1482,7 +1482,7 @@ export default function AdminAjukanKerjasamaForm({
                           </span>
                         </span>
                       ) : (
-                        <span className="text-slate-400">-- Pilih {asal} --</span>
+                        <span className="text-slate-500">-- Pilih {asal} --</span>
                       )}
                     </div>
                     <ChevronDown size={14} className={`shrink-0 text-slate-400 transition-transform ${juOpen ? 'rotate-180' : ''}`} />
@@ -1541,7 +1541,7 @@ export default function AdminAjukanKerjasamaForm({
             <div className="md:col-span-2">
               <label className="mb-1 block text-sm font-semibold text-slate-700">{appearanceSettings.labelDeskripsi}</label>
               <textarea value={formData.deskripsi} onChange={(e) => handleChange('deskripsi', e.target.value)} maxLength={2000} className="input-field min-h-[90px] w-full rounded-lg px-3 py-2 text-sm" placeholder="Jelaskan manfaat kerja sama yang diajukan" />
-              <p className={`mt-1 text-right text-xs ${formData.deskripsi.length >= 2000 ? 'text-red-500' : 'text-gray-400'}`}>{formData.deskripsi.length}/2000</p>
+              <p className={`mt-1 text-right text-xs ${formData.deskripsi.length >= 2000 ? 'text-red-500' : 'text-gray-500'}`}>{formData.deskripsi.length}/2000</p>
             </div>
             <div className="md:col-span-2">
               <label className="mb-1 block text-sm font-semibold text-slate-700">{appearanceSettings.labelRuangLingkup}</label>
@@ -1561,7 +1561,7 @@ export default function AdminAjukanKerjasamaForm({
                 >
                   <div className="flex flex-wrap gap-1.5">
                     {selectedRuangLingkup.length === 0 ? (
-                      <span className="text-slate-400">Pilih ruang lingkup kerjasama...</span>
+                      <span className="text-slate-500">Pilih ruang lingkup kerjasama...</span>
                     ) : (
                       selectedRuangLingkup.map((rl) => (
                         <span key={rl} className="inline-flex items-center gap-1 rounded-full bg-[#173B82] px-2 py-0.5 text-xs font-semibold text-white">
@@ -1876,13 +1876,13 @@ export default function AdminAjukanKerjasamaForm({
                     <Upload size={20} />
                   </div>
                   <p className="text-sm font-semibold text-slate-800">Klik untuk upload file utama</p>
-                  <p className="mt-1 text-xs text-slate-400">atau drag &amp; drop file ke sini</p>
+                  <p className="mt-1 text-xs text-slate-500">atau drag &amp; drop file ke sini</p>
                   <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
                     {['DOC', 'DOCX'].map((fmt) => (
                       <span key={fmt} className="rounded-md bg-[#173B82]/8 px-2 py-0.5 text-[11px] font-semibold text-[#173B82]">{fmt}</span>
                     ))}
                   </div>
-                  <p className="mt-2 text-[11px] text-slate-400">Ukuran maksimal per file: <span className="font-semibold text-slate-500">10 MB</span></p>
+                  <p className="mt-2 text-[11px] text-slate-500">Ukuran maksimal per file: <span className="font-semibold text-slate-500">10 MB</span></p>
                 </div>
               </label>
 
@@ -1949,7 +1949,7 @@ export default function AdminAjukanKerjasamaForm({
                       <Upload size={18} />
                     </div>
                     <p className="text-sm font-semibold text-slate-800">Upload TOR / KAK / Proposal / Laporan Kegiatan</p>
-                    <p className="mt-1 text-xs text-slate-400">DOC atau DOCX — maks. 10 MB</p>
+                    <p className="mt-1 text-xs text-slate-500">DOC atau DOCX — maks. 10 MB</p>
                   </div>
                 </label>
 

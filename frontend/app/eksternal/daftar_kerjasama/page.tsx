@@ -32,6 +32,7 @@ import { exportToExcel } from '@/lib/exportExcel';
 import type { PengajuanItem } from '../../../services/adminPengajuanService';
 import { daftarJenisDokumen, deletePengajuanItemApi, fetchPengajuanDataFromApi } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
+import CatatanAdminPanel from '@/components/CatatanAdminPanel';
 import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
 import PerbaikanPengajuanModal, { bolehDiubahPengusul } from '@/components/PerbaikanPengajuanModal';
 import PerpanjanganKerjasamaModal from '@/components/PerpanjanganKerjasamaModal';
@@ -301,7 +302,7 @@ export default function DaftarKerjasamaEksternalPage() {
     // Di-skip saat tab tidak aktif; begitu tab dibuka lagi langsung fetch.
     const intervalId = setInterval(() => {
       if (document.visibilityState === 'visible') void sync();
-    }, 10000);
+    }, 30000);
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') void sync();
     };
@@ -466,7 +467,7 @@ export default function DaftarKerjasamaEksternalPage() {
               Filter
             </span>
 
-            <select
+            <select aria-label="Filter status"
               value={filterStatus}
               onChange={(event) => setFilterStatus(event.target.value)}
               className="input-field h-10 px-3 text-[12px] text-slate-700"
@@ -479,7 +480,7 @@ export default function DaftarKerjasamaEksternalPage() {
               <option>Berakhir</option>
             </select>
 
-            <select
+            <select aria-label="Filter review"
               value={filterReview}
               onChange={(event) => setFilterReview(event.target.value as 'Semua Review' | 'Belum Direview' | 'Sudah Direview')}
               className="input-field h-10 px-3 text-[12px] text-slate-700"
@@ -562,7 +563,7 @@ export default function DaftarKerjasamaEksternalPage() {
               )}
             </div>
 
-            <select
+            <select aria-label="Urutkan"
               value={sortOrder}
               onChange={(event) => setSortOrder(event.target.value as 'newest' | 'oldest')}
               className="input-field h-10 px-3 text-[12px] text-slate-700"
@@ -600,7 +601,7 @@ export default function DaftarKerjasamaEksternalPage() {
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                     Tidak ada data kerjasama.
                   </td>
                 </tr>
@@ -747,7 +748,7 @@ export default function DaftarKerjasamaEksternalPage() {
           <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-4">
               <div>
-                <div className="mb-0.5 text-[9.5px] font-bold uppercase tracking-wider text-slate-400">Judul Pengajuan</div>
+                <div className="mb-0.5 text-[9.5px] font-bold uppercase tracking-wider text-slate-500">Judul Pengajuan</div>
                 <h2 className="text-[17px] font-bold text-slate-900">{detailItem.judulPengajuan}</h2>
                 <p className="mt-0.5 text-[10px] text-slate-500">
                   {detailItem.diajukanPada} - {detailItem.namaPengusul}
@@ -801,7 +802,7 @@ export default function DaftarKerjasamaEksternalPage() {
               )}
 
               <section>
-                <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">Informasi Umum</h3>
+                <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">Informasi Umum</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <InfoRow icon={<Building2 size={15} />} label="Mitra" value={detailItem.namaMitra} />
                   <InfoRow icon={<Tag size={15} />} label="Jenis Mitra" value={detailItem.jenisMitra} />
@@ -815,7 +816,7 @@ export default function DaftarKerjasamaEksternalPage() {
               </section>
 
               <section>
-                <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">Ruang Lingkup</h3>
+                <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">Ruang Lingkup</h3>
                 <div className="flex flex-wrap gap-2">
                   {detailItem.ruangLingkup.length > 0 ? (
                     detailItem.ruangLingkup.map((scope) => (
@@ -830,7 +831,7 @@ export default function DaftarKerjasamaEksternalPage() {
               </section>
 
               <section>
-                <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">Kontak</h3>
+                <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">Kontak</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <InfoRow icon={<User size={15} />} label="Email Pengusul" value={detailItem.emailPengusul} />
                   <InfoRow icon={<User size={15} />} label="Whatsapp" value={detailItem.whatsappPengusul} />
@@ -842,7 +843,7 @@ export default function DaftarKerjasamaEksternalPage() {
               {/* Dokumen Pengajuan Awal */}
               {detailItem.fileAttachments.filter((f) => !f.isAcc).length > 0 && (
                 <section>
-                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">Dokumen Pengajuan</h3>
+                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">Dokumen Pengajuan</h3>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold text-slate-600">
                       <Paperclip size={13} />
@@ -875,7 +876,7 @@ export default function DaftarKerjasamaEksternalPage() {
 
               {/* Dokumen Final (Resmi) */}
               <section>
-                <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">Dokumen Final</h3>
+                <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">Dokumen Final</h3>
                 <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3">
                   <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold text-emerald-700">
                     <ShieldCheck size={14} />
@@ -985,7 +986,7 @@ export default function DaftarKerjasamaEksternalPage() {
               {/* Progres Tahapan — dibaca dari data API */}
               {detailItem.tahapanStage && (
                 <section>
-                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
+                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">
                     Progres Tahapan
                   </h3>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -998,6 +999,8 @@ export default function DaftarKerjasamaEksternalPage() {
                   </div>
                 </section>
               )}
+
+              <CatatanAdminPanel pengajuanId={detailItem.id} readOnly />
             </div>
           </div>
         </div>
@@ -1115,9 +1118,9 @@ function InfoRow({
 }) {
   return (
     <div className="flex items-start gap-2.5 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-      <span className="mt-0.5 text-slate-400">{icon}</span>
+      <span className="mt-0.5 text-slate-500">{icon}</span>
       <div>
-        <p className="text-[9.5px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+        <p className="text-[9.5px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
         <p className="mt-0.5 text-[12px] font-medium text-slate-800">{value || '-'}</p>
       </div>
     </div>
@@ -1139,7 +1142,7 @@ function StatCard({
     <div className="stat-card p-3">
       <p className="text-[10px] text-gray-500">{title}</p>
       <p className={`mt-0.5 text-[17px] font-bold ${valueClassName}`}>{value}</p>
-      <p className="mt-0.5 text-[10px] text-gray-400">{caption}</p>
+      <p className="mt-0.5 text-[10px] text-gray-500">{caption}</p>
     </div>
   );
 }

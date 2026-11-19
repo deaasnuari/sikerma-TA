@@ -3,12 +3,12 @@
 import OpsiJenisBerkas from '@/components/OpsiJenisBerkas';
 import { adalahBerkasPendukung } from '@/lib/jenisBerkas';
 import { openUrl } from '@/lib/api';
+import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { FileText, Clock, CheckCircle, XCircle, Search, Filter, Plus, Eye, MessageSquare, X, ThumbsUp, FilePenLine, CalendarDays, ChevronLeft, ChevronRight, Pencil, Trash2, ExternalLink, Paperclip, Download, Upload, Bell, CheckSquare, Square } from 'lucide-react';
 import { addAdminNotification, markNotificationsByHrefPrefixAsRead } from '@/services/adminService';
 import { bacaNotifikasiByHref } from '@/services/notifikasiService';
-import AdminAjukanKerjasamaForm from './AjukanKerjasamaForm';
 import GroupedFilterSelect from '@/components/GroupedFilterSelect';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { invalidateRekapCache } from '@/services/dokumenKerjasamaApiService';
@@ -17,7 +17,6 @@ import TahapanStepper from '@/components/TahapanStepper';
 import CatatanAdminPanel from '@/components/CatatanAdminPanel';
 import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
 import { buatUrlWhatsAppMitra, buildPesanWhatsAppPengajuan } from '@/lib/whatsappPesan';
-import InternalAjukanKerjasamaForm from '@/app/internal/data_pengajuan/AjukanKerjasamaForm';
 import { validateSelectedFile } from '@/lib/fileUploadUtils';
 import { getPageNumbers } from '@/lib/pagination';
 import { downloadTemplate, templateFilesByJenis } from '@/lib/templateDokumen';
@@ -65,6 +64,17 @@ import {
 } from '@/services/adminPengajuanService';
 import { updateMasterMitra, upsertMasterMitraByName } from '@/services/masterMitraService';
 import { getDistribusiKandidat, provisionDistribusiUser, type DistribusiKandidat } from '@/services/distribusiKandidatService';
+
+// Form pengajuan (masing-masing ±2.000 baris) hanya tampil di modal, jadi dimuat saat dibuka —
+// bukan di bundel awal halaman daftar pengajuan.
+const AdminAjukanKerjasamaForm = dynamic(() => import('./AjukanKerjasamaForm'), {
+  ssr: false,
+  loading: () => <div className="p-8 text-center text-xs text-gray-500">Memuat formulir...</div>,
+});
+const InternalAjukanKerjasamaForm = dynamic(() => import('@/app/internal/data_pengajuan/AjukanKerjasamaForm'), {
+  ssr: false,
+  loading: () => <div className="p-8 text-center text-xs text-gray-500">Memuat formulir...</div>,
+});
 
 type EditFormState = {
   id: number;
@@ -2200,7 +2210,7 @@ function addEditJurusanUnitOption() {
                   </button>
                   <div className="flex-1 min-w-0">
                     <p className="text-[10px] text-gray-500 mb-0.5">Judul Pengajuan:</p>
-                    <h3 className="text-[13.5px] font-bold text-gray-900">{item.judulPengajuan}</h3>
+                    <h2 className="text-[13.5px] font-bold text-gray-900">{item.judulPengajuan}</h2>
                     <p className="text-[10px] text-gray-500 mt-1">
                       Pengusul: {item.namaPengusul} &bull; {item.diajukanPada}
                     </p>
@@ -2259,11 +2269,11 @@ function addEditJurusanUnitOption() {
               <div className="flex flex-wrap items-start justify-between gap-3 mt-4">
                 <div className="flex flex-wrap items-start gap-4">
                   <div>
-                    <p className="text-[10px] text-gray-400 mb-1">Mitra Tujuan</p>
+                    <p className="text-[10px] text-gray-500 mb-1">Mitra Tujuan</p>
                     <p className="text-[12px] font-semibold text-gray-900">{item.namaMitra}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-gray-400 mb-1">Jenis Dokumen</p>
+                    <p className="text-[10px] text-gray-500 mb-1">Jenis Dokumen</p>
                     <span className="inline-flex flex-wrap gap-1">
                       {daftarJenisDokumen(item).map((jenis) => (
                         <span key={jenis} className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${pengajuanDokumenBadge[jenis] || 'bg-[#1E376C] text-white'}`}>
@@ -2273,25 +2283,25 @@ function addEditJurusanUnitOption() {
                     </span>
                   </div>
                   <div>
-                    <p className="text-[10px] text-gray-400 mb-1">Jurusan</p>
+                    <p className="text-[10px] text-gray-500 mb-1">Jurusan</p>
                     <p className="text-[12px] text-gray-700">{item.namaUnitProdi}</p>
                   </div>
                   {item.keputusan && (
                     <div>
-                      <p className="text-[10px] text-gray-400 mb-1">Keputusan</p>
+                      <p className="text-[10px] text-gray-500 mb-1">Keputusan</p>
                       <p className="text-[12px] font-semibold text-gray-900">{item.keputusan}</p>
                     </div>
                   )}
                   {item.catatan && (
                     <div className="max-w-[200px]">
-                      <p className="text-[10px] text-gray-400 mb-1">Catatan Review</p>
+                      <p className="text-[10px] text-gray-500 mb-1">Catatan Review</p>
                       <p className="text-[12px] text-gray-700 truncate" title={item.catatan}>{item.catatan}</p>
                     </div>
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 flex-shrink-0 ml-auto">
                   <button
-                    type="button"
+                    type="button" aria-label="Lihat detail pengajuan"
                     onClick={() => setDetailItem(item)}
                     className="btn-secondary inline-flex items-center gap-1.5 text-[10px] sm:text-[12px] px-2.5 sm:px-3 py-1.5"
                   >
@@ -2299,7 +2309,7 @@ function addEditJurusanUnitOption() {
                     <span className="hidden xs:inline sm:inline">Detail</span>
                   </button>
                   <button
-                    type="button"
+                    type="button" aria-label="Berkas final pengajuan"
                     onClick={() => openReview(item)}
                     className="inline-flex items-center gap-1.5 text-[10px] sm:text-[12px] text-green-700 border border-green-300 bg-green-50 rounded-lg px-2.5 sm:px-3 py-1.5 font-medium transition-colors hover:bg-green-100"
                   >
@@ -2307,7 +2317,7 @@ function addEditJurusanUnitOption() {
                     <span className="hidden xs:inline sm:inline">Final</span>
                   </button>
                   <button
-                    type="button"
+                    type="button" aria-label="Edit pengajuan"
                     onClick={() => openEdit(item)}
                     title={isPengajuanSudahFinal(item) ? 'Sudah difinalkan — edit lewat Rekap Data' : undefined}
                     className="inline-flex items-center gap-1.5 text-[10px] sm:text-[12px] text-amber-700 border border-amber-300 bg-amber-50 rounded-lg px-2.5 sm:px-3 py-1.5 font-medium transition-colors hover:bg-amber-100"
@@ -2316,7 +2326,7 @@ function addEditJurusanUnitOption() {
                     <span className="hidden xs:inline sm:inline">Edit</span>
                   </button>
                   <button
-                    type="button"
+                    type="button" aria-label="Hapus pengajuan"
                     onClick={() => setDeleteTarget(item)}
                     className="inline-flex items-center gap-1.5 text-[10px] sm:text-[12px] text-red-700 border border-red-300 bg-red-50 rounded-lg px-2.5 sm:px-3 py-1.5 font-medium transition-colors hover:bg-red-100"
                   >
@@ -2385,7 +2395,7 @@ function addEditJurusanUnitOption() {
               ))}
             </div>
           ) : (
-            <div className="card p-12 text-center text-gray-400">
+            <div className="card p-12 text-center text-gray-500">
               Tidak ada data yang sesuai dengan filter.
             </div>
           )
@@ -2412,7 +2422,7 @@ function addEditJurusanUnitOption() {
 
             {pageNumbers.map((page, idx) =>
               page === '...' ? (
-                <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-500">
                   …
                 </span>
               ) : (
@@ -2686,7 +2696,7 @@ function addEditJurusanUnitOption() {
                                     {doc.name}
                                   </a>
                                 ) : (
-                                  <span className="truncate text-[10px] font-medium text-slate-400" title="File tidak ditemukan di server">
+                                  <span className="truncate text-[10px] font-medium text-slate-500" title="File tidak ditemukan di server">
                                     {doc.name} (file tidak tersedia)
                                   </span>
                                 )}
@@ -2951,14 +2961,14 @@ function addEditJurusanUnitOption() {
                       className="mt-1 w-full rounded-lg border border-[#D2D7E5] bg-white px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-[#1E376C] disabled:bg-gray-50 disabled:text-gray-400"
                     />
                     {reviewFinalFiles.length > 0 && (
-                      <p className="mt-1 text-[9.5px] text-gray-400">Hapus file yang dipilih untuk memakai tautan.</p>
+                      <p className="mt-1 text-[9.5px] text-gray-500">Hapus file yang dipilih untuk memakai tautan.</p>
                     )}
                     {reviewFinalFiles.length === 0 && reviewFinalLink.trim() && (
                       <div className="mt-2 flex items-center gap-2">
                         <label className="text-[10px] font-semibold text-gray-700">
                           Jenis dokumen pada tautan ini{daftarJenisDokumen(reviewItem).length > 1 ? ' *' : ''}
                         </label>
-                        <select
+                        <select aria-label="Jenis dokumen pada tautan"
                           value={reviewFinalLinkJenis || jenisBawaanBerkas(reviewItem)}
                           onChange={(e) => setReviewFinalLinkJenis(e.target.value)}
                           className={`rounded border bg-white px-1.5 py-0.5 text-[10px] ${reviewFinalLinkJenis || jenisBawaanBerkas(reviewItem) || daftarJenisDokumen(reviewItem).length <= 1 ? 'border-slate-300 text-slate-700' : 'border-red-400 text-red-600 ring-1 ring-red-200'}`}
@@ -3058,7 +3068,7 @@ function addEditJurusanUnitOption() {
                                 u.nama.toLowerCase().includes(reviewDistribusiSearch.trim().toLowerCase())
                             );
                             if (results.length === 0) {
-                              return <p className="px-3 py-2 text-[11px] text-gray-400">Tidak ada user ditemukan.</p>;
+                              return <p className="px-3 py-2 text-[11px] text-gray-500">Tidak ada user ditemukan.</p>;
                             }
                             return results.slice(0, 8).map((u) => {
                               // Satu NIK bisa muncul 2x kalau orangnya kebetulan Kajur
@@ -3108,7 +3118,7 @@ function addEditJurusanUnitOption() {
                                   className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[11px] text-gray-700 hover:bg-slate-50 disabled:opacity-50"
                                 >
                                   <span className="truncate">{u.nama}</span>
-                                  <span className="shrink-0 text-[9.5px] text-gray-400">
+                                  <span className="shrink-0 text-[9.5px] text-gray-500">
                                     {sedangProses ? 'Memproses...' : !u.sudahTerdaftar ? 'Belum login · ' + (u.unitNama ?? '') : u.unitNama}
                                   </span>
                                 </button>
@@ -3271,7 +3281,7 @@ function addEditJurusanUnitOption() {
               <div className="rounded-xl border border-slate-200 bg-white p-4">
                 <p className="mb-3 text-[10px] font-semibold text-slate-700">Tambah Jurusan / Unit Kerja</p>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                <select
+                <select aria-label="Jenis (jurusan atau unit kerja)"
                   value={masterJenis}
                   onChange={(e) => setMasterJenis(e.target.value as 'jurusan' | 'unit_kerja')}
                   className="input-field h-10 rounded-lg px-3 text-[12px]"
@@ -3415,7 +3425,7 @@ function addEditJurusanUnitOption() {
 
                         <div className="mt-3 space-y-2">
                           {prodis.length === 0 ? (
-                            <span className="text-[10.5px] text-slate-400">Belum ada prodi</span>
+                            <span className="text-[10.5px] text-slate-500">Belum ada prodi</span>
                           ) : (
                             prodis.map((prodi) => {
                               const isEditing = editingProdiId === prodi.id;
@@ -3498,7 +3508,7 @@ function addEditJurusanUnitOption() {
                 <p className="mt-3 text-[10px] font-semibold text-slate-700">Daftar Unit Kerja</p>
                 <div className="mt-2 space-y-2">
                   {masterUnitRows.length === 0 ? (
-                    <span className="text-[10.5px] text-slate-400">Belum ada unit kerja.</span>
+                    <span className="text-[10.5px] text-slate-500">Belum ada unit kerja.</span>
                   ) : (
                     masterUnitRows.map((unit) => {
                       const isEditing = editingUnitId === unit.id;
@@ -3632,7 +3642,7 @@ function addEditJurusanUnitOption() {
 
                 <div className="flex flex-wrap gap-2">
                   {masterNegaraRows.length === 0 ? (
-                    <div className="w-full rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-[12px] text-slate-400">Belum ada negara yang ditambahkan.</div>
+                    <div className="w-full rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-[12px] text-slate-500">Belum ada negara yang ditambahkan.</div>
                   ) : (
                     masterNegaraRows.map((item) => (
                       <div key={item.id} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm">
@@ -3746,7 +3756,7 @@ function addEditJurusanUnitOption() {
                 <p className="text-[10px] font-semibold text-slate-700">Daftar Ruang Lingkup</p>
                 <div className="mt-2 space-y-2">
                   {ruangLingkupRows.length === 0 ? (
-                    <span className="text-[10.5px] text-slate-400">Belum ada data ruang lingkup.</span>
+                    <span className="text-[10.5px] text-slate-500">Belum ada data ruang lingkup.</span>
                   ) : (
                     ruangLingkupRows.map((item) => (
                       <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
@@ -3866,7 +3876,7 @@ function addEditJurusanUnitOption() {
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px] text-slate-700"
                 />
 
-                <select
+                <select aria-label="Jenis Dokumen"
                   value={editForm.jenisDokumen}
                   onChange={(e) => {
                     const nextJenis = e.target.value;

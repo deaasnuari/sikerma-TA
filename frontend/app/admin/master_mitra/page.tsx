@@ -868,7 +868,7 @@ export default function MasterMitraPage() {
         </div>
 
         <div className="relative min-w-[180px]">
-          <select value={filterKategori} onChange={(event) => setFilterKategori(event.target.value)} className="input-field appearance-none pl-4 pr-9 py-2.5 text-[12px] font-medium">
+          <select aria-label="Filter kategori" value={filterKategori} onChange={(event) => setFilterKategori(event.target.value)} className="input-field appearance-none pl-4 pr-9 py-2.5 text-[12px] font-medium">
             <option>Semua Kategori</option>
             {kategoriOptions.map((option) => (
               <option key={option}>{option}</option>
@@ -878,7 +878,7 @@ export default function MasterMitraPage() {
         </div>
 
         <div className="relative min-w-[170px]">
-          <select value={filterTingkat} onChange={(event) => setFilterTingkat(event.target.value as (typeof tingkatFilterOptions)[number])} className="input-field appearance-none pl-4 pr-9 py-2.5 text-[12px] font-medium">
+          <select aria-label="Filter tingkat" value={filterTingkat} onChange={(event) => setFilterTingkat(event.target.value as (typeof tingkatFilterOptions)[number])} className="input-field appearance-none pl-4 pr-9 py-2.5 text-[12px] font-medium">
             {tingkatFilterOptions.map((option) => (
               <option key={option}>{option}</option>
             ))}
@@ -887,7 +887,7 @@ export default function MasterMitraPage() {
         </div>
 
         <div className="relative min-w-[160px]">
-          <select value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)} className="input-field appearance-none pl-4 pr-9 py-2.5 text-[12px] font-medium">
+          <select aria-label="Filter status" value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)} className="input-field appearance-none pl-4 pr-9 py-2.5 text-[12px] font-medium">
             <option>Semua Status</option>
             <option>Aktif</option>
             <option>NonAktif</option>
@@ -919,7 +919,7 @@ export default function MasterMitraPage() {
 
               {!loading && filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-gray-400">Tidak ada data ditemukan</td>
+                  <td colSpan={7} className="py-10 text-center text-gray-500">Tidak ada data ditemukan</td>
                 </tr>
               )}
 
@@ -996,7 +996,7 @@ export default function MasterMitraPage() {
 
               {pageNumbers.map((page, idx) =>
                 page === '...' ? (
-                  <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                  <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-500">
                     …
                   </span>
                 ) : (
@@ -1270,7 +1270,7 @@ export default function MasterMitraPage() {
                 )}
               </Field>
               <Field label="Kategori Mitra">
-                <select
+                <select aria-label="Kategori mitra"
                   value={form.kategori_mitra}
                   onChange={(event) => setForm((prev) => ({ ...prev, kategori_mitra: event.target.value }))}
                   className="input-field w-full px-4 py-2.5 text-[12px]"
@@ -1284,7 +1284,7 @@ export default function MasterMitraPage() {
                 </select>
               </Field>
               <Field label="Bidang Usaha">
-                <select
+                <select aria-label="Bidang usaha"
                   value={form.bidang_usaha}
                   onChange={(event) => setForm((prev) => ({ ...prev, bidang_usaha: event.target.value }))}
                   className="input-field w-full px-4 py-2.5 text-[12px]"
@@ -1298,7 +1298,7 @@ export default function MasterMitraPage() {
                 </select>
               </Field>
               <Field label="Tingkat Perusahaan">
-                <select
+                <select aria-label="Tingkat perusahaan"
                   value={form.tingkat_perusahaan}
                   onChange={(event) => setForm((prev) => ({ ...prev, tingkat_perusahaan: event.target.value }))}
                   className="input-field w-full px-4 py-2.5 text-[12px]"
@@ -1364,7 +1364,7 @@ export default function MasterMitraPage() {
                 </div>
 
                 {kontakRows.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-gray-200 px-4 py-3 text-center text-[11px] text-gray-400">Belum ada kontak tambahan.</p>
+                  <p className="rounded-xl border border-dashed border-gray-200 px-4 py-3 text-center text-[11px] text-gray-500">Belum ada kontak tambahan.</p>
                 ) : (
                   <div className="space-y-3">
                     {kontakRows.map((row, index) => (

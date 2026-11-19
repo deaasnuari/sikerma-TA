@@ -102,7 +102,7 @@ function MultiSelectDropdownImpl({
       >
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           {selectedOptions.length === 0 ? (
-            <span className="text-slate-400">{placeholder}</span>
+            <span className="text-slate-500">{placeholder}</span>
           ) : (
             selectedOptions.map((option) => (
               <span
@@ -147,12 +147,12 @@ function MultiSelectDropdownImpl({
             )}
             <div className="max-h-56 overflow-y-auto p-1">
               {grouped.length === 0 ? (
-                <p className={`px-3 py-2 ${textClassName} text-slate-400`}>{emptyText}</p>
+                <p className={`px-3 py-2 ${textClassName} text-slate-500`}>{emptyText}</p>
               ) : (
                 grouped.map((group) => (
                   <div key={group.name || '_'}>
                     {group.name && (
-                      <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">{group.name}</p>
+                      <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{group.name}</p>
                     )}
                     {group.items.map((option) => {
                       const isSelected = selectedSet.has(option.value);

@@ -149,8 +149,7 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
                 alt="Logo Polibatam"
                 width={96}
                 height={96}
-                quality={100}
-                unoptimized
+                quality={75}
                 className="h-8 w-8 object-contain"
                 priority
               />
@@ -319,7 +318,7 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
                                 <p className="text-xs text-gray-600 mt-1">{notif.message}</p>
                                 <div className="flex items-center justify-between gap-2 mt-1">
                                   <p className="text-xs text-gray-500">📌 dari: {notif.from}</p>
-                                  <p className="text-[11px] text-slate-400">{notif.createdAt}</p>
+                                  <p className="text-[11px] text-slate-500">{notif.createdAt}</p>
                                 </div>
                               </div>
                             </div>
@@ -344,6 +343,9 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
             <div className="relative flex-shrink-0" ref={userMenuRef}>
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
+                aria-label="Menu akun"
+                aria-haspopup="menu"
+                aria-expanded={showUserMenu}
                 className="flex items-center gap-2 text-gray-700 hover:bg-gray-100 rounded-lg px-2 py-1.5 transition-all duration-200"
               >
                 <div className="text-right hidden sm:block">
@@ -368,7 +370,7 @@ export default function AdminNavbar({ toggleSidebar, isSidebarOpen = false, isPu
                   </div>
 
                   <div className="px-4 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{menuInfoTitle}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{menuInfoTitle}</p>
                     <p className="mt-0.5 text-[12px] font-medium leading-snug text-slate-700">{menuInfoValue}</p>
                   </div>
 

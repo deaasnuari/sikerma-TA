@@ -152,7 +152,7 @@ export default function EditDokumenModal({ item, onClose, onSave }: EditDokumenM
             </div>
             <div>
               <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">Jenis Dokumen</label>
-              <select
+              <select aria-label="Jenis Dokumen"
                 value={form.jenisDokumen}
                 onChange={(e) => handleChange('jenisDokumen', e.target.value)}
                 className="input-field h-10 w-full px-3 text-[12px] text-gray-700"
@@ -177,7 +177,7 @@ export default function EditDokumenModal({ item, onClose, onSave }: EditDokumenM
             </div>
             <div>
               <label className="block text-[12px] font-semibold text-gray-800 mb-1.5">Status</label>
-              <select
+              <select aria-label="Status"
                 value={form.status}
                 onChange={(e) => handleChange('status', e.target.value)}
                 className="input-field h-10 w-full px-3 text-[12px] text-gray-700"

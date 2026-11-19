@@ -641,7 +641,7 @@ export default function InternalRekapDataPage() {
               buttonClassName="input-field flex w-full items-center justify-between gap-2 px-3 py-2 text-[12px] text-gray-700 transition-colors"
             />
 
-            <select
+            <select aria-label="Urutkan"
               value={sortOrder}
               onChange={(e) => {
                 setSortOrder(e.target.value as 'newest' | 'oldest');
@@ -943,7 +943,7 @@ function StatCard({
     <div className="stat-card p-3">
       <p className="text-[10px] text-gray-500">{title}</p>
       <p className={`mt-0.5 text-[17px] font-bold ${valueClassName}`}>{value}</p>
-      <p className="mt-0.5 text-[10px] text-gray-400">{caption}</p>
+      <p className="mt-0.5 text-[10px] text-gray-500">{caption}</p>
     </div>
   );
 }

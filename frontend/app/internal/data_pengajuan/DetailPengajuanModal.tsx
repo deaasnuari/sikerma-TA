@@ -6,6 +6,7 @@ import type { PengajuanItem, PengajuanStatus } from '@/services/adminPengajuanSe
 import { daftarJenisDokumen, labelJenisDokumen, pengajuanDokumenBadge } from '@/services/adminPengajuanService';
 import TahapanStepper from '@/components/TahapanStepper';
 import FileRevisiBox from '@/components/FileRevisiBox';
+import CatatanAdminPanel from '@/components/CatatanAdminPanel';
 import { reviewTextFromTahapan, type StageGroup } from '@/services/tahapanPengajuanService';
 import { buatUrlWhatsAppMitra } from '@/lib/whatsappPesan';
 
@@ -79,7 +80,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-4">
           <div>
-            <div className="mb-0.5 text-[9.5px] font-bold uppercase tracking-wider text-slate-400">Judul Pengajuan</div>
+            <div className="mb-0.5 text-[9.5px] font-bold uppercase tracking-wider text-slate-500">Judul Pengajuan</div>
             <h2 className="text-[17px] font-bold text-slate-900">{item.judulPengajuan}</h2>
             <p className="mt-0.5 text-[10px] text-slate-500">
               {item.diajukanPada} · {item.namaPengusul}
@@ -111,7 +112,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
 
           {/* Informasi Umum */}
           <section>
-            <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
+            <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">
               Informasi Umum
             </h3>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -131,7 +132,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
           {/* Ruang Lingkup */}
           {item.ruangLingkup.length > 0 && (
             <section>
-              <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
+              <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">
                 Ruang Lingkup
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -149,7 +150,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
 
           {/* Kontak Person PIC / Koresponden Mitra */}
           <section>
-            <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
+            <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">
               Kontak Person PIC / Koresponden Mitra
             </h3>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -171,7 +172,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
           {/* Kontak Person Polibatam (tidak ada untuk pengajuan eksternal) */}
           {(item.picPolibatamNama || item.picPolibatamJabatan || item.picPolibatamEmail || item.picPolibatamTelepon) && (
             <section>
-              <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
+              <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">
                 Kontak Person Polibatam
               </h3>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -194,7 +195,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
           {/* Kontak / info tambahan */}
           {(item.emailPengusul || item.whatsappPengusul || item.mitraTelepon || item.mitraNoTelepon) && (
             <section>
-              <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
+              <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">
                 Kontak
               </h3>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -219,7 +220,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
           {/* Dokumen Pengajuan Awal */}
           {fileEntries.filter((f) => !f.isAcc).length > 0 && (
             <section>
-              <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
+              <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">
                 Dokumen Pengajuan
               </h3>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -254,7 +255,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
 
           {/* Dokumen Final (Resmi) */}
           <section>
-            <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-400">
+            <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wider text-slate-500">
               Dokumen Final
             </h3>
             <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3">
@@ -346,7 +347,7 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
             <section>
               <div className="mb-3 flex items-center gap-2">
                 <GitBranch size={15} className="text-[#173B82]" />
-                <h3 className="text-[12px] font-bold uppercase tracking-wider text-slate-400">Progres Tahapan</h3>
+                <h3 className="text-[12px] font-bold uppercase tracking-wider text-slate-500">Progres Tahapan</h3>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <TahapanStepper
@@ -358,6 +359,8 @@ export default function DetailPengajuanModal({ item, onClose, scrollToReview }: 
               </div>
             </section>
           )}
+
+          <CatatanAdminPanel pengajuanId={item.id} readOnly />
         </div>
       </div>
 
@@ -377,9 +380,9 @@ function InfoRow({
 }) {
   return (
     <div className="flex items-start gap-2.5 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-      <span className="mt-0.5 text-slate-400">{icon}</span>
+      <span className="mt-0.5 text-slate-500">{icon}</span>
       <div>
-        <p className="text-[9.5px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+        <p className="text-[9.5px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
         <div className="mt-0.5 text-[12px] font-medium text-slate-800">{value || '-'}</div>
       </div>
     </div>

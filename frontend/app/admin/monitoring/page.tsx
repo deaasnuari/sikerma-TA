@@ -329,7 +329,7 @@ export default function MonitoringdanstatusPage() {
       </div>
 
       {/* Alert Banner */}
-      <div className="flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+      <div className={`flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 ${isRealDataLoaded ? '' : 'min-h-[212px]'}`}>
         <AlertCircle size={16} className="mt-0.5 shrink-0 text-red-500" />
         <div>
           <p className="text-[12px] font-bold text-gray-900">Peringatan Monitoring</p>
@@ -346,10 +346,10 @@ export default function MonitoringdanstatusPage() {
                 {dokumenSegeraBerakhir.slice(0, JUMLAH_PERINGATAN_DITAMPILKAN).map((item) => (
                   <li key={item.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-gray-700">
                     <span className="font-semibold text-gray-900">{item.namaMitra}</span>
-                    <span className="text-gray-400">&middot;</span>
+                    <span className="text-gray-500">&middot;</span>
                     <span>{item.noDokumen}</span>
                     <JenisBadges jenis={item.jenisList ?? [item.jenis]} warna={monitoringJenisBadgeMap} className="rounded px-1.5 py-0.5 text-[9px] font-bold" />
-                    <span className="text-gray-400">&middot;</span>
+                    <span className="text-gray-500">&middot;</span>
                     <span>berakhir {item.tanggalBerakhir}</span>
                     {item.sisaMasaBerlaku && (
                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-semibold text-amber-800">{item.sisaMasaBerlaku}</span>
@@ -664,7 +664,7 @@ export default function MonitoringdanstatusPage() {
       )}
 
       {/* Cards List */}
-      <div className="space-y-4">
+      <div className={`space-y-4 ${isRealDataLoaded ? '' : 'min-h-[100svh]'}`}>
         {paginatedItems.map((item) => {
           const cfg = monitoringStatusConfig[item.status];
           const isUrgent = item.status === 'Akan Berakhir' || item.status === 'Kadaluarsa';
@@ -693,7 +693,7 @@ export default function MonitoringdanstatusPage() {
                 </div>
 
                 {/* Meta info */}
-                <p className="mt-1 text-[10px] text-gray-400">No. Dokumen: {item.noDokumen}</p>
+                <p className="mt-1 text-[10px] text-gray-500">No. Dokumen: {item.noDokumen}</p>
 
                 <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-[10px] text-gray-500 md:grid-cols-3">
                   <div>
@@ -738,7 +738,7 @@ export default function MonitoringdanstatusPage() {
                               {kontak?.email}
                             </a>
                           ) : (
-                            <span className="text-gray-400">Email belum tersedia</span>
+                            <span className="text-gray-500">Email belum tersedia</span>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
@@ -754,7 +754,7 @@ export default function MonitoringdanstatusPage() {
                               {kontak?.whatsapp}
                             </a>
                           ) : (
-                            <span className="text-gray-400">
+                            <span className="text-gray-500">
                               {kontak?.whatsapp ? (
                                 <>
                                   {kontak.whatsapp} <span className="rounded bg-red-50 px-1.5 py-0.5 text-[9px] font-medium text-red-500">tidak valid</span>
@@ -862,7 +862,7 @@ export default function MonitoringdanstatusPage() {
 
             {pageNumbers.map((page, idx) =>
               page === '...' ? (
-                <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-400">
+                <span key={`dots-${idx}`} className="px-2 text-[12px] text-gray-500">
                   …
                 </span>
               ) : (

@@ -11,6 +11,7 @@ use App\Models\LaporanPelaksanaan;
 use App\Models\Pengajuan;
 use App\Models\PengajuanAktivitas;
 use App\Services\StructuralAccessService;
+use App\Support\KerjasamaStatus;
 use App\Support\Triwulan;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -611,75 +612,82 @@ class DokumenKerjasamaController extends Controller
             ->whereNull('dokumen_kerjasama.dihapus_user_pada');
     }
 
-    //fungsi untuk menandai dokumen kerjasama sebagai dihapus oleh admin atau user
-    public function publicStats(): Response
+    /**
+     * Ringkasan jumlah kerjasama Aktif / Akan Berakhir / Kadaluarsa untuk Dashboard Admin.
+     *
+     * Menggantikan unduhan 2.000 dokumen lengkap (/dokumen-kerjasama?per_page=2000) yang dulu dipakai
+     * dashboard hanya untuk menghitung dua angka ini di browser (membebani jaringan dan thread utama).
+     * Aturannya SAMA dengan index() untuk admin: dokumen yang disembunyikan admin tidak dihitung, dan
+     * statusnya dari KerjasamaStatus::fromTanggalBerakhir (sama dengan accessor status_efektif),
+     * jadi angkanya identik dengan kartu di Rekap Data.
+     */
+    public function statusStats(Request $request): Response
     {
-        $total = $this->dokumenPublikQuery()->count();
+        $user = $request->user();
+        $role = strtolower(str_replace([' ', '_'], '-', trim((string) ($user?->role ?? ''))));
+        if (!in_array($role, ['admin', 'admin-humas', 'pimpinan'], true)) {
+            return response(['success' => false, 'message' => 'Tidak diizinkan.'], 403);
+        }
 
-        $luarNegeri = $this->dokumenPublikQuery()
-            ->join('master_mitra', 'dokumen_kerjasama.mitra_id', '=', 'master_mitra.id')
-            ->where('master_mitra.negara', '!=', 'Indonesia')
-            ->whereNotNull('master_mitra.negara')
-            ->where('master_mitra.negara', '!=', '')
-            ->count();
+        $hitung = ['active' => 0, 'expiring' => 0, 'archived' => 0];
 
-        // DUDI = Industri / Perusahaan category
-        $dudiNasional = $this->dokumenPublikQuery()
-            ->join('master_mitra', 'dokumen_kerjasama.mitra_id', '=', 'master_mitra.id')
-            ->where(function ($q) {
-                $q->where('master_mitra.kategori_mitra', 'LIKE', '%Industri%')
-                  ->orWhere('master_mitra.kategori_mitra', 'LIKE', '%Perusahaan%');
-            })
-            ->where(function ($q) {
-                $q->where('master_mitra.negara', 'Indonesia')
-                  ->orWhereNull('master_mitra.negara')
-                  ->orWhere('master_mitra.negara', '');
-            })
-            ->count();
-
-        $dudiInternasional = $this->dokumenPublikQuery()
-            ->join('master_mitra', 'dokumen_kerjasama.mitra_id', '=', 'master_mitra.id')
-            ->where(function ($q) {
-                $q->where('master_mitra.kategori_mitra', 'LIKE', '%Industri%')
-                  ->orWhere('master_mitra.kategori_mitra', 'LIKE', '%Perusahaan%');
-            })
-            ->where('master_mitra.negara', '!=', 'Indonesia')
-            ->whereNotNull('master_mitra.negara')
-            ->where('master_mitra.negara', '!=', '')
-            ->count();
-
-        // Instansi = non-Industri / non-Perusahaan category
-        $instansiNasional = $this->dokumenPublikQuery()
-            ->join('master_mitra', 'dokumen_kerjasama.mitra_id', '=', 'master_mitra.id')
-            ->where('master_mitra.kategori_mitra', 'NOT LIKE', '%Industri%')
-            ->where('master_mitra.kategori_mitra', 'NOT LIKE', '%Perusahaan%')
-            ->where(function ($q) {
-                $q->where('master_mitra.negara', 'Indonesia')
-                  ->orWhereNull('master_mitra.negara')
-                  ->orWhere('master_mitra.negara', '');
-            })
-            ->count();
-
-        $instansiInternasional = $this->dokumenPublikQuery()
-            ->join('master_mitra', 'dokumen_kerjasama.mitra_id', '=', 'master_mitra.id')
-            ->where('master_mitra.kategori_mitra', 'NOT LIKE', '%Industri%')
-            ->where('master_mitra.kategori_mitra', 'NOT LIKE', '%Perusahaan%')
-            ->where('master_mitra.negara', '!=', 'Indonesia')
-            ->whereNotNull('master_mitra.negara')
-            ->where('master_mitra.negara', '!=', '')
-            ->count();
+        DB::table('dokumen_kerjasama')
+            ->whereNull('dihapus_admin_pada')
+            ->select('tanggal_berakhir', 'status_siklus')
+            ->orderBy('id')
+            ->each(function ($row) use (&$hitung) {
+                $hitung[KerjasamaStatus::fromTanggalBerakhir($row->tanggal_berakhir, $row->status_siklus)]++;
+            });
 
         return response([
             'success' => true,
-            'data'    => [
-                'total'                  => $total,
-                'dalam_negeri'           => $total - $luarNegeri,
-                'luar_negeri'            => $luarNegeri,
-                'dudi_nasional'          => $dudiNasional,
-                'dudi_internasional'     => $dudiInternasional,
-                'instansi_nasional'      => $instansiNasional,
-                'instansi_internasional' => $instansiInternasional,
+            'data' => [
+                'total' => array_sum($hitung),
+                'aktif' => $hitung['active'],
+                'akan_berakhir' => $hitung['expiring'],
+                'kadaluarsa' => $hitung['archived'],
             ],
+        ]);
+    }
+
+    //fungsi untuk menandai dokumen kerjasama sebagai dihapus oleh admin atau user
+    public function publicStats(): Response
+    {
+        // Satu query agregat (bukan 7 count terpisah) + cache singkat: endpoint publik ini dipanggil
+        // di setiap kunjungan beranda. Angka bisa tertinggal maksimal 60 detik dari data terbaru.
+        $data = \Illuminate\Support\Facades\Cache::remember('public_stats_kerjasama', 60, function () {
+            $ln = "m.negara IS NOT NULL AND m.negara <> '' AND m.negara <> 'Indonesia'";
+            $dn = "(m.negara IS NULL OR m.negara = '' OR m.negara = 'Indonesia')";
+            $dudi = "(m.kategori_mitra LIKE '%Industri%' OR m.kategori_mitra LIKE '%Perusahaan%')";
+            $instansi = "m.kategori_mitra NOT LIKE '%Industri%' AND m.kategori_mitra NOT LIKE '%Perusahaan%'";
+            $hit = fn (string $kondisi) => "COALESCE(SUM(CASE WHEN m.id IS NOT NULL AND $kondisi THEN 1 ELSE 0 END), 0)";
+
+            $r = DB::table('dokumen_kerjasama')
+                ->leftJoin('master_mitra as m', 'dokumen_kerjasama.mitra_id', '=', 'm.id')
+                ->whereNull('dokumen_kerjasama.dihapus_admin_pada')
+                ->whereNull('dokumen_kerjasama.dihapus_user_pada')
+                ->selectRaw('COUNT(*) AS total')
+                ->selectRaw($hit($ln).' AS luar_negeri')
+                ->selectRaw($hit("$dudi AND $dn").' AS dudi_nasional')
+                ->selectRaw($hit("$dudi AND $ln").' AS dudi_internasional')
+                ->selectRaw($hit("$instansi AND $dn").' AS instansi_nasional')
+                ->selectRaw($hit("$instansi AND $ln").' AS instansi_internasional')
+                ->first();
+
+            return [
+                'total'                  => (int) $r->total,
+                'dalam_negeri'           => (int) $r->total - (int) $r->luar_negeri,
+                'luar_negeri'            => (int) $r->luar_negeri,
+                'dudi_nasional'          => (int) $r->dudi_nasional,
+                'dudi_internasional'     => (int) $r->dudi_internasional,
+                'instansi_nasional'      => (int) $r->instansi_nasional,
+                'instansi_internasional' => (int) $r->instansi_internasional,
+            ];
+        });
+
+        return response([
+            'success' => true,
+            'data'    => $data,
             'message' => 'Kerjasama stats retrieved successfully',
         ]);
     }
